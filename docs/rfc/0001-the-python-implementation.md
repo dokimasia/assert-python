@@ -2,13 +2,13 @@
 rfc: 0001
 title: The Python assertion library
 author: Roy Klopper <roy.klopper@stealthscale.io>
-status: Draft
+status: Accepted
 created: 2026-08-30
 updated: 2026-08-30
 discussion: none
 supersedes: none
 superseded-by: none
-produces-adr: tbd
+produces-adr: none
 ---
 
 # RFC-0001: The Python assertion library
@@ -45,13 +45,15 @@ carried across unchanged.
 ### Modules
 
 ```
-dokimi_assert.check          aborting surface, and rejects
-dokimi_assert.expect         recording surface, same members
-dokimi_assert.golden         golden files
-dokimi_assert.bench          benchmark ceilings
-dokimi_assert.seat           the seats an assertion reports through
-dokimi_assert._matcher       comparison logic, private
-dokimi_assert.conformance    this library checked against the standard
+dokimi_assert.check           aborting surface, and rejects
+dokimi_assert.expect          recording surface, same members
+dokimi_assert.golden          golden files
+dokimi_assert.bench           benchmark ceilings
+dokimi_assert.seat            the seats an assertion reports through
+dokimi_assert.option          relaxations a caller applies to one call
+dokimi_assert.pytest_plugin   the seat and recorder fixtures
+dokimi_assert._matcher        comparison logic, private
+dokimi_assert.conformance     this library checked against the standard
 ```
 
 `check` and `expect` rather than `assert` and `expect`: `assert` is a
@@ -90,14 +92,37 @@ class Seat(Protocol):
 A Protocol rather than a base class, so anything with the three
 methods is a seat without importing this library to say so.
 
-Two are supplied. `Standard` raises `AssertionError`, which every test
-framework already treats as a failing test, so nothing here needs an
-exception type of its own. `Recorder` collects, which is what lets an
-assertion be tested by reading what it reported and what the recording
-surface reports through.
+Three are supplied, and which one you hold decides what each surface
+does.
+
+| Seat | `check` | `expect` |
+|---|---|---|
+| `Collector` | raises | collects, raised when the test body ends |
+| `Standard` | raises | raises |
+| `Recorder` | collects | collects |
+
+`Standard` raises `AssertionError`, which every test framework already
+treats as a failing test, so nothing here needs an exception type of
+its own. Its `record` raises too: a recorded failure needs somewhere to
+report at the end, and a bare seat has no end to report at. Dropping
+the failure instead would be worse than reporting it early.
+
+`Recorder` collects both, which is what lets an assertion be tested by
+reading what it reported rather than suffering it.
+
+`Collector` is the one a real test wants, and it is why the plugin
+exists. It raises on an aborting failure and collects a recorded one,
+and something has to raise what it collected once the test body is
+done. Only the test framework knows when that is, so the fixture owns
+the seat and a `pytest_runtest_call` wrapper does the raising. Raising
+there rather than in a fixture finalizer puts the failure on the test
+instead of erroring the teardown, which reads as a passing test with a
+problem after it.
 
 The library is not tied to pytest. It sets `__tracebackhide__` where
-pytest reads it and works unchanged under `unittest` or none.
+pytest reads it, and every seat can be constructed directly, so it
+works unchanged under `unittest` or none. Under pytest the plugin
+registers itself, so `seat` needs no conftest and no import.
 
 ### Cancellation is asyncio
 
@@ -180,8 +205,10 @@ None.
 
 ## Unresolved and future work
 
-A pytest plugin supplying a seat as a fixture, so a test need not
-construct one, is not proposed here.
+Fixtures for other test frameworks are not proposed here. The seat is a
+Protocol and every implementation is constructible, so a `unittest`
+user supplies one in `setUp`; what pytest gets and they do not is a
+framework hook that knows when the test body ended.
 
 ## References
 

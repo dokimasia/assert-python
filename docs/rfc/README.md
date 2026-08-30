@@ -6,4 +6,4 @@ because they record why not.
 
 | # | Title | Status |
 |---|---|---|
-| [0001](0001-the-python-implementation.md) | The Python assertion library | Draft |
+| [0001](0001-the-python-implementation.md) | The Python assertion library | Accepted |
