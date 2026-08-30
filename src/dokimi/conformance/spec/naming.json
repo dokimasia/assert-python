@@ -1,0 +1,177 @@
+{
+    "languages": [
+        "go",
+        "java",
+        "php",
+        "python",
+        "rust",
+        "typescript"
+    ],
+    "names": {
+        "bench-max-allocs": {
+            "go": "bench.Contract.MaxAllocs",
+            "python": "bench.Contract.max_allocs"
+        },
+        "bench-max-bytes": {
+            "go": "bench.Contract.MaxBytes",
+            "python": "bench.Contract.max_bytes"
+        },
+        "bench-max-latency": {
+            "go": "bench.Contract.MaxLatency",
+            "python": "bench.Contract.max_latency"
+        },
+        "bench-max-mean": {
+            "go": "bench.Contract.MaxMean",
+            "python": "bench.Contract.max_mean"
+        },
+        "close-to": {
+            "go": "CloseTo",
+            "python": "close_to"
+        },
+        "completes-within": {
+            "go": "CompletesWithin",
+            "python": "completes_within"
+        },
+        "contains": {
+            "go": "Contains",
+            "python": "contains"
+        },
+        "contains-in-order": {
+            "go": "ContainsInOrder",
+            "python": "contains_in_order"
+        },
+        "empty": {
+            "go": "Empty",
+            "python": "is_empty"
+        },
+        "equal": {
+            "go": "Equal",
+            "python": "equal"
+        },
+        "err-absent": {
+            "go": "NoError",
+            "python": "no_error"
+        },
+        "err-as": {
+            "go": "ErrorAs",
+            "python": "error_as"
+        },
+        "err-is": {
+            "go": "ErrorIs",
+            "python": "error_is"
+        },
+        "err-is-not": {
+            "go": "ErrorIsNot",
+            "python": "error_is_not"
+        },
+        "err-present": {
+            "go": "HasError",
+            "python": "has_error"
+        },
+        "eventually": {
+            "go": "Eventually",
+            "python": "eventually"
+        },
+        "eventually-true": {
+            "go": "EventuallyTrue",
+            "python": "eventually_true"
+        },
+        "false": {
+            "go": "False",
+            "python": "is_false"
+        },
+        "golden-match": {
+            "go": "golden.Match",
+            "python": "golden.match"
+        },
+        "golden-match-at": {
+            "go": "golden.MatchAt",
+            "python": "golden.match_at"
+        },
+        "golden-match-json-field": {
+            "go": "golden.MatchJSONField",
+            "python": "golden.match_json_field"
+        },
+        "has-prefix": {
+            "go": "HasPrefix",
+            "python": "has_prefix"
+        },
+        "has-suffix": {
+            "go": "HasSuffix",
+            "python": "has_suffix"
+        },
+        "honours-cancellation": {
+            "go": "HonoursCancellation",
+            "python": "honours_cancellation"
+        },
+        "honours-deadline": {
+            "go": "HonoursDeadline",
+            "python": "honours_deadline"
+        },
+        "in-range": {
+            "go": "InRange",
+            "python": "in_range"
+        },
+        "length": {
+            "go": "Length",
+            "python": "length"
+        },
+        "matches": {
+            "go": "Matches",
+            "python": "matches"
+        },
+        "nil": {
+            "go": "Nil",
+            "python": "is_none"
+        },
+        "nil-context-safe": {
+            "go": "NilContextSafe",
+            "python": "none_handle_safe"
+        },
+        "no-task-leaks": {
+            "go": "NoGoroutineLeaks",
+            "python": "no_task_leaks"
+        },
+        "not-contains": {
+            "go": "NotContains",
+            "python": "not_contains"
+        },
+        "not-empty": {
+            "go": "NotEmpty",
+            "python": "is_not_empty"
+        },
+        "not-equal": {
+            "go": "NotEqual",
+            "python": "not_equal"
+        },
+        "not-nil": {
+            "go": "NotNil",
+            "python": "is_not_none"
+        },
+        "not-throws": {
+            "go": "NotPanics",
+            "python": "does_not_raise"
+        },
+        "pairwise": {
+            "go": "Pairwise",
+            "python": "pairwise"
+        },
+        "pure": {
+            "go": "Pure",
+            "python": "is_pure"
+        },
+        "rejects": {
+            "go": "Rejects",
+            "python": "rejects"
+        },
+        "throws": {
+            "go": "Panics",
+            "python": "raises"
+        },
+        "true": {
+            "go": "True",
+            "python": "is_true"
+        }
+    },
+    "version": "1.0.0"
+}
