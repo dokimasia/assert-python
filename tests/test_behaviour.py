@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import asyncio
 
-from dokimi import check
-from dokimi.seat import Recorder, Standard
+from dokimi_assert import check
+from dokimi_assert.seat import Recorder, Standard
 
 OUTER = Standard()
 

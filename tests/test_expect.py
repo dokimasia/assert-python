@@ -7,8 +7,8 @@ than raising, and that several failures in a row are all kept.
 
 from __future__ import annotations
 
-from dokimi import check, expect
-from dokimi.seat import Recorder, Standard
+from dokimi_assert import check, expect
+from dokimi_assert.seat import Recorder, Standard
 
 OUTER = Standard()
 

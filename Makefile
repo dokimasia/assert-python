@@ -1,4 +1,4 @@
-.PHONY: help install fmt lint types test check spec-sync
+.PHONY: help install fmt lint types test coverage check build spec-sync
 
 help: ## Show this help
 	@grep -hE '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sort | \
@@ -23,14 +23,21 @@ test: ## Run the tests
 	uv run pytest
 
 coverage: ## Run the tests and enforce the floor
-	uv run pytest --cov=dokimi --cov-report=term-missing --cov-fail-under=95
+	uv run pytest --cov=dokimi_assert --cov-report=term-missing --cov-fail-under=95
 
 check: lint types coverage ## The full pre-merge gate
 
+build: ## Build the sdist and wheel, then check what they carry
+	rm -rf dist
+	uv build
+	uv run --no-project --with twine twine check dist/*
+	@echo "built; publishing happens in CI on a version tag"
+
 spec-sync: ## Refresh the vendored definition from ../assert-spec
 	@test -d ../assert-spec || { echo "spec-sync: ../assert-spec not found"; exit 1; }
-	cp ../assert-spec/spec/assertions.json src/dokimi/conformance/spec/assertions.json
-	cp ../assert-spec/spec/naming.json     src/dokimi/conformance/spec/naming.json
-	cp ../assert-spec/VERSION              src/dokimi/conformance/spec/VERSION
-	rm -rf src/dokimi/conformance/spec/corpus
-	cp -r ../assert-spec/corpus src/dokimi/conformance/spec/corpus
+	cp ../assert-spec/spec/assertions.json src/dokimi_assert/conformance/spec/assertions.json
+	cp ../assert-spec/spec/naming.json     src/dokimi_assert/conformance/spec/naming.json
+	cp ../assert-spec/overlays/python.json src/dokimi_assert/conformance/spec/overlay.json
+	cp ../assert-spec/VERSION              src/dokimi_assert/conformance/spec/VERSION
+	rm -rf src/dokimi_assert/conformance/spec/corpus
+	cp -r ../assert-spec/corpus src/dokimi_assert/conformance/spec/corpus

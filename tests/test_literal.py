@@ -7,9 +7,9 @@ from collections.abc import Callable
 
 import pytest
 
-from dokimi import check
-from dokimi.conformance.literal import UnknownLiteralError, decode
-from dokimi.seat import Standard
+from dokimi_assert import check
+from dokimi_assert.conformance.literal import UnknownLiteralError, decode
+from dokimi_assert.seat import Standard
 
 OUTER = Standard()
 

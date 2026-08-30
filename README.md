@@ -1,10 +1,17 @@
-# dokimi
+# dokimi-assert
 
 Test assertions for Python, defined by a language-neutral standard and
 held to it on every run.
 
+```sh
+pip install dokimi-assert
+```
+
+The distribution is `dokimi-assert`; the package you import is
+`dokimi_assert`. Python 3.11 and up. No runtime dependencies.
+
 ```python
-from dokimi import check
+from dokimi_assert import check
 
 def test_get(seat):
     item = store.get(id)
@@ -84,9 +91,14 @@ make install    # create the environment
 make check      # the full pre-merge gate
 make test       # tests
 make fmt        # format and autofix
+make build      # build the sdist and wheel
 make spec-sync  # refresh the vendored definition
 ```
 
 `make check` runs ruff, a formatting check, mypy strict, basedpyright
-and the tests with a coverage floor. The design is recorded in
+and the tests with a coverage floor. CI runs it on 3.11 through 3.14.
+The design is recorded in
 [docs/rfc/0001-the-python-implementation.md](docs/rfc/0001-the-python-implementation.md).
+
+Pushing a `v*` tag builds, re-runs the gate, checks the tag agrees with
+`pyproject.toml`, and publishes to PyPI through Trusted Publishing.

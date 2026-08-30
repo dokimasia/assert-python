@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Any
 
-from dokimi._matcher.seat import Mode, Seat, report
+from dokimi_assert._matcher.seat import Mode, Seat, report
 
 
 def pairwise(

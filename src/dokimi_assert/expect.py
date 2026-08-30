@@ -8,12 +8,12 @@ observed.
 Reach for this where several properties of one value are each worth
 seeing. One run reports all of them rather than the first:
 
-    from dokimi import expect
+    from dokimi_assert import expect
 
     expect.is_not_none(seat, user, "the user was found")
     expect.has_prefix(seat, user.id, "usr_", "the id carries its prefix")
 
-:mod:`dokimi.check` carries the same assertions under the same names
+:mod:`dokimi_assert.check` carries the same assertions under the same names
 and runs the same comparison. Only what happens on failure differs.
 """
 
@@ -22,10 +22,10 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Any, TypeVar
 
-from dokimi._matcher import behaviour, errors, order, value, waiting
-from dokimi._matcher import raises as raising
-from dokimi._matcher.option import Option
-from dokimi._matcher.seat import Mode, Seat
+from dokimi_assert._matcher import behaviour, errors, order, value, waiting
+from dokimi_assert._matcher import raises as raising
+from dokimi_assert._matcher.option import Option
+from dokimi_assert._matcher.seat import Mode, Seat
 
 _E = TypeVar("_E", bound=BaseException)
 

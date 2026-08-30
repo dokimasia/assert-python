@@ -9,9 +9,9 @@ from importlib import resources
 from types import ModuleType
 from typing import Any
 
-from dokimi import check, expect
-from dokimi.conformance.literal import decode
-from dokimi.seat import Recorder
+from dokimi_assert import check, expect
+from dokimi_assert.conformance.literal import decode
+from dokimi_assert.seat import Recorder
 
 #: This language's key in a case's skip table.
 LANGUAGE = "python"
@@ -104,7 +104,7 @@ class Case:
 
 def cases() -> Iterator[Case]:
     """Read every case the vendored corpus states."""
-    corpus = resources.files("dokimi.conformance") / "spec" / "corpus"
+    corpus = resources.files("dokimi_assert.conformance") / "spec" / "corpus"
     for entry in sorted(corpus.iterdir(), key=lambda p: p.name):
         if not entry.name.endswith(".json"):
             continue

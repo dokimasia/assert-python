@@ -13,9 +13,9 @@ from typing import Any
 
 import pytest
 
-from dokimi import bench, check, expect, golden
-from dokimi.conformance import definition
-from dokimi.seat import Standard
+from dokimi_assert import bench, check, expect, golden
+from dokimi_assert.conformance import definition
+from dokimi_assert.seat import Standard
 
 OUTER = Standard()
 
@@ -103,4 +103,43 @@ def test_every_module_named_by_the_definition_exists() -> None:
     """A package the assertion table names must be importable."""
     named = {a.get("package") for a in ASSERTIONS.values()} - {"", None}
     for package in sorted(named):
-        importlib.import_module(f"dokimi.{package}")
+        importlib.import_module(f"dokimi_assert.{package}")
+
+
+def test_the_overlay_extends_the_vendored_version() -> None:
+    """An overlay pinned to a version that moved on is stale."""
+    check.equal(
+        OUTER,
+        definition.overlay()["extends"],
+        f"spec://assertions@{definition.version()}",
+        "the overlay extends the definition this library vendors",
+    )
+
+
+def test_the_overlay_is_this_language() -> None:
+    """Vendoring another language's overlay would excuse the wrong gaps."""
+    check.equal(
+        OUTER,
+        definition.overlay()["language"],
+        definition.LANGUAGE,
+        "the vendored overlay is this language's",
+    )
+
+
+def test_the_overlay_declares_no_divergence() -> None:
+    """Every assertion is implemented, so nothing is excused."""
+    check.is_empty(
+        OUTER,
+        definition.overlay()["diverge"],
+        "this library declares no divergence from the standard",
+    )
+
+
+@pytest.mark.parametrize("assertion", sorted(ASSERTIONS))
+def test_no_assertion_is_excused(assertion: str) -> None:
+    """A divergence for an implemented assertion is a false claim."""
+    check.is_false(
+        OUTER,
+        definition.diverges(assertion),
+        f"{assertion} is implemented, so the overlay does not excuse it",
+    )

@@ -5,5 +5,5 @@ test and the surface that does not run the same comparison and cannot
 disagree about what an assertion means.
 
 Nothing here is public. The names a caller types are in
-:mod:`dokimi.check` and :mod:`dokimi.expect`.
+:mod:`dokimi_assert.check` and :mod:`dokimi_assert.expect`.
 """

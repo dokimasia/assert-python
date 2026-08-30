@@ -24,8 +24,8 @@ import time
 import tracemalloc
 from collections.abc import Iterator
 
-from dokimi import expect
-from dokimi._matcher.seat import Seat
+from dokimi_assert import expect
+from dokimi_assert._matcher.seat import Seat
 
 __all__ = ["Contract"]
 

@@ -8,8 +8,8 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 
-from dokimi import bench, check
-from dokimi.seat import Recorder, Standard
+from dokimi_assert import bench, check
+from dokimi_assert.seat import Recorder, Standard
 
 #: The seat this file's own assertions report through.
 OUTER = Standard()

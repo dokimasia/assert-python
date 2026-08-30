@@ -10,8 +10,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from dokimi import check, golden
-from dokimi.seat import Recorder, Standard
+from dokimi_assert import check, golden
+from dokimi_assert.seat import Recorder, Standard
 
 #: The seat this file's own assertions report through. Standard raises,
 #: so a failure here fails the test; the Recorder each case drives the
@@ -309,7 +309,9 @@ def test_match_json_field_reports_a_missing_field_when_checking(tmp_path: Path) 
     golden.match_json_field(seat, path, "absent", "[1]", CHECKING)
 
     check.is_true(OUTER, seat.failed, "a missing field is reported")
-    check.contains(OUTER, seat.message, "DOKIMI_UPDATE_GOLDEN", "it says how to add it")
+    check.contains(
+        OUTER, seat.message, golden.UPDATE_ENV, "it names the variable that adds it"
+    )
 
 
 def test_match_json_field_rewrites_a_changed_field_when_updating(

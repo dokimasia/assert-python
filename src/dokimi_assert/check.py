@@ -5,11 +5,11 @@ states the contract under test and is the first line of the failure, so
 a failure says what was supposed to be true rather than only what was
 observed.
 
-    from dokimi import check
+    from dokimi_assert import check
 
     check.equal(got, want, "Get returns the stored item")
 
-:mod:`dokimi.expect` carries the same assertions under the same names
+:mod:`dokimi_assert.expect` carries the same assertions under the same names
 and runs the same comparison. Only what happens on failure differs.
 """
 
@@ -18,11 +18,11 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Any, TypeVar
 
-from dokimi._matcher import behaviour, errors, order, value, waiting
-from dokimi._matcher import raises as raising
-from dokimi._matcher.option import Option
-from dokimi._matcher.seat import Mode, Seat
-from dokimi.rejects import rejects
+from dokimi_assert._matcher import behaviour, errors, order, value, waiting
+from dokimi_assert._matcher import raises as raising
+from dokimi_assert._matcher.option import Option
+from dokimi_assert._matcher.seat import Mode, Seat
+from dokimi_assert.rejects import rejects
 
 _E = TypeVar("_E", bound=BaseException)
 

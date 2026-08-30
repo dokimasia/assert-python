@@ -12,7 +12,7 @@ LANGUAGE = "python"
 
 def _read(name: str) -> Any:
     """Read one file from the vendored definition."""
-    spec = resources.files("dokimi.conformance") / "spec"
+    spec = resources.files("dokimi_assert.conformance") / "spec"
     return json.loads((spec / name).read_text())
 
 
@@ -33,5 +33,21 @@ def names() -> dict[str, str]:
 
 def version() -> str:
     """Return the definition version this library implements."""
-    spec = resources.files("dokimi.conformance") / "spec"
+    spec = resources.files("dokimi_assert.conformance") / "spec"
     return (spec / "VERSION").read_text().strip()
+
+
+def overlay() -> dict[str, Any]:
+    """Return this language's declared divergences from the standard.
+
+    Every assertion the standard states is required. A library that
+    cannot supply one says so here, with the reason, so a gap nobody
+    could close and a gap nobody got to are told apart. An empty
+    ``diverge`` is a claim of full compliance, not an absence of one.
+    """
+    return dict(_read("overlay.json"))
+
+
+def diverges(assertion: str) -> bool:
+    """Whether the overlay excuses assertion from being implemented."""
+    return any(entry.get("id") == assertion for entry in overlay()["diverge"])

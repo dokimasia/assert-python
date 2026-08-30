@@ -13,9 +13,9 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar
 
-from dokimi._matcher.compare import equal as _equal
-from dokimi._matcher.option import Option, settings
-from dokimi._matcher.seat import Mode, Seat, report
+from dokimi_assert._matcher.compare import equal as _equal
+from dokimi_assert._matcher.option import Option, settings
+from dokimi_assert._matcher.seat import Mode, Seat, report
 
 _S = TypeVar("_S")
 

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import math
 
-from dokimi import check
-from dokimi._matcher.option import equate_empty, equate_nans, settings
-from dokimi.seat import Recorder, Standard
+from dokimi_assert import check
+from dokimi_assert._matcher.option import equate_empty, equate_nans, settings
+from dokimi_assert.seat import Recorder, Standard
 
 OUTER = Standard()
 

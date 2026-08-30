@@ -21,8 +21,8 @@ from typing import Any
 
 import pytest
 
-from dokimi import check, expect
-from dokimi.seat import Recorder, Seat, Standard
+from dokimi_assert import check, expect
+from dokimi_assert.seat import Recorder, Seat, Standard
 
 OUTER = Standard()
 

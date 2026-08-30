@@ -15,7 +15,7 @@ produces-adr: tbd
 
 ## Summary
 
-`dokimi` implements the standardized assertion set in Python. The
+`dokimi_assert` implements the standardized assertion set in Python. The
 comparison logic lives once, in a private package, taking a mode that
 says whether a failure stops the test. Two public modules wrap it:
 `check` stops, `expect` records and continues. A third reads the
@@ -45,13 +45,13 @@ carried across unchanged.
 ### Modules
 
 ```
-dokimi.check          aborting surface, and rejects
-dokimi.expect         recording surface, same members
-dokimi.golden         golden files
-dokimi.bench          benchmark ceilings
-dokimi.seat           the seats an assertion reports through
-dokimi._matcher       comparison logic, private
-dokimi.conformance    this library checked against the standard
+dokimi_assert.check          aborting surface, and rejects
+dokimi_assert.expect         recording surface, same members
+dokimi_assert.golden         golden files
+dokimi_assert.bench          benchmark ceilings
+dokimi_assert.seat           the seats an assertion reports through
+dokimi_assert._matcher       comparison logic, private
+dokimi_assert.conformance    this library checked against the standard
 ```
 
 `check` and `expect` rather than `assert` and `expect`: `assert` is a

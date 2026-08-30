@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import pytest
 
-from dokimi import check
-from dokimi.conformance.corpus import SURFACES, Case, cases
-from dokimi.seat import Recorder, Standard
+from dokimi_assert import check
+from dokimi_assert.conformance.corpus import SURFACES, Case, cases
+from dokimi_assert.seat import Recorder, Standard
 
 OUTER = Standard()
 

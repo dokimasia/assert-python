@@ -7,7 +7,7 @@ recorder and a harness that collects failures for a report.
 
 from __future__ import annotations
 
-from dokimi._matcher.seat import Seat
+from dokimi_assert._matcher.seat import Seat
 
 __all__ = ["Recorder", "Seat", "Standard"]
 

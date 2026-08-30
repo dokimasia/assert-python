@@ -13,7 +13,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from dokimi._matcher.seat import Mode, Seat, report
+from dokimi_assert._matcher.seat import Mode, Seat, report
 
 #: Where the backoff in eventually_true starts, and the share of the
 #: timeout it will not exceed.

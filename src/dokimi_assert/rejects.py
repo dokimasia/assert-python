@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from dokimi._matcher.seat import Seat
-from dokimi.seat import Recorder
+from dokimi_assert._matcher.seat import Seat
+from dokimi_assert.seat import Recorder
 
 __all__ = ["rejects"]
 

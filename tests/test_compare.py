@@ -11,8 +11,8 @@ import math
 
 import pytest
 
-from dokimi._matcher.compare import equal
-from dokimi._matcher.option import Option, equate_empty, equate_nans
+from dokimi_assert._matcher.compare import equal
+from dokimi_assert._matcher.option import Option, equate_empty, equate_nans
 
 STRICT = Option()
 

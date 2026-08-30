@@ -13,7 +13,7 @@ import math
 from collections.abc import Mapping, Sequence, Set
 from typing import Any
 
-from dokimi._matcher.option import Option
+from dokimi_assert._matcher.option import Option
 
 # Types whose members are compared element by element rather than with
 # ``==``, so a nested difference is found rather than delegated.

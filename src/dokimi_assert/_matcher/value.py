@@ -11,9 +11,9 @@ import re
 from collections.abc import Mapping, Sequence, Set, Sized
 from typing import Any
 
-from dokimi._matcher.compare import equal as _equal
-from dokimi._matcher.option import Option, settings
-from dokimi._matcher.seat import Mode, Seat, report
+from dokimi_assert._matcher.compare import equal as _equal
+from dokimi_assert._matcher.option import Option, settings
+from dokimi_assert._matcher.seat import Mode, Seat, report
 
 
 def equal(

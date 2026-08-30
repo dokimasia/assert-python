@@ -1,11 +1,31 @@
 [project]
-name = "dokimi"
+name = "dokimi-assert"
 version = "0.1.0"
 description = "Test assertions defined by a language-neutral standard and held to it"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "ThesmOS B.V." }]
+keywords = ["testing", "assertions", "test-framework", "conformance", "pytest"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Testing",
+    "Typing :: Typed",
+]
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/dokimasia/assert-python"
+Source = "https://github.com/dokimasia/assert-python"
+Standard = "https://github.com/dokimasia/assert-spec"
+Issues = "https://github.com/dokimasia/assert-python/issues"
 
 [project.optional-dependencies]
 dev = [
@@ -21,7 +41,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/dokimi"]
+packages = ["src/dokimi_assert"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "README.md", "LICENSE", "pyproject.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

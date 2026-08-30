@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TypeVar
 
-from dokimi._matcher.seat import Mode, Seat, report
+from dokimi_assert._matcher.seat import Mode, Seat, report
 
 _E = TypeVar("_E", bound=BaseException)
 

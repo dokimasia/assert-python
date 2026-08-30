@@ -18,8 +18,8 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
-from dokimi import check
-from dokimi._matcher.seat import Seat
+from dokimi_assert import check
+from dokimi_assert._matcher.seat import Seat
 
 __all__ = [
     "Scrubber",
@@ -38,7 +38,7 @@ CONVENTIONAL_DIR = Path("testdata") / "golden"
 
 #: The environment variable that lets a run rewrite its golden files.
 #: pytest has no -update flag to hang this on, so it is named here.
-UPDATE_ENV = "DOKIMI_UPDATE_GOLDEN"
+UPDATE_ENV = "DOKIMI_ASSERT_UPDATE_GOLDEN"
 
 #: How a golden JSON file is written, so a diff reads line by line.
 JSON_INDENT = 2
@@ -55,7 +55,7 @@ _RUN_ID = re.compile(r"\brun_[0-9a-z]{16}\b")
 def should_update() -> bool:
     """Whether this run may rewrite its golden files.
 
-    Set ``DOKIMI_UPDATE_GOLDEN=1`` to enable it. Read the diff first: a
+    Set ``DOKIMI_ASSERT_UPDATE_GOLDEN=1`` to enable it. Read the diff first: a
     golden file updated without reading it records whatever the code
     now does, which is the opposite of an assertion.
     """

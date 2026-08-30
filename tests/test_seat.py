@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from dokimi._matcher.seat import Mode, Seat, report
-from dokimi.seat import Recorder, Standard
+from dokimi_assert._matcher.seat import Mode, Seat, report
+from dokimi_assert.seat import Recorder, Standard
 
 
 def test_both_seats_satisfy_the_protocol() -> None:
