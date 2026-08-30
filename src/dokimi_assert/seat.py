@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dokimi_assert._matcher.seat import Seat
 
-__all__ = ["Recorder", "Seat", "Standard"]
+__all__ = ["Collector", "Recorder", "Seat", "Standard"]
 
 
 class Standard:
@@ -38,8 +38,10 @@ class Standard:
         """Raise :exc:`AssertionError`; this seat cannot carry on.
 
         A recording assertion needs somewhere to put the failure and
-        something to report it at the end. Pass a :class:`Recorder`,
-        which pytest's fixture supplies for you.
+        something to report it once the test body is done. This seat
+        has no end to report at, so it treats a recorded failure like
+        an aborting one rather than dropping it. Use the ``seat``
+        fixture, whose :class:`Collector` has a test to end.
         """
         __tracebackhide__ = True
         raise AssertionError(message)
@@ -104,3 +106,59 @@ class Recorder:
     def helper_calls(self) -> int:
         """How many times ``helper`` was called."""
         return self._helpers
+
+
+class Collector:
+    """A seat that aborts on a check and collects what expect records.
+
+    This is what a real test needs and what the ``seat`` fixture
+    supplies. :class:`Standard` cannot collect, because it has no end
+    of test to report at; :class:`Recorder` collects everything and
+    aborts on nothing, which is right for reading a failure back and
+    wrong for suffering one.
+
+    An aborting assertion raises where it stands. A recording one is
+    kept until :meth:`flush`, which the fixture calls once the test
+    body is done, so several failing properties of one value are all
+    reported from one run.
+    """
+
+    __test__: bool = False
+
+    def __init__(self) -> None:
+        """Return a seat holding nothing."""
+        self._collected: list[str] = []
+
+    def helper(self) -> None:
+        """Hide this library's frames from the reported traceback."""
+
+    def fail(self, message: str) -> None:
+        """Raise :exc:`AssertionError`, stopping the test here."""
+        __tracebackhide__ = True
+        raise AssertionError(message)
+
+    def record(self, message: str) -> None:
+        """Keep a failure, and let the test carry on."""
+        self._collected.append(message)
+
+    @property
+    def collected(self) -> list[str]:
+        """Every failure recorded so far, in call order."""
+        return list(self._collected)
+
+    def flush(self) -> None:
+        """Raise one :exc:`AssertionError` carrying every failure.
+
+        Returns when nothing was recorded. Clears what it raised, so a
+        seat reused across phases does not report a failure twice.
+        """
+        __tracebackhide__ = True
+        if not self._collected:
+            return
+
+        collected, self._collected = self._collected, []
+        if len(collected) == 1:
+            raise AssertionError(collected[0])
+
+        listed = "\n".join(f"  {n}. {m}" for n, m in enumerate(collected, 1))
+        raise AssertionError(f"{len(collected)} failures:\n{listed}")

@@ -50,6 +50,7 @@ def report(seat: Seat, mode: Mode, message: str) -> None:
     only once its own comparison has failed, so every call produces
     exactly one reported failure. Under FATAL it may not return.
     """
+    __tracebackhide__ = True
     seat.helper()
     if mode is Mode.SOFT:
         seat.record(message)

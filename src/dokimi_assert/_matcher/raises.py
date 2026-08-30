@@ -20,6 +20,7 @@ def raises(
     the run is ending, and reporting one as the raise a test asked for
     would swallow it.
     """
+    __tracebackhide__ = True
     seat.helper()
     try:
         fn()
@@ -38,6 +39,7 @@ def does_not_raise(seat: Seat, mode: Mode, fn: Callable[[], Any], msg: str) -> N
     This is the assertion for a call that may legitimately fail:
     returning an error is fine, crashing is not.
     """
+    __tracebackhide__ = True
     seat.helper()
     try:
         fn()

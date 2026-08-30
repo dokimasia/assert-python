@@ -24,6 +24,7 @@ def pairwise(
     Nought or one item passes, having no pair to break. The failure
     names the index and both values of the first break.
     """
+    __tracebackhide__ = True
     seat.helper()
     for index in range(1, len(items)):
         earlier, later = items[index - 1], items[index]

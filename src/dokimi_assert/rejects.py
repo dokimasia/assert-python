@@ -33,6 +33,7 @@ def rejects(seat: Seat, msg: str, body: Callable[[Recorder], None]) -> str:
     defect in the check or in the stand-in, and reporting it as a
     rejection would hide it.
     """
+    __tracebackhide__ = True
     seat.helper()
 
     recorder = Recorder()

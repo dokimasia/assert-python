@@ -6,9 +6,13 @@ Two surfaces carry the same assertions under the same names:
 
     from dokimi_assert import check
 
-    check.equal(got, want, "Get returns the stored item")
+    def test_get(seat):
+        check.equal(seat, store.get("widget"), item, "Get returns the stored item")
 
-Every assertion takes a message last. It states the contract under test
-and is the first line of the failure, so a failure says what was
-supposed to be true rather than only what was observed.
+Every assertion takes a seat first and a message last. The seat is
+where a failure is reported, and installing this package registers a
+pytest fixture called ``seat`` that supplies one. The message states
+the contract under test and is the first line of the failure, so a
+failure says what was supposed to be true rather than only what was
+observed.
 """

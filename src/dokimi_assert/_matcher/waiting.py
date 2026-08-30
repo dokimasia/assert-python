@@ -59,6 +59,7 @@ def eventually(
     failure is reported. body runs at least once however short the
     timeout.
     """
+    __tracebackhide__ = True
     seat.helper()
 
     deadline = time.monotonic() + timeout
@@ -92,6 +93,7 @@ def eventually_true(
     predicate has no failure to carry, so this says only that the wait
     ran out.
     """
+    __tracebackhide__ = True
     seat.helper()
 
     deadline = time.monotonic() + timeout
@@ -137,6 +139,7 @@ def no_task_leaks(seat: Seat, mode: Mode, msg: str) -> Callable[[], None]:
     It answers only for asyncio. A thread is not an asyncio task and is
     not seen here.
     """
+    __tracebackhide__ = True
     seat.helper()
     before = _running_tasks()
 

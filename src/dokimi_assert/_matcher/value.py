@@ -20,6 +20,7 @@ def equal(
     seat: Seat, mode: Mode, got: Any, want: Any, msg: str, *options: Option
 ) -> None:
     """Report when got and want differ. See the comparison rules."""
+    __tracebackhide__ = True
     seat.helper()
     if not _equal(got, want, settings(options)):
         report(seat, mode, f"{msg}: want {want!r}, got {got!r}")
@@ -29,6 +30,7 @@ def not_equal(
     seat: Seat, mode: Mode, got: Any, want: Any, msg: str, *options: Option
 ) -> None:
     """Report when got and want are equal."""
+    __tracebackhide__ = True
     seat.helper()
     if _equal(got, want, settings(options)):
         report(seat, mode, f"{msg}: values are equal, want different: got {got!r}")
@@ -36,6 +38,7 @@ def not_equal(
 
 def is_true(seat: Seat, mode: Mode, condition: bool, msg: str) -> None:
     """Report when the condition does not hold."""
+    __tracebackhide__ = True
     seat.helper()
     if not condition:
         report(seat, mode, f"{msg}: expected true, got false")
@@ -43,6 +46,7 @@ def is_true(seat: Seat, mode: Mode, condition: bool, msg: str) -> None:
 
 def is_false(seat: Seat, mode: Mode, condition: bool, msg: str) -> None:
     """Report when the condition holds."""
+    __tracebackhide__ = True
     seat.helper()
     if condition:
         report(seat, mode, f"{msg}: expected false, got true")
@@ -50,6 +54,7 @@ def is_false(seat: Seat, mode: Mode, condition: bool, msg: str) -> None:
 
 def is_none(seat: Seat, mode: Mode, got: Any, msg: str) -> None:
     """Report when got is not None."""
+    __tracebackhide__ = True
     seat.helper()
     if got is not None:
         report(seat, mode, f"{msg}: expected none, got {got!r}")
@@ -57,6 +62,7 @@ def is_none(seat: Seat, mode: Mode, got: Any, msg: str) -> None:
 
 def is_not_none(seat: Seat, mode: Mode, got: Any, msg: str) -> None:
     """Report when got is None."""
+    __tracebackhide__ = True
     seat.helper()
     if got is None:
         report(seat, mode, f"{msg}: expected a value, got none")
@@ -68,6 +74,7 @@ def length(seat: Seat, mode: Mode, got: Any, want: int, msg: str) -> None:
     Anything without a length is itself the failure rather than an
     exception, so a wrong type reads like every other failure.
     """
+    __tracebackhide__ = True
     seat.helper()
     if not isinstance(got, Sized):
         report(seat, mode, f"{msg}: length not supported for {type(got).__name__}")
@@ -78,6 +85,7 @@ def length(seat: Seat, mode: Mode, got: Any, want: int, msg: str) -> None:
 
 def is_empty(seat: Seat, mode: Mode, got: Any, msg: str) -> None:
     """Report when got holds anything."""
+    __tracebackhide__ = True
     seat.helper()
     if not isinstance(got, Sized):
         report(seat, mode, f"{msg}: emptiness not supported for {type(got).__name__}")
@@ -88,6 +96,7 @@ def is_empty(seat: Seat, mode: Mode, got: Any, msg: str) -> None:
 
 def is_not_empty(seat: Seat, mode: Mode, got: Any, msg: str) -> None:
     """Report when got holds nothing."""
+    __tracebackhide__ = True
     seat.helper()
     if not isinstance(got, Sized):
         report(seat, mode, f"{msg}: emptiness not supported for {type(got).__name__}")
@@ -120,6 +129,7 @@ def contains(
     seat: Seat, mode: Mode, haystack: Any, needle: Any, msg: str, *options: Option
 ) -> None:
     """Report when haystack does not hold needle."""
+    __tracebackhide__ = True
     seat.helper()
     found, supported = _holds(haystack, needle, settings(options))
     if not supported:
@@ -137,6 +147,7 @@ def not_contains(
     seat: Seat, mode: Mode, haystack: Any, needle: Any, msg: str, *options: Option
 ) -> None:
     """Report when haystack holds needle."""
+    __tracebackhide__ = True
     seat.helper()
     found, supported = _holds(haystack, needle, settings(options))
     if not supported:
@@ -167,6 +178,7 @@ def contains_in_order(
     Each needle must appear after the previous one's match ends, which
     is what catches a formatter that reorders its fields.
     """
+    __tracebackhide__ = True
     seat.helper()
     text, ok = _text_of(got)
     if not ok:
@@ -193,6 +205,7 @@ def contains_in_order(
 
 def has_prefix(seat: Seat, mode: Mode, got: Any, prefix: str, msg: str) -> None:
     """Report when got does not start with prefix."""
+    __tracebackhide__ = True
     seat.helper()
     text, ok = _text_of(got)
     if not ok:
@@ -204,6 +217,7 @@ def has_prefix(seat: Seat, mode: Mode, got: Any, prefix: str, msg: str) -> None:
 
 def has_suffix(seat: Seat, mode: Mode, got: Any, suffix: str, msg: str) -> None:
     """Report when got does not end with suffix."""
+    __tracebackhide__ = True
     seat.helper()
     text, ok = _text_of(got)
     if not ok:
@@ -220,6 +234,7 @@ def matches(seat: Seat, mode: Mode, got: Any, pattern: str, msg: str) -> None:
     exception: a test with a broken pattern has established nothing and
     should say so where every other failure is reported.
     """
+    __tracebackhide__ = True
     seat.helper()
     text, ok = _text_of(got)
     if not ok:
@@ -261,6 +276,7 @@ def close_to(
     A NaN anywhere fails. Every comparison against NaN is false, so a
     bare check would pass one rather than reject it.
     """
+    __tracebackhide__ = True
     seat.helper()
     number, ok = _number_of(got)
     if not ok:
@@ -286,6 +302,7 @@ def in_range(
     seat: Seat, mode: Mode, got: Any, low: float, high: float, msg: str
 ) -> None:
     """Report when got falls outside the closed interval."""
+    __tracebackhide__ = True
     seat.helper()
     if low > high:
         report(seat, mode, f"{msg}: empty range [{low}, {high}]")

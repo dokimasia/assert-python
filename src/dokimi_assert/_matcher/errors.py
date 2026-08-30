@@ -35,6 +35,7 @@ def _chain(exc: BaseException | None) -> list[BaseException]:
 
 def no_error(seat: Seat, mode: Mode, exc: BaseException | None, msg: str) -> None:
     """Report when an exception was raised."""
+    __tracebackhide__ = True
     seat.helper()
     if exc is not None:
         report(seat, mode, f"{msg}: unexpected error: {exc!r}")
@@ -42,6 +43,7 @@ def no_error(seat: Seat, mode: Mode, exc: BaseException | None, msg: str) -> Non
 
 def has_error(seat: Seat, mode: Mode, exc: BaseException | None, msg: str) -> None:
     """Report when nothing was raised."""
+    __tracebackhide__ = True
     seat.helper()
     if exc is None:
         report(seat, mode, f"{msg}: expected an error, got none")
@@ -55,6 +57,7 @@ def error_is(
     Identity, not equality: a sentinel matches however deeply it was
     wrapped on the way up.
     """
+    __tracebackhide__ = True
     seat.helper()
     if not any(item is target for item in _chain(exc)):
         report(seat, mode, f"{msg}: got error {exc!r}, want one matching {target!r}")
@@ -64,6 +67,7 @@ def error_is_not(
     seat: Seat, mode: Mode, exc: BaseException | None, target: BaseException, msg: str
 ) -> None:
     """Report when target is exc or one of its causes."""
+    __tracebackhide__ = True
     seat.helper()
     if any(item is target for item in _chain(exc)):
         report(
@@ -80,6 +84,7 @@ def error_as(
     seat carries on with a value a caller can test rather than an
     attribute error.
     """
+    __tracebackhide__ = True
     seat.helper()
     for item in _chain(exc):
         if type(item) is want:

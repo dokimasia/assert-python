@@ -33,6 +33,7 @@ def honours_cancellation(
     it yields to cancellation at all rather than how fast it notices.
     A subject that swallows the cancellation and returns fails here.
     """
+    __tracebackhide__ = True
     seat.helper()
 
     async def drive() -> str | None:
@@ -71,6 +72,7 @@ def honours_deadline(
     starts the coroutine at all, which CPython documents in the source
     of that function, so every subject would time out and pass.
     """
+    __tracebackhide__ = True
     seat.helper()
 
     async def drive() -> str | None:
@@ -97,6 +99,7 @@ def completes_within(
     finished in time, and a subject that runs long runs to completion
     first. Spends real time, up to however long fn takes.
     """
+    __tracebackhide__ = True
     seat.helper()
 
     started = time.perf_counter()
@@ -122,6 +125,7 @@ def is_pure(
     projection sharing memory with the subject reads the same object
     twice and passes whatever fn did.
     """
+    __tracebackhide__ = True
     seat.helper()
 
     before = observe()
@@ -145,6 +149,7 @@ def none_handle_safe(
     fine: refusing the call is a decision. Those two are what a missing
     None check produces, and they are what this catches.
     """
+    __tracebackhide__ = True
     seat.helper()
     try:
         fn(None)

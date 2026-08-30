@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from dokimi_assert._matcher.seat import Mode, Seat, report
-from dokimi_assert.seat import Recorder, Standard
+from dokimi_assert.seat import Collector, Recorder, Standard
 
 
 def test_both_seats_satisfy_the_protocol() -> None:
@@ -110,3 +110,71 @@ def test_report_marks_the_calling_frame() -> None:
     report(recorder, Mode.FATAL, "reported")
 
     assert recorder.helper_calls >= 1
+
+
+def test_a_collector_raises_on_a_fatal_failure() -> None:
+    """The aborting surface stops the test, so fail raises where it stands."""
+    seat = Collector()
+
+    with pytest.raises(AssertionError, match="the stated contract"):
+        seat.fail("the stated contract")
+
+
+def test_a_collector_keeps_a_recorded_failure() -> None:
+    """The recording surface carries on, so record keeps the message."""
+    seat = Collector()
+    seat.record("the first contract")
+    seat.record("the second contract")
+
+    assert seat.collected == ["the first contract", "the second contract"]
+
+
+def test_a_collector_flushes_nothing_when_nothing_failed() -> None:
+    """A passing test must not raise at the end of its body."""
+    Collector().flush()
+
+
+def test_a_collector_flushes_one_failure_as_itself() -> None:
+    """One failure numbered 1 of 1 reads worse than the failure alone."""
+    seat = Collector()
+    seat.record("the stated contract")
+
+    with pytest.raises(AssertionError) as caught:
+        seat.flush()
+
+    assert str(caught.value) == "the stated contract"
+
+
+def test_a_collector_flushes_several_as_a_numbered_list() -> None:
+    """Seeing every failing property is the point of the recording surface."""
+    seat = Collector()
+    seat.record("the first contract")
+    seat.record("the second contract")
+
+    with pytest.raises(AssertionError) as caught:
+        seat.flush()
+
+    message = str(caught.value)
+    assert "2 failures:" in message
+    assert "1. the first contract" in message
+    assert "2. the second contract" in message
+
+
+def test_a_collector_does_not_report_the_same_failure_twice() -> None:
+    """A seat reused across phases would otherwise repeat itself."""
+    seat = Collector()
+    seat.record("the stated contract")
+
+    with pytest.raises(AssertionError):
+        seat.flush()
+
+    seat.flush()
+    assert seat.collected == []
+
+
+def test_a_collector_counts_helper_calls_without_failing() -> None:
+    """Marking a frame decides nothing about the outcome."""
+    seat = Collector()
+    seat.helper()
+
+    assert seat.collected == []

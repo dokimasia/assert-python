@@ -21,6 +21,12 @@ classifiers = [
 ]
 dependencies = []
 
+# Registering the plugin here is what makes the seat fixture appear
+# without a conftest. Without it, every consumer writes the same
+# fixture by hand.
+[project.entry-points.pytest11]
+dokimi_assert = "dokimi_assert.pytest_plugin"
+
 [project.urls]
 Homepage = "https://github.com/dokimasia/assert-python"
 Source = "https://github.com/dokimasia/assert-python"

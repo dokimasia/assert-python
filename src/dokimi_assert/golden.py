@@ -105,6 +105,7 @@ def match(seat: Seat, name: str, got: str, update: bool, *scrubbers: Scrubber) -
     The file is the assertion. When it does not exist and update is
     false, that is a failure naming what would create it.
     """
+    __tracebackhide__ = True
     seat.helper()
     match_at(seat, CONVENTIONAL_DIR / name, got, update, *scrubbers)
 
@@ -113,6 +114,7 @@ def match_at(
     seat: Seat, path: str | Path, got: str, update: bool, *scrubbers: Scrubber
 ) -> None:
     """Compare got against the golden file at path, taken as given."""
+    __tracebackhide__ = True
     seat.helper()
 
     target = Path(path)
@@ -157,6 +159,7 @@ def match_json_field(
     whole file's and two tests updating different fields do not
     overwrite each other.
     """
+    __tracebackhide__ = True
     seat.helper()
 
     target = Path(path)
@@ -203,6 +206,7 @@ def match_json_field(
 
 def _read_object(seat: Seat, target: Path, update: bool) -> dict[str, Any] | None:
     """Read the JSON object at target, or None when the caller must stop."""
+    __tracebackhide__ = True
     if not target.exists():
         if not update:
             seat.fail(
@@ -231,6 +235,7 @@ def _write(seat: Seat, target: Path, content: str) -> None:
     raised, so a caller driving this with a recorder reads the failure
     like any other instead of catching an OSError.
     """
+    __tracebackhide__ = True
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content)
@@ -240,6 +245,7 @@ def _write(seat: Seat, target: Path, content: str) -> None:
 
 def _write_object(seat: Seat, target: Path, document: dict[str, Any]) -> None:
     """Record document as the golden file at target."""
+    __tracebackhide__ = True
     _write(
         seat, target, json.dumps(document, indent=JSON_INDENT, sort_keys=True) + "\n"
     )
