@@ -7,31 +7,31 @@ something different by the same name fails here.
 Every case runs twice, once per surface. The two carrying the same
 assertions means they produce the same outcome from the same case, and
 running one and trusting the other would leave that untested.
+
+Written with pytest's assert rather than with this library. Everything
+here reports through one function, so a verdict written with the
+subject goes quiet exactly when the subject does: silencing that
+function leaves every case passing, having checked nothing.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from dokimi_assert import check
 from dokimi_assert.conformance.corpus import SURFACES, Case, cases
-from dokimi_assert.seat import Recorder, Standard
-
-OUTER = Standard()
+from dokimi_assert.seat import Recorder
 
 CASES = list(cases())
 
 
 def test_the_corpus_is_not_empty() -> None:
     """A corpus that read nothing would pass having checked nothing."""
-    check.is_not_empty(OUTER, CASES, "the vendored corpus states cases")
+    assert CASES, "the vendored corpus states cases"
 
 
 def test_both_surfaces_are_driven() -> None:
     """Driving one surface would leave the other's meaning untested."""
-    check.equal(
-        OUTER, sorted(SURFACES), ["check", "expect"], "both surfaces are driven"
-    )
+    assert sorted(SURFACES) == ["check", "expect"], "both surfaces are driven"
 
 
 @pytest.mark.parametrize("surface", sorted(SURFACES))
@@ -43,13 +43,10 @@ def test_case(case: Case, surface: str) -> None:
         pytest.skip(f"declared skip: {reason}")
 
     invoke = SURFACES[surface].get(case.assertion)
-    check.is_not_none(
-        OUTER, invoke, f"{surface} carries an invoker for {case.assertion}"
-    )
-    assert invoke is not None  # narrows the type; the check above is the test
+    assert invoke is not None, f"{surface} carries an invoker for {case.assertion}"
 
     recorder = Recorder()
     invoke(recorder, *case.args, case.id)
 
     mismatch = case.check(recorder)
-    check.is_none(OUTER, mismatch, f"{surface} agrees with the corpus: {mismatch}")
+    assert mismatch is None, f"{surface} disagrees with the corpus: {mismatch}"
