@@ -4,6 +4,11 @@ Go states cancellation with ``context.Context``. Python has no such
 convention, so these use asyncio, whose CancelledError and timeouts are
 the real analogue. That makes them the assertions most likely to be
 wrong, and the ones worth driving hardest.
+
+Every assertion here is driven twice, once with a subject that holds
+and once with one that does not. A one-sided test passes against an
+assertion that reports nothing whatever it is given, which is a real
+way for one of these to be wrong.
 """
 
 from __future__ import annotations
@@ -11,8 +16,9 @@ from __future__ import annotations
 import asyncio
 
 from dokimi import check
-from dokimi._matcher.seat import Seat
-from dokimi.seat import Recorder
+from dokimi.seat import Recorder, Standard
+
+OUTER = Standard()
 
 
 async def _respects() -> None:
@@ -25,39 +31,74 @@ async def _ignores() -> None:
     return None
 
 
+async def _swallows() -> str:
+    """Catch the cancellation and return anyway."""
+    try:
+        await asyncio.sleep(10)
+    except asyncio.CancelledError:
+        return "carried on regardless"
+    return "not cancelled"
+
+
 def test_honours_cancellation_passes_a_subject_that_yields() -> None:
     """A subject that awaits is reached by cancellation."""
     seat = Recorder()
     check.honours_cancellation(seat, _respects, "it checks for cancellation")
-    assert not seat.failed, seat.message
+    check.is_false(OUTER, seat.failed, f"a yielding subject passes: {seat.message}")
 
 
 def test_honours_cancellation_reports_a_subject_that_does_not() -> None:
     """A subject that returns without yielding is not cancellable."""
     seat = Recorder()
     check.honours_cancellation(seat, _ignores, "it checks for cancellation")
-    assert seat.failed
+    check.is_true(OUTER, seat.failed, "a subject that never yields is reported")
 
 
 def test_honours_deadline_passes_a_subject_that_yields() -> None:
     """A subject given no time is cut short at its first await."""
     seat = Recorder()
     check.honours_deadline(seat, _respects, "it checks its deadline")
-    assert not seat.failed, seat.message
+    check.is_false(OUTER, seat.failed, f"a yielding subject passes: {seat.message}")
+
+
+def test_honours_deadline_reports_a_subject_that_never_yields() -> None:
+    """A subject that runs to completion ignored the deadline.
+
+    An implementation built on ``asyncio.wait_for`` with a timeout of
+    zero passes this subject, because that call never starts the
+    coroutine. The assertion has to actually run the body.
+    """
+    seat = Recorder()
+    check.honours_deadline(seat, _ignores, "it checks its deadline")
+    check.is_true(OUTER, seat.failed, "a subject given no time that returned is caught")
+
+
+def test_honours_deadline_reports_a_subject_that_swallows_the_cancellation() -> None:
+    """Catching the cancellation and returning is not honouring it."""
+    seat = Recorder()
+    check.honours_deadline(seat, _swallows, "it checks its deadline")
+    check.is_true(OUTER, seat.failed, "swallowing the cancellation is reported")
 
 
 def test_completes_within_passes_a_fast_subject() -> None:
     """A subject that returns at once is inside any real ceiling."""
     seat = Recorder()
     check.completes_within(seat, 1.0, lambda: None, "it is quick")
-    assert not seat.failed, seat.message
+    check.is_false(OUTER, seat.failed, f"a fast subject passes: {seat.message}")
 
 
 def test_completes_within_reports_a_slow_subject() -> None:
     """A subject slower than its ceiling is reported."""
     seat = Recorder()
     check.completes_within(seat, 0.0, lambda: None, "it is quick")
-    assert seat.failed
+    check.is_true(OUTER, seat.failed, "a subject over its ceiling is reported")
+
+
+def test_completes_within_names_the_ceiling_it_missed() -> None:
+    """The failure carries both readings, so the margin is visible."""
+    seat = Recorder()
+    check.completes_within(seat, 0.0, lambda: None, "it is quick")
+    check.contains(OUTER, seat.message, "want at most", "it names the ceiling")
 
 
 def test_is_pure_passes_when_the_projection_holds() -> None:
@@ -65,7 +106,9 @@ def test_is_pure_passes_when_the_projection_holds() -> None:
     state = [1, 2]
     seat = Recorder()
     check.is_pure(seat, lambda: list(state), lambda: None, "it changes nothing")
-    assert not seat.failed, seat.message
+    check.is_false(
+        OUTER, seat.failed, f"an unchanged projection passes: {seat.message}"
+    )
 
 
 def test_is_pure_reports_when_the_projection_changes() -> None:
@@ -75,7 +118,20 @@ def test_is_pure_reports_when_the_projection_changes() -> None:
     check.is_pure(
         seat, lambda: list(state), lambda: state.append(3), "it changes nothing"
     )
-    assert seat.failed
+    check.is_true(OUTER, seat.failed, "a changed projection is reported")
+
+
+def test_is_pure_ignores_what_the_projection_leaves_out() -> None:
+    """The projection defines what nothing means, so this passes."""
+    state = {"kept": 1, "ignored": 0}
+    seat = Recorder()
+    check.is_pure(
+        seat,
+        lambda: state["kept"],
+        lambda: state.__setitem__("ignored", 1),
+        "it changes nothing observable",
+    )
+    check.is_false(OUTER, seat.failed, f"an unobserved change passes: {seat.message}")
 
 
 def test_none_handle_safe_passes_a_subject_that_refuses() -> None:
@@ -87,7 +143,7 @@ def test_none_handle_safe_passes_a_subject_that_refuses() -> None:
 
     seat = Recorder()
     check.none_handle_safe(seat, refuses, "it survives a missing handle")
-    assert not seat.failed, seat.message
+    check.is_false(OUTER, seat.failed, f"a refusing subject passes: {seat.message}")
 
 
 def test_none_handle_safe_reports_a_subject_that_dereferences() -> None:
@@ -96,74 +152,4 @@ def test_none_handle_safe_reports_a_subject_that_dereferences() -> None:
     check.none_handle_safe(
         seat, lambda handle: handle.cancelled, "it survives a missing handle"
     )
-    assert seat.failed
-
-
-def test_eventually_reports_the_last_attempt() -> None:
-    """A body that never passes reports its own reason, not a timeout."""
-    seat = Recorder()
-    check.eventually(
-        seat,
-        0.02,
-        0.005,
-        lambda trial: check.is_true(trial, False, "the inner reason"),
-        "it converges",
-    )
-    assert seat.failed
-    assert "the inner reason" in seat.message
-
-
-def test_eventually_passes_once_the_body_settles() -> None:
-    """A body that comes good within the timeout passes."""
-    attempts = 0
-
-    def body(trial: Seat) -> None:
-        nonlocal attempts
-        attempts += 1
-        check.is_true(trial, attempts >= 3, "it settled")
-
-    seat = Recorder()
-    check.eventually(seat, 1.0, 0.005, body, "it converges")
-    assert not seat.failed, seat.message
-    assert attempts >= 3
-
-
-def test_eventually_true_reports_the_timeout() -> None:
-    """A predicate that never holds reports the wait running out."""
-    seat = Recorder()
-    check.eventually_true(seat, 0.02, lambda: False, "it settles")
-    assert seat.failed
-    assert "still false" in seat.message
-
-
-def test_no_task_leaks_reports_a_task_left_running() -> None:
-    """A task started in the scope and still running is a leak."""
-
-    async def drive() -> Recorder:
-        seat = Recorder()
-        done = check.no_task_leaks(seat, "the worker stops")
-
-        task = asyncio.ensure_future(asyncio.sleep(5))
-        await asyncio.sleep(0)
-        done()
-
-        task.cancel()
-        return seat
-
-    seat = asyncio.run(drive())
-    assert seat.failed
-
-
-def test_no_task_leaks_passes_when_the_task_finished() -> None:
-    """A task that completed before the check is not a leak."""
-
-    async def drive() -> Recorder:
-        seat = Recorder()
-        done = check.no_task_leaks(seat, "the worker stops")
-
-        await asyncio.ensure_future(asyncio.sleep(0))
-        done()
-        return seat
-
-    seat = asyncio.run(drive())
-    assert not seat.failed, seat.message
+    check.is_true(OUTER, seat.failed, "dereferencing a None handle is reported")

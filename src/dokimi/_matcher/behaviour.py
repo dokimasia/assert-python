@@ -63,13 +63,20 @@ def honours_deadline(
 
     The deadline has already passed when the subject starts, so a
     subject that yields at all is cut short. One that never yields
-    fails, which is the case worth catching.
+    fails, and so does one that catches the cancellation and returns
+    anyway. Those are the cases worth catching.
+
+    This uses :func:`asyncio.timeout` rather than
+    :func:`asyncio.wait_for`. ``wait_for`` with a timeout of zero never
+    starts the coroutine at all, which CPython documents in the source
+    of that function, so every subject would time out and pass.
     """
     seat.helper()
 
     async def drive() -> str | None:
         try:
-            await asyncio.wait_for(fn(), 0)
+            async with asyncio.timeout(0):
+                await fn()
         except (TimeoutError, asyncio.CancelledError):
             return None
         except Exception as caught:
