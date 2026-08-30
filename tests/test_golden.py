@@ -200,4 +200,188 @@ def test_a_golden_file_that_is_not_an_object_reports(tmp_path: Path) -> None:
 
 def test_should_update_is_false_without_the_variable() -> None:
     """A run that did not ask to update does not update."""
-    assert not golden.should_update()
+    check.is_false(OUTER, golden.should_update(), "an unset variable does not update")
+
+
+def test_scrub_timestamps_replaces_an_iso_timestamp(tmp_path: Path) -> None:
+    """A recorded timestamp would differ on every run, so it is replaced."""
+    path = _written(tmp_path, "started at SCRUBBED_TIMESTAMP")
+    seat = Recorder()
+
+    golden.match_at(
+        seat,
+        path,
+        "started at 2026-08-30T11:22:33Z",
+        CHECKING,
+        golden.scrub_timestamps(),
+    )
+    check.is_false(OUTER, seat.failed, f"the timestamp is scrubbed: {seat.message}")
+
+
+def test_scrub_hashes_replaces_a_hex_digest(tmp_path: Path) -> None:
+    """A digest of the input is not the thing under test."""
+    path = _written(tmp_path, "digest SCRUBBED_HASH")
+    seat = Recorder()
+
+    golden.match_at(
+        seat, path, f"digest {'a1b2c3d4' * 8}", CHECKING, golden.scrub_hashes()
+    )
+    check.is_false(OUTER, seat.failed, f"the digest is scrubbed: {seat.message}")
+
+
+def test_scrub_run_ids_replaces_a_run_identifier(tmp_path: Path) -> None:
+    """An identifier minted per run cannot be recorded."""
+    path = _written(tmp_path, "run SCRUBBED_RUN_ID finished")
+    seat = Recorder()
+
+    golden.match_at(
+        seat,
+        path,
+        "run run_0123456789abcdef finished",
+        CHECKING,
+        golden.scrub_run_ids(),
+    )
+    check.is_false(OUTER, seat.failed, f"the run id is scrubbed: {seat.message}")
+
+
+def test_scrub_json_fields_replaces_the_named_fields(tmp_path: Path) -> None:
+    """Only the named fields are replaced, so the rest still compares."""
+    path = _written(tmp_path, '{"id": "SCRUBBED", "name": "kept"}')
+    seat = Recorder()
+
+    golden.match_at(
+        seat,
+        path,
+        '{"id": "01J8XY", "name": "kept"}',
+        CHECKING,
+        golden.scrub_json_fields("id"),
+    )
+    check.is_false(OUTER, seat.failed, f"the named field is scrubbed: {seat.message}")
+
+
+def test_scrub_json_fields_leaves_other_fields_alone(tmp_path: Path) -> None:
+    """A field not named still has to match, or the scrubber hides changes."""
+    path = _written(tmp_path, '{"id": "SCRUBBED", "name": "kept"}')
+    seat = Recorder()
+
+    golden.match_at(
+        seat,
+        path,
+        '{"id": "01J8XY", "name": "changed"}',
+        CHECKING,
+        golden.scrub_json_fields("id"),
+    )
+    check.is_true(OUTER, seat.failed, "an unnamed field still has to match")
+
+
+def test_scrub_json_fields_with_no_fields_changes_nothing(tmp_path: Path) -> None:
+    """Naming no field is a scrubber that does nothing, not one that hides all."""
+    path = _written(tmp_path, '{"id": "01J8XY"}')
+    seat = Recorder()
+
+    golden.match_at(
+        seat, path, '{"id": "01J8XY"}', CHECKING, golden.scrub_json_fields()
+    )
+    check.is_false(OUTER, seat.failed, f"an empty scrubber passes: {seat.message}")
+
+
+def test_match_json_field_adds_a_missing_field_when_updating(tmp_path: Path) -> None:
+    """An update writes the field the golden file did not carry."""
+    path = _written(tmp_path, '{"other": 1}', "golden.json")
+    seat = Recorder()
+
+    golden.match_json_field(seat, path, "added", "[1, 2]", UPDATING)
+
+    check.is_false(OUTER, seat.failed, f"the update reports nothing: {seat.message}")
+    check.equal(
+        OUTER,
+        json.loads(path.read_text()),
+        {"other": 1, "added": [1, 2]},
+        "the field is written and the rest is kept",
+    )
+
+
+def test_match_json_field_reports_a_missing_field_when_checking(tmp_path: Path) -> None:
+    """A check names the field and says how to add it."""
+    path = _written(tmp_path, '{"other": 1}', "golden.json")
+    seat = Recorder()
+
+    golden.match_json_field(seat, path, "absent", "[1]", CHECKING)
+
+    check.is_true(OUTER, seat.failed, "a missing field is reported")
+    check.contains(OUTER, seat.message, "DOKIMI_UPDATE_GOLDEN", "it says how to add it")
+
+
+def test_match_json_field_rewrites_a_changed_field_when_updating(
+    tmp_path: Path,
+) -> None:
+    """An update replaces a field whose value moved on."""
+    path = _written(tmp_path, '{"items": [1]}', "golden.json")
+    seat = Recorder()
+
+    golden.match_json_field(seat, path, "items", "[1, 2]", UPDATING)
+
+    check.is_false(OUTER, seat.failed, f"the update reports nothing: {seat.message}")
+    check.equal(
+        OUTER,
+        json.loads(path.read_text()),
+        {"items": [1, 2]},
+        "the changed field is rewritten",
+    )
+
+
+def test_match_json_field_creates_the_file_when_updating(tmp_path: Path) -> None:
+    """An update on a file that does not exist writes a new one."""
+    path = tmp_path / "new" / "golden.json"
+    seat = Recorder()
+
+    golden.match_json_field(seat, path, "items", "[1]", UPDATING)
+
+    check.is_false(OUTER, seat.failed, f"the update reports nothing: {seat.message}")
+    check.equal(
+        OUTER, json.loads(path.read_text()), {"items": [1]}, "the file is created"
+    )
+
+
+def test_match_json_field_reports_a_missing_file_when_checking(tmp_path: Path) -> None:
+    """A check on a file that does not exist says how to create it."""
+    seat = Recorder()
+
+    golden.match_json_field(seat, tmp_path / "absent.json", "items", "[1]", CHECKING)
+
+    check.is_true(OUTER, seat.failed, "a missing file is reported")
+    check.contains(OUTER, seat.message, "does not exist", "it says the file is missing")
+
+
+def test_match_json_field_reports_a_file_that_is_not_json(tmp_path: Path) -> None:
+    """A golden file that will not parse establishes nothing."""
+    path = _written(tmp_path, "{not json", "golden.json")
+    seat = Recorder()
+
+    golden.match_json_field(seat, path, "items", "[1]", CHECKING)
+
+    check.is_true(OUTER, seat.failed, "a file that will not parse is reported")
+    check.contains(OUTER, seat.message, "not JSON", "it says why")
+
+
+def test_match_json_field_reports_a_file_that_is_not_an_object(tmp_path: Path) -> None:
+    """A field can only be read from an object, so an array is refused."""
+    path = _written(tmp_path, "[1, 2]", "golden.json")
+    seat = Recorder()
+
+    golden.match_json_field(seat, path, "items", "[1]", CHECKING)
+
+    check.is_true(OUTER, seat.failed, "a JSON array is refused")
+    check.contains(OUTER, seat.message, "not a JSON object", "it says what it wanted")
+
+
+def test_a_write_that_cannot_happen_is_reported(tmp_path: Path) -> None:
+    """A failed write reports through the seat rather than raising."""
+    blocked = tmp_path / "blocked"
+    blocked.write_text("this is a file, so it cannot hold a golden file")
+    seat = Recorder()
+
+    golden.match_at(seat, blocked / "golden.txt", "content", UPDATING)
+
+    check.is_true(OUTER, seat.failed, "a write that cannot happen is reported")
+    check.contains(OUTER, seat.message, "could not be written", "it says what failed")

@@ -6,9 +6,10 @@ import json
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from importlib import resources
+from types import ModuleType
 from typing import Any
 
-from dokimi import check
+from dokimi import check, expect
 from dokimi.conformance.literal import decode
 from dokimi.seat import Recorder
 
@@ -18,28 +19,45 @@ LANGUAGE = "python"
 PASS = "pass"
 FAIL = "fail"
 
-#: The call each assertion is driven through. Python can look a name
-#: up at run time, but a table says which arguments an assertion takes
-#: and in what order, which a name alone does not.
-INVOKERS: dict[str, Callable[..., None]] = {
-    "equal": check.equal,
-    "not-equal": check.not_equal,
-    "true": check.is_true,
-    "false": check.is_false,
-    "nil": check.is_none,
-    "not-nil": check.is_not_none,
-    "length": check.length,
-    "empty": check.is_empty,
-    "not-empty": check.is_not_empty,
-    "contains": check.contains,
-    "not-contains": check.not_contains,
-    "contains-in-order": check.contains_in_order,
-    "has-prefix": check.has_prefix,
-    "has-suffix": check.has_suffix,
-    "matches": check.matches,
-    "close-to": check.close_to,
-    "in-range": check.in_range,
+
+def _invokers(surface: ModuleType) -> dict[str, Callable[..., None]]:
+    """Map each assertion to the call that drives it on a surface.
+
+    Both surfaces carry the same names, so one table serves either. A
+    table rather than a lookup by name because it says which arguments
+    an assertion takes and in what order, which a name alone does not.
+    """
+    return {
+        "equal": surface.equal,
+        "not-equal": surface.not_equal,
+        "true": surface.is_true,
+        "false": surface.is_false,
+        "nil": surface.is_none,
+        "not-nil": surface.is_not_none,
+        "length": surface.length,
+        "empty": surface.is_empty,
+        "not-empty": surface.is_not_empty,
+        "contains": surface.contains,
+        "not-contains": surface.not_contains,
+        "contains-in-order": surface.contains_in_order,
+        "has-prefix": surface.has_prefix,
+        "has-suffix": surface.has_suffix,
+        "matches": surface.matches,
+        "close-to": surface.close_to,
+        "in-range": surface.in_range,
+    }
+
+
+#: Every surface the corpus is driven through, by name. Both must
+#: produce the same outcome from the same case: that is what the two
+#: carrying the same assertions means.
+SURFACES: dict[str, dict[str, Callable[..., None]]] = {
+    "check": _invokers(check),
+    "expect": _invokers(expect),
 }
+
+#: The aborting surface's table, for a caller that wants just the one.
+INVOKERS: dict[str, Callable[..., None]] = SURFACES["check"]
 
 
 @dataclass(frozen=True)

@@ -41,6 +41,7 @@ def decode(literal: dict[str, Any]) -> Any:
     if tag == FLOAT:
         return _decode_float(literal["value"])
     if tag == LIST:
+        _refuse_unknown_element(literal["of"])
         return [_element(literal["of"], v) for v in literal["value"]]
     if tag == MAP:
         return _decode_map(literal)
@@ -61,7 +62,20 @@ def _decode_map(literal: dict[str, Any]) -> dict[str, Any]:
     """Materialise a mapping, which the encoding keys by string."""
     if literal.get("key") != STRING:
         raise UnknownLiteralError(f"map keyed by {literal.get('key')!r}")
+    _refuse_unknown_element(literal["of"])
     return {k: _element(literal["of"], v) for k, v in literal["value"].items()}
+
+
+def _refuse_unknown_element(of: str) -> None:
+    """Refuse an element type before the collection is walked.
+
+    An empty collection never reaches the element decoder, so checking
+    only per element would let a literal naming a type this does not
+    implement decode to an empty value rather than being refused. A gap
+    in the encoding has to be visible, not silent.
+    """
+    if of != FLOAT and of not in _SCALARS:
+        raise UnknownLiteralError(f"element type {of!r}")
 
 
 def _element(of: str, value: Any) -> Any:

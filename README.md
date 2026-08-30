@@ -80,7 +80,13 @@ run; latency ceilings need no such care.
 ## Development
 
 ```sh
-uv pip install -e ".[dev]"
-python -m pytest
-ruff check src tests
+make install    # create the environment
+make check      # the full pre-merge gate
+make test       # tests
+make fmt        # format and autofix
+make spec-sync  # refresh the vendored definition
 ```
+
+`make check` runs ruff, a formatting check, mypy strict, basedpyright
+and the tests with a coverage floor. The design is recorded in
+[docs/rfc/0001-the-python-implementation.md](docs/rfc/0001-the-python-implementation.md).

@@ -1,0 +1,112 @@
+"""The seats an assertion reports through.
+
+These use plain asserts rather than the library. A seat is what every
+assertion reports through, so testing it with assertions that report
+through a seat would let one bug hide another.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from dokimi._matcher.seat import Mode, Seat, report
+from dokimi.seat import Recorder, Standard
+
+
+def test_both_seats_satisfy_the_protocol() -> None:
+    """Anything an assertion is handed must answer the three methods."""
+    assert isinstance(Standard(), Seat)
+    assert isinstance(Recorder(), Seat)
+
+
+def test_standard_raises_an_assertion_error() -> None:
+    """Every test framework already treats AssertionError as a failure."""
+    with pytest.raises(AssertionError, match="reported"):
+        Standard().fail("reported")
+
+
+def test_standard_raises_on_record_too() -> None:
+    """A seat that cannot collect a failure says so by raising."""
+    with pytest.raises(AssertionError, match="reported"):
+        Standard().record("reported")
+
+
+def test_a_fresh_recorder_has_not_failed() -> None:
+    """Nothing recorded means nothing failed."""
+    recorder = Recorder()
+    assert not recorder.failed
+    assert recorder.message == ""
+    assert recorder.messages == []
+
+
+def test_a_recorder_keeps_the_first_fatal_message() -> None:
+    """In a real test nothing after the first fatal call runs."""
+    recorder = Recorder()
+    recorder.fail("first")
+    recorder.fail("second")
+
+    assert recorder.message == "first"
+
+
+def test_a_recorder_keeps_every_recorded_message() -> None:
+    """The recording surface reports each failure, not only the first."""
+    recorder = Recorder()
+    recorder.record("one")
+    recorder.record("two")
+
+    assert recorder.messages == ["one", "two"]
+    assert recorder.failed
+
+
+def test_message_prefers_the_fatal_path() -> None:
+    """A fatal failure is the one a reader wants first."""
+    recorder = Recorder()
+    recorder.record("soft")
+    recorder.fail("fatal")
+
+    assert recorder.message == "fatal"
+
+
+def test_messages_is_a_copy() -> None:
+    """A caller may hold the list while the recorder keeps recording."""
+    recorder = Recorder()
+    recorder.record("one")
+
+    held = recorder.messages
+    recorder.record("two")
+
+    assert held == ["one"]
+
+
+def test_helper_calls_are_counted() -> None:
+    """A test can check an assertion marks its own frame."""
+    recorder = Recorder()
+    recorder.helper()
+    recorder.helper()
+
+    assert recorder.helper_calls == 2
+
+
+def test_report_sends_a_fatal_mode_to_fail() -> None:
+    """The mode decides which of the seat's methods is used."""
+    recorder = Recorder()
+    report(recorder, Mode.FATAL, "reported")
+
+    assert recorder.message == "reported"
+    assert recorder.messages == []
+
+
+def test_report_sends_a_soft_mode_to_record() -> None:
+    """The recording mode leaves the fatal path untouched."""
+    recorder = Recorder()
+    report(recorder, Mode.SOFT, "reported")
+
+    assert recorder.messages == ["reported"]
+
+
+def test_report_marks_the_calling_frame() -> None:
+    """A failure is attributed to the caller, not to the matcher."""
+    recorder = Recorder()
+    report(recorder, Mode.FATAL, "reported")
+
+    assert recorder.helper_calls >= 1

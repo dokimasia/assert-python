@@ -15,6 +15,9 @@ import pytest
 
 from dokimi import bench, check, expect, golden
 from dokimi.conformance import definition
+from dokimi.seat import Standard
+
+OUTER = Standard()
 
 ASSERTIONS = definition.assertions()
 NAMES = definition.names()
@@ -47,20 +50,24 @@ def _surface_for(assertion: str, name: str) -> tuple[Any, str]:
 
 def test_the_definition_is_not_empty() -> None:
     """A definition that read nothing would check nothing."""
-    assert ASSERTIONS, "the vendored definition states no assertions"
+    check.is_not_empty(OUTER, ASSERTIONS, "the vendored definition states assertions")
 
 
 def test_every_assertion_has_a_python_name() -> None:
     """The naming table must cover every assertion the standard states."""
     missing = sorted(set(ASSERTIONS) - set(NAMES))
-    assert not missing, f"no python name for: {missing}"
+    check.is_empty(OUTER, missing, f"every assertion has a python name: {missing}")
 
 
 @pytest.mark.parametrize("assertion", sorted(ASSERTIONS))
 def test_assertion_is_implemented(assertion: str) -> None:
     """Every assertion the standard states must be present."""
     module, name = _surface_for(assertion, NAMES[assertion])
-    assert _present(name, module), f"{assertion}: {NAMES[assertion]} is not implemented"
+    check.is_true(
+        OUTER,
+        _present(name, module),
+        f"{assertion} is implemented as {NAMES[assertion]}",
+    )
 
 
 @pytest.mark.parametrize(
@@ -71,18 +78,25 @@ def test_unqualified_assertion_is_on_both_surfaces(assertion: str) -> None:
     """An assertion in the root namespace is on both surfaces."""
     name = NAMES[assertion]
     if name in CHECK_ONLY:
-        assert name not in expect.__all__, (
-            f"{name} is excused from the recording surface "
-            f"({CHECK_ONLY[name]}) but present in it"
+        check.not_contains(
+            OUTER,
+            expect.__all__,
+            name,
+            f"{name} is off the recording surface: {CHECK_ONLY[name]}",
         )
         return
-    assert name in check.__all__, f"{name} missing from check"
-    assert name in expect.__all__, f"{name} missing from expect"
+    check.contains(OUTER, check.__all__, name, f"{name} is on the aborting surface")
+    check.contains(OUTER, expect.__all__, name, f"{name} is on the recording surface")
 
 
 def test_the_surfaces_carry_the_same_members() -> None:
     """Neither surface may carry a member the other does not, bar excuses."""
-    assert sorted(set(check.__all__) - set(CHECK_ONLY)) == sorted(expect.__all__)
+    check.equal(
+        OUTER,
+        sorted(expect.__all__),
+        sorted(set(check.__all__) - set(CHECK_ONLY)),
+        "the two surfaces carry the same members",
+    )
 
 
 def test_every_module_named_by_the_definition_exists() -> None:

@@ -16,3 +16,6 @@ uv.lock
 # the venv and picks the formatter. Nothing else in .zed is.
 .zed/*
 !.zed/settings.json
+.coverage
+coverage.xml
+htmlcov/
