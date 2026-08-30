@@ -31,6 +31,12 @@ def decode(literal: dict[str, Any]) -> Any:
     never to None. That is what lets a case tell a collection that is
     absent from one that is present and empty, which is the rule the
     encoding exists to pin.
+
+    Args:
+        literal: One typed literal from a corpus case.
+
+    Returns:
+        The native value the literal states.
     """
     tag = literal.get("type")
 

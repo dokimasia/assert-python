@@ -30,18 +30,25 @@ class Standard:
         """Hide this library's frames from the reported traceback."""
 
     def fail(self, message: str) -> None:
-        """Raise :exc:`AssertionError` carrying message."""
+        """Raise AssertionError carrying message.
+
+        Args:
+            message: The failure text, already formatted.
+        """
         __tracebackhide__ = True
         raise AssertionError(message)
 
     def record(self, message: str) -> None:
-        """Raise :exc:`AssertionError`; this seat cannot carry on.
+        """Raise AssertionError; this seat cannot carry on.
 
         A recording assertion needs somewhere to put the failure and
         something to report it once the test body is done. This seat
         has no end to report at, so it treats a recorded failure like
-        an aborting one rather than dropping it. Use the ``seat``
-        fixture, whose :class:`Collector` has a test to end.
+        an aborting one rather than dropping it. Use the seat
+        fixture, whose Collector has a test to end.
+
+        Args:
+            message: The failure text, already formatted.
         """
         __tracebackhide__ = True
         raise AssertionError(message)
@@ -72,17 +79,29 @@ class Recorder:
         self._helpers += 1
 
     def fail(self, message: str) -> None:
-        """Record a failure. The first message is the one kept."""
+        """Record a failure. The first message is the one kept.
+
+        Args:
+            message: The failure text, already formatted.
+        """
         if self._fatal is None:
             self._fatal = message
 
     def record(self, message: str) -> None:
-        """Record a failure and return."""
+        """Record a failure and return.
+
+        Args:
+            message: The failure text, already formatted.
+        """
         self._recorded.append(message)
 
     @property
     def failed(self) -> bool:
-        """Whether any failure was recorded, through either path."""
+        """Whether any failure was recorded, through either path.
+
+        Returns:
+            Whether any failure was recorded, through either path.
+        """
         return self._fatal is not None or bool(self._recorded)
 
     @property
@@ -92,6 +111,9 @@ class Recorder:
         Empty when nothing failed. Most tests assert on one failure,
         and reading this rather than indexing a list keeps them from
         raising when the assertion under test wrongly reported nothing.
+
+        Returns:
+            The first failure recorded, or an empty string when nothing failed.
         """
         if self._fatal is not None:
             return self._fatal
@@ -99,12 +121,20 @@ class Recorder:
 
     @property
     def messages(self) -> list[str]:
-        """Every failure recorded through ``record``, in call order."""
+        """Every failure recorded through record, in call order.
+
+        Returns:
+            Every failure recorded through record, in call order.
+        """
         return list(self._recorded)
 
     @property
     def helper_calls(self) -> int:
-        """How many times ``helper`` was called."""
+        """How many times helper was called.
+
+        Returns:
+            How many times helper was called.
+        """
         return self._helpers
 
 
@@ -133,21 +163,33 @@ class Collector:
         """Hide this library's frames from the reported traceback."""
 
     def fail(self, message: str) -> None:
-        """Raise :exc:`AssertionError`, stopping the test here."""
+        """Raise AssertionError, stopping the test here.
+
+        Args:
+            message: The failure text, already formatted.
+        """
         __tracebackhide__ = True
         raise AssertionError(message)
 
     def record(self, message: str) -> None:
-        """Keep a failure, and let the test carry on."""
+        """Keep a failure, and let the test carry on.
+
+        Args:
+            message: The failure text, already formatted.
+        """
         self._collected.append(message)
 
     @property
     def collected(self) -> list[str]:
-        """Every failure recorded so far, in call order."""
+        """Every failure recorded so far, in call order.
+
+        Returns:
+            Every failure kept so far, in call order.
+        """
         return list(self._collected)
 
     def flush(self) -> None:
-        """Raise one :exc:`AssertionError` carrying every failure.
+        """Raise one AssertionError carrying every failure.
 
         Returns when nothing was recorded. Clears what it raised, so a
         seat reused across phases does not report a failure twice.

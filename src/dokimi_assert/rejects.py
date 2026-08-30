@@ -13,7 +13,7 @@ __all__ = ["rejects"]
 def rejects(seat: Seat, msg: str, body: Callable[[Recorder], None]) -> str:
     """Run body against a subject it must reject, and return its failure.
 
-    A check whose every statement is ``no_error`` passes against a
+    A check whose every statement is no_error passes against a
     subject whose methods do nothing and return None. It reads as
     coverage and establishes nothing. This names the wrong subject,
     drives the check against it, and reads the rejection.
@@ -32,6 +32,14 @@ def rejects(seat: Seat, msg: str, body: Callable[[Recorder], None]) -> str:
     An exception from body is not caught. A check that raises is a
     defect in the check or in the stand-in, and reporting it as a
     rejection would hide it.
+
+    Args:
+        seat: Where the failure is reported.
+        msg: The contract under test. It is the first line of the failure.
+        body: The work to run, given a seat of its own.
+
+    Returns:
+        The failure the body produced, so its text can be asserted on.
     """
     __tracebackhide__ = True
     seat.helper()

@@ -58,6 +58,14 @@ def eventually(
     attempt rather than ending the test. Only the last attempt's
     failure is reported. body runs at least once however short the
     timeout.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        timeout: How long to keep retrying, in seconds.
+        interval: How long to wait between attempts, in seconds.
+        body: The work to run, given a seat of its own.
+        msg: The contract under test. It is the first line of the failure.
     """
     __tracebackhide__ = True
     seat.helper()
@@ -92,6 +100,13 @@ def eventually_true(
     the timeout. It differs from eventually in what it reports: a
     predicate has no failure to carry, so this says only that the wait
     ran out.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        timeout: How long to keep retrying, in seconds.
+        predicate: The relation that must hold.
+        msg: The contract under test. It is the first line of the failure.
     """
     __tracebackhide__ = True
     seat.helper()
@@ -138,6 +153,15 @@ def no_task_leaks(seat: Seat, mode: Mode, msg: str) -> Callable[[], None]:
 
     It answers only for asyncio. A thread is not an asyncio task and is
     not seen here.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        msg: The contract under test. It is the first line of the failure.
+
+    Returns:
+        A callable to invoke where the scope ends. It reports any task
+        started after this call and still running.
     """
     __tracebackhide__ = True
     seat.helper()

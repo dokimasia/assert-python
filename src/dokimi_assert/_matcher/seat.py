@@ -27,10 +27,17 @@ class Seat(Protocol):
         """Record a failure and stop the test.
 
         This may not return.
+
+        Args:
+            message: The failure text, already formatted.
         """
 
     def record(self, message: str) -> None:
-        """Record a failure and return, so the test carries on."""
+        """Record a failure and return, so the test carries on.
+
+        Args:
+            message: The failure text, already formatted.
+        """
 
 
 class Mode(Enum):
@@ -49,6 +56,11 @@ def report(seat: Seat, mode: Mode, message: str) -> None:
     This does not decide whether anything failed. A matcher calls it
     only once its own comparison has failed, so every call produces
     exactly one reported failure. Under FATAL it may not return.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        message: The failure text, already formatted.
     """
     __tracebackhide__ = True
     seat.helper()

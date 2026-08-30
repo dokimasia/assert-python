@@ -23,6 +23,13 @@ def pairwise(
 
     Nought or one item passes, having no pair to break. The failure
     names the index and both values of the first break.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        items: The sequence to walk.
+        predicate: The relation that must hold.
+        msg: The contract under test. It is the first line of the failure.
     """
     __tracebackhide__ = True
     seat.helper()

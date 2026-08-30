@@ -19,7 +19,16 @@ from dokimi_assert._matcher.seat import Mode, Seat, report
 def equal(
     seat: Seat, mode: Mode, got: Any, want: Any, msg: str, *options: Option
 ) -> None:
-    """Report when got and want differ. See the comparison rules."""
+    """Report when got and want differ. See the comparison rules.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        got: The value produced by the code under test.
+        want: The value it is supposed to produce.
+        msg: The contract under test. It is the first line of the failure.
+        *options: Relaxations for this call alone.
+    """
     __tracebackhide__ = True
     seat.helper()
     if not _equal(got, want, settings(options)):
@@ -29,7 +38,16 @@ def equal(
 def not_equal(
     seat: Seat, mode: Mode, got: Any, want: Any, msg: str, *options: Option
 ) -> None:
-    """Report when got and want are equal."""
+    """Report when got and want are equal.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        got: The value produced by the code under test.
+        want: The value it is supposed to produce.
+        msg: The contract under test. It is the first line of the failure.
+        *options: Relaxations for this call alone.
+    """
     __tracebackhide__ = True
     seat.helper()
     if _equal(got, want, settings(options)):
@@ -37,7 +55,14 @@ def not_equal(
 
 
 def is_true(seat: Seat, mode: Mode, condition: bool, msg: str) -> None:
-    """Report when the condition does not hold."""
+    """Report when the condition does not hold.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        condition: The condition being stated.
+        msg: The contract under test. It is the first line of the failure.
+    """
     __tracebackhide__ = True
     seat.helper()
     if not condition:
@@ -45,7 +70,14 @@ def is_true(seat: Seat, mode: Mode, condition: bool, msg: str) -> None:
 
 
 def is_false(seat: Seat, mode: Mode, condition: bool, msg: str) -> None:
-    """Report when the condition holds."""
+    """Report when the condition holds.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        condition: The condition being stated.
+        msg: The contract under test. It is the first line of the failure.
+    """
     __tracebackhide__ = True
     seat.helper()
     if condition:
@@ -53,7 +85,14 @@ def is_false(seat: Seat, mode: Mode, condition: bool, msg: str) -> None:
 
 
 def is_none(seat: Seat, mode: Mode, got: Any, msg: str) -> None:
-    """Report when got is not None."""
+    """Report when got is not None.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        got: The value produced by the code under test.
+        msg: The contract under test. It is the first line of the failure.
+    """
     __tracebackhide__ = True
     seat.helper()
     if got is not None:
@@ -61,7 +100,14 @@ def is_none(seat: Seat, mode: Mode, got: Any, msg: str) -> None:
 
 
 def is_not_none(seat: Seat, mode: Mode, got: Any, msg: str) -> None:
-    """Report when got is None."""
+    """Report when got is None.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        got: The value produced by the code under test.
+        msg: The contract under test. It is the first line of the failure.
+    """
     __tracebackhide__ = True
     seat.helper()
     if got is None:
@@ -73,6 +119,13 @@ def length(seat: Seat, mode: Mode, got: Any, want: int, msg: str) -> None:
 
     Anything without a length is itself the failure rather than an
     exception, so a wrong type reads like every other failure.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        got: The value produced by the code under test.
+        want: The value it is supposed to produce.
+        msg: The contract under test. It is the first line of the failure.
     """
     __tracebackhide__ = True
     seat.helper()
@@ -84,7 +137,14 @@ def length(seat: Seat, mode: Mode, got: Any, want: int, msg: str) -> None:
 
 
 def is_empty(seat: Seat, mode: Mode, got: Any, msg: str) -> None:
-    """Report when got holds anything."""
+    """Report when got holds anything.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        got: The value produced by the code under test.
+        msg: The contract under test. It is the first line of the failure.
+    """
     __tracebackhide__ = True
     seat.helper()
     if not isinstance(got, Sized):
@@ -95,7 +155,14 @@ def is_empty(seat: Seat, mode: Mode, got: Any, msg: str) -> None:
 
 
 def is_not_empty(seat: Seat, mode: Mode, got: Any, msg: str) -> None:
-    """Report when got holds nothing."""
+    """Report when got holds nothing.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        got: The value produced by the code under test.
+        msg: The contract under test. It is the first line of the failure.
+    """
     __tracebackhide__ = True
     seat.helper()
     if not isinstance(got, Sized):
@@ -128,7 +195,16 @@ def _holds(haystack: Any, needle: Any, relax: Option) -> tuple[bool, bool]:
 def contains(
     seat: Seat, mode: Mode, haystack: Any, needle: Any, msg: str, *options: Option
 ) -> None:
-    """Report when haystack does not hold needle."""
+    """Report when haystack does not hold needle.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        haystack: The container or text to search.
+        needle: The element, key or substring to look for.
+        msg: The contract under test. It is the first line of the failure.
+        *options: Relaxations for this call alone.
+    """
     __tracebackhide__ = True
     seat.helper()
     found, supported = _holds(haystack, needle, settings(options))
@@ -146,7 +222,16 @@ def contains(
 def not_contains(
     seat: Seat, mode: Mode, haystack: Any, needle: Any, msg: str, *options: Option
 ) -> None:
-    """Report when haystack holds needle."""
+    """Report when haystack holds needle.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        haystack: The container or text to search.
+        needle: The element, key or substring to look for.
+        msg: The contract under test. It is the first line of the failure.
+        *options: Relaxations for this call alone.
+    """
     __tracebackhide__ = True
     seat.helper()
     found, supported = _holds(haystack, needle, settings(options))
@@ -177,6 +262,13 @@ def contains_in_order(
 
     Each needle must appear after the previous one's match ends, which
     is what catches a formatter that reorders its fields.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        got: The value produced by the code under test.
+        needles: The substrings, in the order they must appear.
+        msg: The contract under test. It is the first line of the failure.
     """
     __tracebackhide__ = True
     seat.helper()
@@ -204,7 +296,15 @@ def contains_in_order(
 
 
 def has_prefix(seat: Seat, mode: Mode, got: Any, prefix: str, msg: str) -> None:
-    """Report when got does not start with prefix."""
+    """Report when got does not start with prefix.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        got: The value produced by the code under test.
+        prefix: What the text must start with.
+        msg: The contract under test. It is the first line of the failure.
+    """
     __tracebackhide__ = True
     seat.helper()
     text, ok = _text_of(got)
@@ -216,7 +316,15 @@ def has_prefix(seat: Seat, mode: Mode, got: Any, prefix: str, msg: str) -> None:
 
 
 def has_suffix(seat: Seat, mode: Mode, got: Any, suffix: str, msg: str) -> None:
-    """Report when got does not end with suffix."""
+    """Report when got does not end with suffix.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        got: The value produced by the code under test.
+        suffix: What the text must end with.
+        msg: The contract under test. It is the first line of the failure.
+    """
     __tracebackhide__ = True
     seat.helper()
     text, ok = _text_of(got)
@@ -233,6 +341,13 @@ def matches(seat: Seat, mode: Mode, got: Any, pattern: str, msg: str) -> None:
     A pattern that does not compile is a failure rather than an
     exception: a test with a broken pattern has established nothing and
     should say so where every other failure is reported.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        got: The value produced by the code under test.
+        pattern: A Python regular expression.
+        msg: The contract under test. It is the first line of the failure.
     """
     __tracebackhide__ = True
     seat.helper()
@@ -275,6 +390,14 @@ def close_to(
 
     A NaN anywhere fails. Every comparison against NaN is false, so a
     bare check would pass one rather than reject it.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        got: The value produced by the code under test.
+        want: The value it is supposed to produce.
+        tolerance: The largest acceptable absolute difference.
+        msg: The contract under test. It is the first line of the failure.
     """
     __tracebackhide__ = True
     seat.helper()
@@ -301,7 +424,16 @@ def close_to(
 def in_range(
     seat: Seat, mode: Mode, got: Any, low: float, high: float, msg: str
 ) -> None:
-    """Report when got falls outside the closed interval."""
+    """Report when got falls outside the closed interval.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        got: The value produced by the code under test.
+        low: The lowest acceptable value.
+        high: The highest acceptable value.
+        msg: The contract under test. It is the first line of the failure.
+    """
     __tracebackhide__ = True
     seat.helper()
     if low > high:

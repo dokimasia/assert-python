@@ -1,12 +1,12 @@
 """The pytest fixtures, registered automatically on install.
 
-Installing this package registers the plugin, so ``seat`` is available
+Installing this package registers the plugin, so seat is available
 in any test without a conftest and without an import.
 
 The recording surface needs someone to report at the end of the test,
 because that is what lets a failing assertion be seen without stopping
 the ones after it. A seat on its own has no end of test to report at.
-This plugin is that someone: it hands out a :class:`Collector` and
+This plugin is that someone: it hands out a Collector and
 raises whatever the collector kept once the test body is done, so the
 failure lands on the test rather than on teardown.
 """
@@ -30,7 +30,7 @@ SEATS: pytest.StashKey[list[Collector]] = pytest.StashKey()
 def seat(request: pytest.FixtureRequest) -> Collector:
     """Return the seat to pass to an assertion.
 
-    ``check`` stops the test at the first failure. ``expect`` records
+    check stops the test at the first failure. expect records
     and carries on, and everything it recorded is reported when the
     test body ends.
 
@@ -39,6 +39,13 @@ def seat(request: pytest.FixtureRequest) -> Collector:
 
             check.is_not_none(seat, item, "Get returns the stored item")
             expect.equal(seat, item.name, "widget", "it is the one stored")
+
+    Args:
+        request: The running test, used to reach its stash.
+
+    Returns:
+        A seat to pass to an assertion. Anything expect records on it is
+        reported when the test body ends.
     """
     collector = Collector()
 
@@ -56,8 +63,11 @@ def recorder() -> Recorder:
     """Return a seat that records instead of failing anything.
 
     This is for testing an assertion rather than using one: drive the
-    assertion with it, then read ``failed`` and ``message`` to say what
+    assertion with it, then read failed and message to say what
     it reported. Nothing driven with a recorder can fail the test.
+
+    Returns:
+        A seat that records every failure and raises none.
     """
     return Recorder()
 
@@ -72,6 +82,12 @@ def pytest_runtest_call(item: pytest.Item) -> Generator[None, Any, Any]:
 
     A test body that already raised keeps its own exception: that
     failure came first and explains the rest.
+
+    Args:
+        item: The value to measure.
+
+    Returns:
+        Whatever the wrapped call answered.
     """
     result = yield
     for collector in item.stash.get(SEATS, []):

@@ -12,8 +12,8 @@ exceeding it fails the run instead.
     c.end()
 
 Python cannot count heap allocations per iteration the way a runtime
-with a counter can. ``max_allocs`` and ``max_bytes`` measure with
-:mod:`tracemalloc`, which counts allocations Python itself made and
+with a counter can. max_allocs and max_bytes measure with
+tracemalloc, which counts allocations Python itself made and
 carries real overhead; a ceiling set from a run without tracing will
 not hold in one with it. Latency needs no such caveat.
 """
@@ -45,7 +45,11 @@ class Contract:
     """
 
     def __init__(self, seat: Seat) -> None:
-        """Return a contract on seat with no ceilings stated."""
+        """Return a contract on seat with no ceilings stated.
+
+        Args:
+            seat: Where the failure is reported.
+        """
         self._seat: Seat = seat
         self._each: list[float] = []
         self._traced: bool = False
@@ -63,6 +67,12 @@ class Contract:
         The p99 rather than the mean, because the tail is what a caller
         waits for. With fewer than a hundred iterations it is the
         slowest one.
+
+        Args:
+            seconds: The highest acceptable p99 latency, in seconds.
+
+        Returns:
+            The contract, so ceilings can be chained.
         """
         self._max_latency = seconds
         return self
@@ -70,9 +80,15 @@ class Contract:
     def max_mean(self, seconds: float) -> Contract:
         """State the highest mean latency per iteration, and chain.
 
-        Use it beside :meth:`max_latency` rather than instead of it: a
+        Use it beside max_latency rather than instead of it: a
         mean that holds while the tail grows is the regression a mean
         alone misses.
+
+        Args:
+            seconds: The highest acceptable mean latency, in seconds.
+
+        Returns:
+            The contract, so ceilings can be chained.
         """
         self._max_mean = seconds
         return self
@@ -80,14 +96,27 @@ class Contract:
     def max_allocs(self, count: int) -> Contract:
         """State the most allocations per iteration, and chain.
 
-        Turns on :mod:`tracemalloc`, which slows the benchmark. Set the
+        Turns on tracemalloc, which slows the benchmark. Set the
         ceiling from a traced run.
+
+        Args:
+            count: The highest acceptable allocations per iteration.
+
+        Returns:
+            The contract, so ceilings can be chained.
         """
         self._max_allocs = count
         return self
 
     def max_bytes(self, count: int) -> Contract:
-        """State the most bytes allocated per iteration, and chain."""
+        """State the most bytes allocated per iteration, and chain.
+
+        Args:
+            count: The highest acceptable bytes allocated per iteration.
+
+        Returns:
+            The contract, so ceilings can be chained.
+        """
         self._max_bytes = count
         return self
 
@@ -96,6 +125,12 @@ class Contract:
 
         Allocation tracing starts here rather than at construction, so
         the setup before the loop is not counted.
+
+        Args:
+            iterations: How many times to run the body.
+
+        Returns:
+            The measurement, for a later assertion to read.
         """
         if self._tracing_wanted():
             tracemalloc.start()

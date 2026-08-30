@@ -73,7 +73,11 @@ class Case:
 
     @property
     def skip_reason(self) -> str | None:
-        """Why this case does not apply here, or None if it does."""
+        """Why this case does not apply here, or None if it does.
+
+        Returns:
+            Why this language skips the case, or None when it does not.
+        """
         return self.skip.get(LANGUAGE)
 
     def check(self, recorder: Recorder) -> str | None:
@@ -82,6 +86,12 @@ class Case:
         Returns None when it matches. A value rather than a raised
         failure, so the rule can be driven against cases it must
         reject.
+
+        Args:
+            recorder: The seat the assertion under test reported to.
+
+        Returns:
+            What went wrong, or None when the recorder agrees with the case.
         """
         if self.expect == PASS:
             if recorder.failed:
@@ -103,7 +113,11 @@ class Case:
 
 
 def cases() -> Iterator[Case]:
-    """Read every case the vendored corpus states."""
+    """Read every case the vendored corpus states.
+
+    Returns:
+        Every case the vendored corpus states.
+    """
     corpus = resources.files("dokimi_assert.conformance") / "spec" / "corpus"
     for entry in sorted(corpus.iterdir(), key=lambda p: p.name):
         if not entry.name.endswith(".json"):

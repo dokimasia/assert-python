@@ -16,9 +16,18 @@ def raises(
     Returns what fn raised, so a caller can assert on the reason as
     well as the fact. Returns None when fn returned.
 
-    ``KeyboardInterrupt`` and ``SystemExit`` are not caught: those say
+    KeyboardInterrupt and SystemExit are not caught: those say
     the run is ending, and reporting one as the raise a test asked for
     would swallow it.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        fn: The callable under test.
+        msg: The contract under test. It is the first line of the failure.
+
+    Returns:
+        What fn raised, or None when it returned.
     """
     __tracebackhide__ = True
     seat.helper()
@@ -38,6 +47,12 @@ def does_not_raise(seat: Seat, mode: Mode, fn: Callable[[], Any], msg: str) -> N
 
     This is the assertion for a call that may legitimately fail:
     returning an error is fine, crashing is not.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        fn: The callable under test.
+        msg: The contract under test. It is the first line of the failure.
     """
     __tracebackhide__ = True
     seat.helper()

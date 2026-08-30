@@ -1,8 +1,8 @@
 """Assertions about how a subject behaves, rather than what it returns.
 
 Python has no single cancellation convention the way Go has
-``context.Context`` in every signature. Its real one is asyncio, whose
-``CancelledError`` and timeouts are the true analogue, so the
+context.Context in every signature. Its real one is asyncio, whose
+CancelledError and timeouts are the true analogue, so the
 cancellation assertions drive a coroutine function.
 """
 
@@ -32,6 +32,12 @@ def honours_cancellation(
     The subject is started and cancelled at once, so this asks whether
     it yields to cancellation at all rather than how fast it notices.
     A subject that swallows the cancellation and returns fails here.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        fn: The callable under test.
+        msg: The contract under test. It is the first line of the failure.
     """
     __tracebackhide__ = True
     seat.helper()
@@ -67,10 +73,16 @@ def honours_deadline(
     fails, and so does one that catches the cancellation and returns
     anyway. Those are the cases worth catching.
 
-    This uses :func:`asyncio.timeout` rather than
-    :func:`asyncio.wait_for`. ``wait_for`` with a timeout of zero never
+    This uses asyncio.timeout rather than
+    asyncio.wait_for. wait_for with a timeout of zero never
     starts the coroutine at all, which CPython documents in the source
     of that function, so every subject would time out and pass.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        fn: The callable under test.
+        msg: The contract under test. It is the first line of the failure.
     """
     __tracebackhide__ = True
     seat.helper()
@@ -98,6 +110,13 @@ def completes_within(
     The subject is measured, not interrupted: this says whether it
     finished in time, and a subject that runs long runs to completion
     first. Spends real time, up to however long fn takes.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        within: The ceiling, in seconds.
+        fn: The callable under test.
+        msg: The contract under test. It is the first line of the failure.
     """
     __tracebackhide__ = True
     seat.helper()
@@ -124,6 +143,14 @@ def is_pure(
     whatever it leaves out, fn is free to change. Return a copy. A
     projection sharing memory with the subject reads the same object
     twice and passes whatever fn did.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        observe: Called before and after fn; returns a projection of state.
+        fn: The callable under test.
+        msg: The contract under test. It is the first line of the failure.
+        *options: Relaxations for this call alone.
     """
     __tracebackhide__ = True
     seat.helper()
@@ -145,9 +172,15 @@ def none_handle_safe(
 ) -> None:
     """Report when a subject given None where a handle goes crashes.
 
-    An exception that is not an ``AttributeError`` or ``TypeError`` is
+    An exception that is not an AttributeError or TypeError is
     fine: refusing the call is a decision. Those two are what a missing
     None check produces, and they are what this catches.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        fn: The callable under test.
+        msg: The contract under test. It is the first line of the failure.
     """
     __tracebackhide__ = True
     seat.helper()

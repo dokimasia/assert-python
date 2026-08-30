@@ -55,25 +55,41 @@ _RUN_ID = re.compile(r"\brun_[0-9a-z]{16}\b")
 def should_update() -> bool:
     """Whether this run may rewrite its golden files.
 
-    Set ``DOKIMI_ASSERT_UPDATE_GOLDEN=1`` to enable it. Read the diff first: a
+    Set DOKIMI_ASSERT_UPDATE_GOLDEN=1 to enable it. Read the diff first: a
     golden file updated without reading it records whatever the code
     now does, which is the opposite of an assertion.
+
+    Returns:
+        Whether the run may rewrite its golden files.
     """
     return os.environ.get(UPDATE_ENV, "") not in ("", "0")
 
 
 def scrub_timestamps() -> Scrubber:
-    """Replace ISO-8601 and RFC-3339 timestamps."""
+    """Replace ISO-8601 and RFC-3339 timestamps.
+
+    Returns:
+        A scrubber replacing ISO-8601 and RFC-3339 timestamps.
+    """
     return lambda text: _TIMESTAMP.sub("SCRUBBED_TIMESTAMP", text)
 
 
 def scrub_hashes() -> Scrubber:
-    """Replace hex digests between 32 and 128 characters."""
+    """Replace hex digests between 32 and 128 characters.
+
+    Returns:
+        A scrubber replacing hex digests of 32 to 128 characters.
+    """
     return lambda text: _HASH.sub("SCRUBBED_HASH", text)
 
 
 def scrub_run_ids() -> Scrubber:
-    """Replace identifiers of the form run_ and sixteen characters."""
+    """Replace identifiers of the form run_ and sixteen characters.
+
+    Returns:
+        A scrubber replacing identifiers shaped like run_ plus sixteen
+        characters.
+    """
     return lambda text: _RUN_ID.sub("SCRUBBED_RUN_ID", text)
 
 
@@ -82,6 +98,12 @@ def scrub_json_fields(*fields: str) -> Scrubber:
 
     Matches the field's text rather than parsing, so it works on output
     that is nearly JSON as well as output that is.
+
+    Args:
+        *fields: The JSON field names whose values are replaced.
+
+    Returns:
+        A scrubber replacing the value of each named field.
     """
     if not fields:
         return lambda text: text
@@ -104,6 +126,13 @@ def match(seat: Seat, name: str, got: str, update: bool, *scrubbers: Scrubber) -
 
     The file is the assertion. When it does not exist and update is
     false, that is a failure naming what would create it.
+
+    Args:
+        seat: Where the failure is reported.
+        name: The golden file's name, resolved against testdata.
+        got: The value produced by the code under test.
+        update: Whether a mismatch rewrites the golden file instead of failing.
+        *scrubbers: Replacements applied to both sides before comparing.
     """
     __tracebackhide__ = True
     seat.helper()
@@ -113,7 +142,15 @@ def match(seat: Seat, name: str, got: str, update: bool, *scrubbers: Scrubber) -
 def match_at(
     seat: Seat, path: str | Path, got: str, update: bool, *scrubbers: Scrubber
 ) -> None:
-    """Compare got against the golden file at path, taken as given."""
+    """Compare got against the golden file at path, taken as given.
+
+    Args:
+        seat: Where the failure is reported.
+        path: Where the golden file lives.
+        got: The value produced by the code under test.
+        update: Whether a mismatch rewrites the golden file instead of failing.
+        *scrubbers: Replacements applied to both sides before comparing.
+    """
     __tracebackhide__ = True
     seat.helper()
 
@@ -158,6 +195,14 @@ def match_json_field(
     per field, so a failure shows that value's diff rather than the
     whole file's and two tests updating different fields do not
     overwrite each other.
+
+    Args:
+        seat: Where the failure is reported.
+        path: Where the golden file lives.
+        field: The name of the field to compare.
+        got: The value produced by the code under test.
+        update: Whether a mismatch rewrites the golden file instead of failing.
+        *scrubbers: Replacements applied to both sides before comparing.
     """
     __tracebackhide__ = True
     seat.helper()

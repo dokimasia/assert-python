@@ -1,8 +1,8 @@
 """Structural comparison, and the rules the standard states for it.
 
-Python's own ``==`` does not answer what the standard asks. ``bool``
-subclasses ``int``, so ``0 == False`` is true; ``int`` and ``float``
-compare across types, so ``1 == 1.0`` is true. The standard says values
+Python's own == does not answer what the standard asks. bool
+subclasses int, so 0 == False is true; int and float
+compare across types, so 1 == 1.0 is true. The standard says values
 of different types never compare, so this enforces it rather than
 inheriting it.
 """
@@ -23,10 +23,18 @@ _SEQUENCE = (list, tuple)
 def equal(got: Any, want: Any, relax: Option) -> bool:
     """Report whether got and want are equal under the standard.
 
-    Types must match exactly. ``type(x) is type(y)``, not
-    ``isinstance``: a bool is not an int here, and an int is not a
+    Types must match exactly. type(x) is type(y), not
+    isinstance: a bool is not an int here, and an int is not a
     float, because the standard says values of different types never
     compare and Python's own answer disagrees.
+
+    Args:
+        got: The value produced by the code under test.
+        want: The value it is supposed to produce.
+        relax: The relaxations in force for this comparison.
+
+    Returns:
+        True when the two values are equal.
     """
     if _absent_against_empty(got, want, relax):
         return True

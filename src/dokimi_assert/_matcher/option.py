@@ -25,6 +25,9 @@ def equate_empty() -> Option:
     The default keeps them apart, because a value that is absent and a
     value that is present but empty are different answers, and a test
     may need to tell them apart.
+
+    Returns:
+        An option that makes an absent collection equal an empty one.
     """
     return Option(equate_empty=True)
 
@@ -34,12 +37,22 @@ def equate_nans() -> Option:
 
     The default keeps them unequal, following IEEE 754, where NaN
     compares unequal to every value including itself.
+
+    Returns:
+        An option that makes NaN equal itself.
     """
     return Option(equate_nans=True)
 
 
 def settings(options: tuple[Option, ...]) -> Option:
-    """Fold an option list into the relaxations it asks for."""
+    """Fold an option list into the relaxations it asks for.
+
+    Args:
+        options: Relaxations for this call alone.
+
+    Returns:
+        The relaxations the given options turn on.
+    """
     return Option(
         equate_empty=any(o.equate_empty for o in options),
         equate_nans=any(o.equate_nans for o in options),

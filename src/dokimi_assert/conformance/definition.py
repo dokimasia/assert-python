@@ -17,12 +17,20 @@ def _read(name: str) -> Any:
 
 
 def assertions() -> dict[str, Any]:
-    """Return the assertion table: what the standard states must exist."""
+    """Return the assertion table: what the standard states must exist.
+
+    Returns:
+        The assertion table: what the standard states must exist.
+    """
     return dict(_read("assertions.json")["assertions"])
 
 
 def names() -> dict[str, str]:
-    """Return each assertion mapped to the name this language uses."""
+    """Return each assertion mapped to the name this language uses.
+
+    Returns:
+        Each assertion mapped to the name this language uses.
+    """
     table = _read("naming.json")["names"]
     return {
         assertion: entry[LANGUAGE]
@@ -32,7 +40,11 @@ def names() -> dict[str, str]:
 
 
 def version() -> str:
-    """Return the definition version this library implements."""
+    """Return the definition version this library implements.
+
+    Returns:
+        The definition version this library implements.
+    """
     spec = resources.files("dokimi_assert.conformance") / "spec"
     return (spec / "VERSION").read_text().strip()
 
@@ -43,11 +55,21 @@ def overlay() -> dict[str, Any]:
     Every assertion the standard states is required. A library that
     cannot supply one says so here, with the reason, so a gap nobody
     could close and a gap nobody got to are told apart. An empty
-    ``diverge`` is a claim of full compliance, not an absence of one.
+    diverge is a claim of full compliance, not an absence of one.
+
+    Returns:
+        This language's declared divergences from the standard.
     """
     return dict(_read("overlay.json"))
 
 
 def diverges(assertion: str) -> bool:
-    """Whether the overlay excuses assertion from being implemented."""
+    """Whether the overlay excuses assertion from being implemented.
+
+    Args:
+        assertion: The canonical id of the assertion.
+
+    Returns:
+        Whether the overlay excuses the assertion from being implemented.
+    """
     return any(entry.get("id") == assertion for entry in overlay()["diverge"])

@@ -1,7 +1,7 @@
 """Assertions about failures.
 
 The standard models two failure shapes: a value returned and an
-exception raised. Python raises, so an ``exc`` argument here is the
+exception raised. Python raises, so an exc argument here is the
 exception a caller already caught, or None when nothing was raised.
 """
 
@@ -34,7 +34,14 @@ def _chain(exc: BaseException | None) -> list[BaseException]:
 
 
 def no_error(seat: Seat, mode: Mode, exc: BaseException | None, msg: str) -> None:
-    """Report when an exception was raised."""
+    """Report when an exception was raised.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        exc: The error to inspect, or None when there was none.
+        msg: The contract under test. It is the first line of the failure.
+    """
     __tracebackhide__ = True
     seat.helper()
     if exc is not None:
@@ -42,7 +49,14 @@ def no_error(seat: Seat, mode: Mode, exc: BaseException | None, msg: str) -> Non
 
 
 def has_error(seat: Seat, mode: Mode, exc: BaseException | None, msg: str) -> None:
-    """Report when nothing was raised."""
+    """Report when nothing was raised.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        exc: The error to inspect, or None when there was none.
+        msg: The contract under test. It is the first line of the failure.
+    """
     __tracebackhide__ = True
     seat.helper()
     if exc is None:
@@ -56,6 +70,13 @@ def error_is(
 
     Identity, not equality: a sentinel matches however deeply it was
     wrapped on the way up.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        exc: The error to inspect, or None when there was none.
+        target: The sentinel exception or class to match against.
+        msg: The contract under test. It is the first line of the failure.
     """
     __tracebackhide__ = True
     seat.helper()
@@ -66,7 +87,15 @@ def error_is(
 def error_is_not(
     seat: Seat, mode: Mode, exc: BaseException | None, target: BaseException, msg: str
 ) -> None:
-    """Report when target is exc or one of its causes."""
+    """Report when target is exc or one of its causes.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        exc: The error to inspect, or None when there was none.
+        target: The sentinel exception or class to match against.
+        msg: The contract under test. It is the first line of the failure.
+    """
     __tracebackhide__ = True
     seat.helper()
     if any(item is target for item in _chain(exc)):
@@ -83,6 +112,16 @@ def error_as(
     Reports and returns None when the chain holds none, so a recording
     seat carries on with a value a caller can test rather than an
     attribute error.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        exc: The error to inspect, or None when there was none.
+        want: The value it is supposed to produce.
+        msg: The contract under test. It is the first line of the failure.
+
+    Returns:
+        The matching exception, or None when nothing matched.
     """
     __tracebackhide__ = True
     seat.helper()
