@@ -24,7 +24,7 @@ class Standard:
     and carry on. Use :class:`Recorder` for that.
     """
 
-    __test__ = False
+    __test__: bool = False
 
     def helper(self) -> None:
         """Hide this library's frames from the reported traceback."""
@@ -57,13 +57,13 @@ class Recorder:
     real test nothing after that call runs.
     """
 
-    __test__ = False
+    __test__: bool = False
 
     def __init__(self) -> None:
         """Return a recorder that has recorded nothing."""
         self._fatal: str | None = None
         self._recorded: list[str] = []
-        self._helpers = 0
+        self._helpers: int = 0
 
     def helper(self) -> None:
         """Count one helper-frame mark."""

@@ -46,11 +46,11 @@ class Contract:
 
     def __init__(self, seat: Seat) -> None:
         """Return a contract on seat with no ceilings stated."""
-        self._seat = seat
+        self._seat: Seat = seat
         self._each: list[float] = []
-        self._traced = False
-        self._peak_blocks = 0
-        self._peak_bytes = 0
+        self._traced: bool = False
+        self._peak_blocks: int = 0
+        self._peak_bytes: int = 0
 
         self._max_latency: float | None = None
         self._max_mean: float | None = None

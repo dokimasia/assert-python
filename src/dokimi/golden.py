@@ -213,7 +213,7 @@ def _read_object(seat: Seat, target: Path, update: bool) -> dict[str, Any] | Non
         return {}
 
     try:
-        document = json.loads(target.read_text())
+        document: object = json.loads(target.read_text())
     except json.JSONDecodeError as err:
         seat.fail(f"{target}: the golden file is not JSON: {err}")
         return None
@@ -225,9 +225,17 @@ def _read_object(seat: Seat, target: Path, update: bool) -> dict[str, Any] | Non
 
 
 def _write(seat: Seat, target: Path, content: str) -> None:
-    """Record content as the golden file at target."""
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(content)
+    """Record content as the golden file at target.
+
+    A write that cannot happen is reported through the seat rather than
+    raised, so a caller driving this with a recorder reads the failure
+    like any other instead of catching an OSError.
+    """
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
+    except OSError as err:
+        seat.fail(f"{target}: the golden file could not be written: {err}")
 
 
 def _write_object(seat: Seat, target: Path, document: dict[str, Any]) -> None:

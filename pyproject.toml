@@ -35,3 +35,32 @@ convention = "pep257"
 [tool.mypy]
 strict = true
 files = ["src", "tests"]
+
+[tool.basedpyright]
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "recommended"
+
+# An assertion library takes values of any type: `got` and `want`
+# genuinely are anything a caller holds. Reporting every one of them
+# buries the diagnostics worth reading under two hundred that are not.
+# mypy runs strict over the same tree and does catch Any leaking out of
+# a function that declared something narrower.
+reportAny = false
+reportExplicitAny = false
+
+# The same cause once narrowed: an `Any` checked with isinstance
+# becomes `Mapping[Unknown, Unknown]`, which is as much as the type
+# system can know about a value the caller chose.
+reportUnknownArgumentType = false
+reportUnknownVariableType = false
+
+# The formatter produces adjacent string literals when it wraps a long
+# message, so this fires on formatting rather than on anything a reader
+# would change.
+reportImplicitStringConcatenation = false
+
+# Several assertions answer a value a caller may ignore: `raises` gives
+# back what was raised, `error_as` the error it found. Discarding one
+# is a use, not an oversight.
+reportUnusedCallResult = false

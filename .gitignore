@@ -6,3 +6,13 @@ __pycache__/
 .mypy_cache/
 *.egg-info/
 dist/
+
+# A library resolves its dev tools fresh rather than pinning them, so a
+# ruff or mypy release shows up as a failure to look at rather than
+# passing unnoticed until someone upgrades.
+uv.lock
+
+# .zed/settings.json is shared: it points the language server at
+# the venv and picks the formatter. Nothing else in .zed is.
+.zed/*
+!.zed/settings.json
