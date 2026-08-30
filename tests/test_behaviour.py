@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 
 from dokimi import check
+from dokimi._matcher.seat import Seat
 from dokimi.seat import Recorder
 
 
@@ -116,7 +117,7 @@ def test_eventually_passes_once_the_body_settles() -> None:
     """A body that comes good within the timeout passes."""
     attempts = 0
 
-    def body(trial: object) -> None:
+    def body(trial: Seat) -> None:
         nonlocal attempts
         attempts += 1
         check.is_true(trial, attempts >= 3, "it settled")

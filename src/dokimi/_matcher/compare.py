@@ -44,8 +44,10 @@ def equal(got: Any, want: Any, relax: Option) -> bool:
         return _sequences_equal(got, want, relax)
 
     if isinstance(got, (Set, frozenset)):
-        return got == want
+        return bool(got == want)
 
+    # A custom __eq__ may return anything, so its answer is narrowed to
+    # a bool rather than passed along as whatever it gave.
     return bool(got == want)
 
 
