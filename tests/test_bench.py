@@ -22,7 +22,7 @@ ITERATIONS = 100
 def _run(
     iterations: int,
     state: Callable[[bench.Contract], bench.Contract],
-    body: Callable[[], None],
+    body: Callable[[], object],
 ) -> Recorder:
     """Drive a contract over a body and answer the seat it reported to."""
     seat = Recorder()
@@ -35,8 +35,9 @@ def _run(
     return seat
 
 
-def _noop() -> None:
+def _noop() -> object:
     """Cost as little as a body can."""
+    return None
 
 
 def test_the_body_runs_once_per_iteration() -> None:
