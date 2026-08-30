@@ -1,0 +1,92 @@
+name: Bug report
+description: An assertion does not do what it says.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, two things that are usually not bugs:
+
+        - `0` does not equal `False`, and `1` does not equal `1.0`.
+          `bool` subclasses `int`, so Python's `==` calls both pairs
+          equal and this library does not. That is the standard, and
+          it is deliberate.
+        - An empty collection does not equal an absent one. Pass
+          `equate_empty()` where that difference does not matter.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `pip show dokimi-assert | head -2`.
+      placeholder: dokimi-assert 0.1.0
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      description: Output of `python -V`. Supported is 3.11 through 3.14.
+      placeholder: Python 3.12.7
+    validations:
+      required: true
+
+  - type: dropdown
+    id: seat
+    attributes:
+      label: Which seat
+      description: >
+        Which seat you passed decides what each surface does, so it is
+        usually the answer when a failure appears in the wrong place.
+      options:
+        - The seat fixture (Collector)
+        - Standard
+        - Recorder
+        - One of my own
+        - not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface
+      options:
+        - check (stops the test)
+        - expect (records and continues)
+        - both
+        - not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: A test that shows it
+      description: >
+        A whole test, please. Use the `recorder` fixture where you want
+        to read a failure back rather than suffer it.
+      render: python
+      value: |
+        from dokimi_assert import check
+
+        def test_reproduce(recorder):
+            check.equal(recorder, got, want, "the contract under test")
+
+            print(recorder.message)
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and what happened
+      description: >
+        Both, please. "It fails" does not say whether the assertion
+        reported the wrong thing or reported nothing at all.
+      placeholder: |
+        Expected: a failure naming both values.
+        Got: it passed.
+    validations:
+      required: true

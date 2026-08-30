@@ -1,0 +1,22 @@
+name: Documentation
+description: A docstring, the README or an RFC is wrong or unclear.
+labels: ["documentation"]
+body:
+  - type: input
+    id: where
+    attributes:
+      label: Where
+      description: The symbol, file or heading.
+      placeholder: check.eventually, or README "Two surfaces"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What it says, and what is wrong with it
+      description: >
+        A doc that is merely thin is worth reporting too. Say what you
+        were trying to find out.
+    validations:
+      required: true

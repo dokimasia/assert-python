@@ -1,0 +1,54 @@
+name: Implementations disagree
+description: The same test answers differently in another language.
+labels: ["divergence", "conformance"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the bug the standard exists to catch, so it is worth
+        the extra fields. One of the two implementations is wrong, and
+        which one is a question for the corpus rather than for
+        whichever felt more natural.
+
+  - type: input
+    id: assertion
+    attributes:
+      label: Which assertion
+      description: The Python name, and the canonical id if you know it.
+      placeholder: equal (equal)
+    validations:
+      required: true
+
+  - type: textarea
+    id: here
+    attributes:
+      label: What this library does
+      render: python
+    validations:
+      required: true
+
+  - type: dropdown
+    id: other
+    attributes:
+      label: The other implementation
+      options: ["Go", "TypeScript", "another"]
+    validations:
+      required: true
+
+  - type: textarea
+    id: there
+    attributes:
+      label: What that one does
+      description: The equivalent test, and what it reported.
+    validations:
+      required: true
+
+  - type: textarea
+    id: corpus
+    attributes:
+      label: Does a corpus case cover it?
+      description: >
+        If one does, name it and say which side it agrees with. If none
+        does, that is itself worth saying: it means the standard is
+        silent and the case should be added.
+      placeholder: equal/null-against-empty-list, which agrees with Python.
