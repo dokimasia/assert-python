@@ -1,4 +1,4 @@
-.PHONY: help install fmt lint lint-md types test coverage check build spec-sync
+.PHONY: help install api-docs fmt lint lint-md types test coverage check build spec-sync
 
 help: ## Show this help
 	@grep -hE '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sort | \
@@ -6,6 +6,9 @@ help: ## Show this help
 
 install: ## Create the environment and install the project
 	uv sync --extra dev
+
+api-docs: ## Regenerate the README's API reference from the code
+	uv run python tools/api_reference.py --write
 
 fmt: ## Format the source
 	uv run ruff format src tests

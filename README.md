@@ -3,12 +3,25 @@
 Test assertions for Python, defined by a language-neutral standard and
 held to it on every run.
 
+[![CI](https://github.com/dokimasia/assert-python/actions/workflows/ci.yml/badge.svg)](https://github.com/dokimasia/assert-python/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/dokimi-assert)](https://pypi.org/project/dokimi-assert/)
+[![Python](https://img.shields.io/pypi/pyversions/dokimi-assert)](https://pypi.org/project/dokimi-assert/)
+[![Licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
+
 ```sh
 pip install dokimi-assert
 ```
 
 The distribution is `dokimi-assert`; the package you import is
 `dokimi_assert`. Python 3.11 and up. No runtime dependencies.
+
+- [Getting started](#getting-started)
+- [Two surfaces](#two-surfaces) — stop at the first failure, or see them all
+- [The assertions](#the-assertions) — every signature
+- [Equality](#equality) — why `0 != False` here
+- [Golden files](#golden-files)
+- [Testing your own assertions](#testing-your-own-assertions)
+- [The standard](#the-standard)
 
 ## Getting started
 
@@ -84,46 +97,147 @@ under the same names.
 
 ## The assertions
 
-Thirty-four in the root namespace, on both `check` and `expect`.
+Thirty-four in the root namespace on both surfaces, plus three for
+golden files and five on the benchmark contract.
 
-**Equality** — `equal`, `not_equal`
+<!-- api-reference:start -->
 
-**Truth and absence** — `is_true`, `is_false`, `is_none`, `is_not_none`
+Every assertion takes the seat first and the message last.
+`check` and `expect` carry the same names and the same
+signatures; only what happens on a failure differs.
 
-**Size** — `length`, `is_empty`, `is_not_empty`
+**Equality** — Structural, and strict about types.
 
-**Containment** — `contains`, `not_contains`, `contains_in_order`
+```python
+check.equal(seat: Seat, got: Any, want: Any, msg: str, *options: Option)
+check.not_equal(seat: Seat, got: Any, want: Any, msg: str, *options: Option)
+```
 
-**Text** — `has_prefix`, `has_suffix`, `matches`
+**Truth and absence** — The two-value cases.
 
-**Numbers** — `close_to(got, want, tolerance)`, `in_range(got, low, high)`
+```python
+check.is_true(seat: Seat, condition: bool, msg: str)
+check.is_false(seat: Seat, condition: bool, msg: str)
+check.is_none(seat: Seat, got: Any, msg: str)
+check.is_not_none(seat: Seat, got: Any, msg: str)
+```
 
-**Ordering** — `pairwise(items, predicate)`, for sorted, unique, or any
-relation that holds between neighbours
+**Size** — Anything with a length.
 
-**Errors** — `no_error`, `has_error`, `error_is`, `error_is_not`,
-`error_as`
+```python
+check.length(seat: Seat, got: Any, want: int, msg: str)
+check.is_empty(seat: Seat, got: Any, msg: str)
+check.is_not_empty(seat: Seat, got: Any, msg: str)
+```
 
-**Raising** — `raises(fn)` returns what was raised, `does_not_raise(fn)`
+**Containment** — What holding means follows the haystack.
 
-**Cancellation** — `honours_cancellation`, `honours_deadline`,
-`completes_within`, `none_handle_safe`. The first two take a coroutine
-function, since asyncio is Python's cancellation model, and run the
-loop themselves. Your test stays a plain `def`.
+```python
+check.contains(seat: Seat, haystack: Any, needle: Any, msg: str, *options: Option)
+check.not_contains(seat: Seat, haystack: Any, needle: Any, msg: str, *options: Option)
+check.contains_in_order(seat: Seat, got: Any, needles: Sequence[str], msg: str)
+```
 
-**Retrying** — `eventually(timeout, interval, body)` retries a body of
-assertions, `eventually_true(timeout, predicate)` retries a predicate
+**Text** — str and bytes.
 
-**Concurrency** — `no_task_leaks` returns a callable; call it to close
-the scope
+```python
+check.has_prefix(seat: Seat, got: Any, prefix: str, msg: str)
+check.has_suffix(seat: Seat, got: Any, suffix: str, msg: str)
+check.matches(seat: Seat, got: Any, pattern: str, msg: str)
+```
 
-**Purity** — `is_pure(observe, fn)` reads observable state either side
-of a call
+**Numbers** — Where exact equality is the wrong question.
 
-**Testing an assertion** — `rejects`, on `check` only
+```python
+check.close_to(seat: Seat, got: Any, want: float, tolerance: float, msg: str)
+check.in_range(seat: Seat, got: Any, low: float, high: float, msg: str)
+```
 
-Plus `golden.match`, `golden.match_at`, `golden.match_json_field`, and
-four benchmark ceilings on `bench.Contract`.
+**Ordering** — Sorted, unique, and anything else that holds between neighbours.
+
+```python
+check.pairwise(seat: Seat, items: Sequence[Any], predicate: Callable[[Any, Any], bool], msg: str)
+```
+
+**Errors** — For code that hands an error back rather than raising it.
+
+```python
+check.no_error(seat: Seat, exc: BaseException | None, msg: str)
+check.has_error(seat: Seat, exc: BaseException | None, msg: str)
+check.error_is(seat: Seat, exc: BaseException | None, target: BaseException, msg: str)
+check.error_is_not(seat: Seat, exc: BaseException | None, target: BaseException, msg: str)
+check.error_as(seat: Seat, exc: BaseException | None, want: type[_E], msg: str) -> _E | None
+```
+
+**Raising** — For code that raises.
+
+```python
+check.raises(seat: Seat, fn: Callable[[], Any], msg: str) -> BaseException | None
+check.does_not_raise(seat: Seat, fn: Callable[[], Any], msg: str)
+```
+
+**Cancellation** — asyncio is Python's cancellation model. These run the loop themselves, so your test stays a plain def.
+
+```python
+check.honours_cancellation(seat: Seat, fn: Callable[[], Awaitable[Any]], msg: str)
+check.honours_deadline(seat: Seat, fn: Callable[[], Awaitable[Any]], msg: str)
+check.completes_within(seat: Seat, within: float, fn: Callable[[], Any], msg: str)
+check.none_handle_safe(seat: Seat, fn: Callable[[Any], Any], msg: str)
+```
+
+**Retrying** — For a condition something outside the test makes true. Both spend real time.
+
+```python
+check.eventually(seat: Seat, timeout: float, interval: float, body: Callable[[Any], None], msg: str)
+check.eventually_true(seat: Seat, timeout: float, predicate: Callable[[], bool], msg: str)
+```
+
+**Concurrency** — Call what it returns where the scope ends.
+
+```python
+check.no_task_leaks(seat: Seat, msg: str) -> Callable[[], None]
+```
+
+**Purity** — What observe returns defines what nothing means.
+
+```python
+check.is_pure(seat: Seat, observe: Callable[[], Any], fn: Callable[[], Any], msg: str, *options: Option)
+```
+
+**Testing an assertion** — On check only: expect cannot drive a check to failure, because it does not stop.
+
+```python
+check.rejects(seat: Seat, msg: str, body: Callable[[Recorder], None]) -> str
+```
+
+**Golden files** — recorded output, compared and rewritable.
+
+```python
+golden.match(seat: Seat, name: str, got: str, update: bool, *scrubbers: Scrubber)
+golden.match_at(seat: Seat, path: str | Path, got: str, update: bool, *scrubbers: Scrubber)
+golden.match_json_field(seat: Seat, path: str | Path, field: str, got: str, update: bool, *scrubbers: Scrubber)
+golden.should_update() -> bool
+golden.scrub_timestamps() -> Scrubber
+golden.scrub_hashes() -> Scrubber
+golden.scrub_run_ids() -> Scrubber
+golden.scrub_json_fields(*fields: str) -> Scrubber
+```
+
+**Benchmark ceilings** — chained onto one contract.
+
+```python
+Contract.loop(iterations: int) -> Iterator[int]
+Contract.max_latency(seconds: float) -> Contract
+Contract.max_mean(seconds: float) -> Contract
+Contract.max_allocs(count: int) -> Contract
+Contract.max_bytes(count: int) -> Contract
+```
+
+Each one carries a full docstring: what it states, what every
+argument means, the edge cases it decides, and a worked call.
+Read them with `help(check.close_to)` or in your editor.
+
+<!-- api-reference:end -->
 
 ### A few in use
 
@@ -144,7 +258,7 @@ def test_cancellation(seat):
     check.honours_cancellation(seat, worker.run, "the worker stops when told")
 ```
 
-## Equality, and why it differs from `==`
+## Equality
 
 Python's `==` does not answer what the standard asks:
 
