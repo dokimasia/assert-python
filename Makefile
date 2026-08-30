@@ -1,4 +1,4 @@
-.PHONY: help install fmt lint types test coverage check build spec-sync
+.PHONY: help install fmt lint lint-md types test coverage check build spec-sync
 
 help: ## Show this help
 	@grep -hE '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sort | \
@@ -15,6 +15,16 @@ lint: ## Lint, and check formatting without changing anything
 	uv run ruff check src tests
 	uv run ruff format --check src tests
 
+lint-md: ## Lint the Markdown
+	@if command -v markdownlint >/dev/null 2>&1; then \
+		markdownlint '**/*.md'; \
+	elif command -v npx >/dev/null 2>&1; then \
+		npx --yes markdownlint-cli '**/*.md'; \
+	else \
+		echo "lint-md: no markdownlint and no npx; skipped"; exit 1; \
+	fi
+	@echo "lint-md: markdown is clean"
+
 types: ## Type-check with mypy and with the editor's language server
 	uv run mypy
 	uv run basedpyright src tests
@@ -22,10 +32,17 @@ types: ## Type-check with mypy and with the editor's language server
 test: ## Run the tests
 	uv run pytest
 
+# -p no:dokimi_assert turns this package's own pytest plugin off for
+# the outer run. A plugin is imported during plugin registration,
+# which happens before pytest-cov starts measuring, so leaving it on
+# reports every module it pulls in as barely covered. The plugin is
+# still exercised: tests/test_pytest_plugin.py runs pytest inside
+# pytest, and those runs load it normally.
 coverage: ## Run the tests and enforce the floor
-	uv run pytest --cov=dokimi_assert --cov-report=term-missing --cov-fail-under=95
+	uv run pytest -p no:dokimi_assert \
+		--cov=dokimi_assert --cov-report=term-missing --cov-fail-under=95
 
-check: lint types coverage ## The full pre-merge gate
+check: lint lint-md types coverage ## The full pre-merge gate
 
 build: ## Build the sdist and wheel, then check what they carry
 	rm -rf dist
