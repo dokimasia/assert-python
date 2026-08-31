@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from dokimi_assert import bench, check, expect, golden
+from dokimi_assert import bench, check, expect, golden, option
 from dokimi_assert.conformance import definition
 from dokimi_assert.seat import Standard
 
@@ -143,3 +143,34 @@ def test_no_assertion_is_excused(assertion: str) -> None:
         definition.diverges(assertion),
         f"{assertion} is implemented, so the overlay does not excuse it",
     )
+
+
+RELAXATIONS = definition.relaxation_names()
+
+
+def test_the_definition_states_relaxations() -> None:
+    """A definition with none would mean the vendored copy is stale."""
+    assert RELAXATIONS, "the definition states relaxations"
+
+
+@pytest.mark.parametrize("relaxation", sorted(RELAXATIONS))
+def test_relaxation_is_offered_or_declined(relaxation: str) -> None:
+    """An implementing language answers every relaxation, one way.
+
+    Named and declined is a contradiction; neither is a silent gap. A
+    named relaxation has to be importable from the option module under
+    exactly that name.
+    """
+    name = RELAXATIONS[relaxation]
+    declined = definition.declines_relaxation(relaxation)
+
+    assert not (name and declined), (
+        f"{relaxation}: named {name!r} and declined, which is a contradiction"
+    )
+    assert name or declined, (
+        f"{relaxation}: the table gives no Python name and the overlay "
+        "does not decline it"
+    )
+    if name:
+        assert hasattr(option, name), f"{relaxation}: {name} is named and not importable"
+        assert callable(getattr(option, name)), f"{relaxation}: {name} is not callable"

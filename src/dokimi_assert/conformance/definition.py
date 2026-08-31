@@ -63,6 +63,33 @@ def overlay() -> dict[str, Any]:
     return dict(_read("overlay.json"))
 
 
+def relaxation_names() -> dict[str, str]:
+    """Each relaxation the definition states, with this language's name.
+
+    A relaxation the naming table gives Python no name for maps to the
+    empty string, which is what an overlay declining it looks like.
+
+    Returns:
+        Relaxation id to the name a caller types.
+    """
+    stated = _read("assertions.json").get("relaxations", {})
+    named = _read("naming.json").get("relaxations", {})
+    return {rid: named.get(rid, {}).get("python", "") for rid in stated}
+
+
+def declines_relaxation(relaxation: str) -> bool:
+    """Whether the overlay declines this relaxation.
+
+    Args:
+        relaxation: The canonical relaxation id.
+
+    Returns:
+        True when the overlay declares it not offered.
+    """
+    entries = overlay().get("relaxations", [])
+    return any(entry.get("id") == relaxation for entry in entries)
+
+
 def diverges(assertion: str) -> bool:
     """Whether the overlay excuses assertion from being implemented.
 
