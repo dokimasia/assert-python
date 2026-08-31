@@ -172,5 +172,7 @@ def test_relaxation_is_offered_or_declined(relaxation: str) -> None:
         "does not decline it"
     )
     if name:
-        assert hasattr(option, name), f"{relaxation}: {name} is named and not importable"
+        assert hasattr(option, name), (
+            f"{relaxation}: {name} is named and not importable"
+        )
         assert callable(getattr(option, name)), f"{relaxation}: {name} is not callable"
