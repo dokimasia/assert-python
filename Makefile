@@ -53,11 +53,9 @@ build: ## Build the sdist and wheel, then check what they carry
 	uv run --no-project --with twine twine check dist/*
 	@echo "built; publishing happens in CI on a version tag"
 
-spec-sync: ## Refresh the vendored definition from ../assert-spec
-	@test -d ../assert-spec || { echo "spec-sync: ../assert-spec not found"; exit 1; }
-	cp ../assert-spec/spec/assertions.json src/dokimi_assert/conformance/spec/assertions.json
-	cp ../assert-spec/spec/naming.json     src/dokimi_assert/conformance/spec/naming.json
-	cp ../assert-spec/overlays/python.json src/dokimi_assert/conformance/spec/overlay.json
-	cp ../assert-spec/VERSION              src/dokimi_assert/conformance/spec/VERSION
-	rm -rf src/dokimi_assert/conformance/spec/corpus
-	cp -r ../assert-spec/corpus src/dokimi_assert/conformance/spec/corpus
+spec-sync: ## Refresh the vendored definition from assert-spec
+	@./tools/spec-sync.sh src/dokimi_assert/conformance/spec python
+
+.PHONY: spec-check
+spec-check: ## Check the vendored definition is intact and say if it is behind
+	@./tools/spec-check.sh src/dokimi_assert/conformance/spec
