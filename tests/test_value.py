@@ -37,7 +37,12 @@ def test_a_type_with_no_length_is_reported(name: str, drive: Drive) -> None:
     drive(seat)
 
     check.is_true(OUTER, seat.failed, f"{name} reports a type with no length")
-    check.contains(OUTER, seat.message, "not supported", "it says why")
+    check.equal(
+        OUTER,
+        seat.failures[0].assertion,
+        SIZED_IDS[name],
+        "it reports as the assertion the caller wrote",
+    )
 
 
 def test_a_type_with_no_containment_is_reported() -> None:
@@ -46,14 +51,19 @@ def test_a_type_with_no_containment_is_reported() -> None:
     check.contains(seat, 42, 4, "it holds four")
 
     check.is_true(OUTER, seat.failed, "an unsearchable haystack reports")
-    check.contains(OUTER, seat.message, "not supported", "it says why")
+    check.equal(OUTER, seat.failures[0].assertion, "contains", "it reports as contains")
+    check.equal(OUTER, seat.failures[0].detail["haystack"], 42, "it names the haystack")
 
 
 def test_not_contains_reports_the_same_way() -> None:
     """The negation answers for the same types."""
     seat = Recorder()
     check.not_contains(seat, 42, 4, "it lacks four")
-    check.contains(OUTER, seat.message, "not supported", "it says why")
+
+    check.is_true(OUTER, seat.failed, "an unsearchable haystack reports")
+    check.equal(
+        OUTER, seat.failures[0].assertion, "not-contains", "it reports as not-contains"
+    )
 
 
 NOT_TEXT: list[tuple[str, Drive]] = [
@@ -75,7 +85,7 @@ def test_a_non_text_value_is_reported(name: str, drive: Drive) -> None:
     drive(seat)
 
     check.is_true(OUTER, seat.failed, f"{name} reports a non-text value")
-    check.contains(OUTER, seat.message, "requires text", "it says what it needed")
+    check.is_not_empty(OUTER, seat.failures[0].detail, "it names what it was given")
 
 
 def test_a_pattern_that_does_not_compile_is_reported() -> None:
@@ -84,8 +94,13 @@ def test_a_pattern_that_does_not_compile_is_reported() -> None:
     check.matches(seat, "anything", "([unclosed", "it matches")
 
     check.is_true(OUTER, seat.failed, "a broken pattern reports")
-    check.contains(OUTER, seat.message, "does not compile", "it says why")
+    check.equal(
+        OUTER, seat.failures[0].detail["pattern"], "([unclosed", "it names the pattern"
+    )
 
+
+#: The canonical id each sized assertion reports under.
+SIZED_IDS = {"length": "length", "is_empty": "empty", "is_not_empty": "not-empty"}
 
 NOT_NUMERIC: list[tuple[str, Drive]] = [
     ("close_to", lambda s: check.close_to(s, "1", 1.0, 0.5, "it is about one")),
@@ -101,7 +116,9 @@ def test_a_non_numeric_value_is_reported(name: str, drive: Drive) -> None:
     drive(seat)
 
     check.is_true(OUTER, seat.failed, f"{name} reports a non-numeric value")
-    check.contains(OUTER, seat.message, "requires a number", "it says what it needed")
+    check.contains(
+        OUTER, seat.failures[0].detail, "got", "it names the value it was given"
+    )
 
 
 def test_a_bool_is_not_a_number() -> None:
@@ -133,7 +150,8 @@ def test_an_inverted_range_always_fails() -> None:
     seat = Recorder()
     check.in_range(seat, 5, 10.0, 1.0, "it is in range")
 
-    check.contains(OUTER, seat.message, "empty range", "it names the inverted range")
+    check.equal(OUTER, seat.failures[0].detail["low"], 10.0, "it names the low end")
+    check.equal(OUTER, seat.failures[0].detail["high"], 1.0, "it names the high end")
 
 
 def test_a_text_haystack_cannot_answer_for_a_non_text_needle() -> None:
@@ -142,7 +160,7 @@ def test_a_text_haystack_cannot_answer_for_a_non_text_needle() -> None:
     check.contains(seat, "hello", 42, "it holds the answer")
 
     check.is_true(OUTER, seat.failed, "a non-text needle reports")
-    check.contains(OUTER, seat.message, "not supported", "it says why")
+    check.equal(OUTER, seat.failures[0].detail["needle"], 42, "it names the needle")
 
 
 def test_a_bytes_haystack_takes_a_text_needle() -> None:

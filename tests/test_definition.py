@@ -187,8 +187,39 @@ SURFACE = definition.surface_names()
 SEAT_TYPES = {"seat", "standard-seat", "recorder-seat", "collector-seat"}
 
 
+#: Where a row lives when its own module owns it rather than the seat.
+SURFACE_MODULES = {
+    "clock": "clock",
+    "system-clock": "clock",
+    "failure": "failure",
+    "where": "failure",
+    "failure.assertion": "failure",
+    "failure.contract": "failure",
+    "failure.detail": "failure",
+    "seat.report": "seat",
+    "controlled-clock": "clock",
+    "seat.clock": "seat",
+    "clock.now": "clock",
+    "clock.sleep": "clock",
+    "controlled-clock.advance": "clock",
+}
+
+
 def _surface_target(sid: str, name: str) -> tuple[Any, str]:
     """Answer what to look on, and for what, for one surface row."""
+    if sid in SURFACE_MODULES:
+        module = importlib.import_module(f"dokimi_assert.{SURFACE_MODULES[sid]}")
+        if "." not in sid:
+            return module, name
+        owner_id = sid.split(".", 1)[0]
+        # A member of the seat is answered by the seats that carry it,
+        # not by the protocol, which states only what a seat may have.
+        if owner_id == "seat":
+            return module.Recorder, name
+        return getattr(module, SURFACE[owner_id]), name
+
+    if sid in {"clock", "system-clock", "failure", "where"}:
+        return importlib.import_module("dokimi_assert.clock"), name
     if "." in name:
         owner_name, member = name.split(".", 1)
         return importlib.import_module(f"dokimi_assert.{owner_name}"), member

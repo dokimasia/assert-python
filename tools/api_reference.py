@@ -30,30 +30,58 @@ END = "<!-- api-reference:end -->"
 #: states. A name in no family is a bug this script reports.
 FAMILIES: list[tuple[str, str, list[str]]] = [
     ("Equality", "Structural, and strict about types.", ["equal", "not_equal"]),
-    ("Truth and absence", "The two-value cases.",
-     ["is_true", "is_false", "is_none", "is_not_none"]),
+    (
+        "Truth and absence",
+        "The two-value cases.",
+        ["is_true", "is_false", "is_none", "is_not_none"],
+    ),
     ("Size", "Anything with a length.", ["length", "is_empty", "is_not_empty"]),
-    ("Containment", "What holding means follows the haystack.",
-     ["contains", "not_contains", "contains_in_order"]),
+    (
+        "Containment",
+        "What holding means follows the haystack.",
+        ["contains", "not_contains", "contains_in_order"],
+    ),
     ("Text", "str and bytes.", ["has_prefix", "has_suffix", "matches"]),
-    ("Numbers", "Where exact equality is the wrong question.",
-     ["close_to", "in_range"]),
-    ("Ordering", "Sorted, unique, and anything else that holds between neighbours.",
-     ["pairwise"]),
-    ("Errors", "For code that hands an error back rather than raising it.",
-     ["no_error", "has_error", "error_is", "error_is_not", "error_as"]),
+    (
+        "Numbers",
+        "Where exact equality is the wrong question.",
+        ["close_to", "in_range"],
+    ),
+    (
+        "Ordering",
+        "Sorted, unique, and anything else that holds between neighbours.",
+        ["pairwise"],
+    ),
+    (
+        "Errors",
+        "For code that hands an error back rather than raising it.",
+        ["no_error", "has_error", "error_is", "error_is_not", "error_as"],
+    ),
     ("Raising", "For code that raises.", ["raises", "does_not_raise"]),
-    ("Cancellation", "asyncio is Python's cancellation model. These run the "
-     "loop themselves, so your test stays a plain def.",
-     ["honours_cancellation", "honours_deadline", "completes_within",
-      "none_handle_safe"]),
-    ("Retrying", "For a condition something outside the test makes true. "
-     "Both spend real time.", ["eventually", "eventually_true"]),
-    ("Concurrency", "Call what it returns where the scope ends.",
-     ["no_task_leaks"]),
+    (
+        "Cancellation",
+        "asyncio is Python's cancellation model. These run the "
+        "loop themselves, so your test stays a plain def.",
+        [
+            "honours_cancellation",
+            "honours_deadline",
+            "completes_within",
+            "none_handle_safe",
+        ],
+    ),
+    (
+        "Retrying",
+        "For a condition something outside the test makes true. Both spend real time.",
+        ["eventually", "eventually_true"],
+    ),
+    ("Concurrency", "Call what it returns where the scope ends.", ["no_task_leaks"]),
     ("Purity", "What observe returns defines what nothing means.", ["is_pure"]),
-    ("Testing an assertion", "On check only: expect cannot drive a check to "
-     "failure, because it does not stop.", ["rejects"]),
+    (
+        "Testing an assertion",
+        "On check only: expect cannot drive a check to "
+        "failure, because it does not stop.",
+        ["rejects"],
+    ),
 ]
 
 
@@ -109,11 +137,20 @@ def render() -> str:
     out.append("**Golden files** — recorded output, compared and rewritable.")
     out.append("")
     out.append("```python")
-    out += [signature(golden, n, "golden.")
-            for n in ("match", "match_at", "match_json_field")]
-    out += [signature(golden, n, "golden.")
-            for n in ("should_update", "scrub_timestamps", "scrub_hashes",
-                      "scrub_run_ids", "scrub_json_fields")]
+    out += [
+        signature(golden, n, "golden.")
+        for n in ("match", "match_at", "match_json_field")
+    ]
+    out += [
+        signature(golden, n, "golden.")
+        for n in (
+            "should_update",
+            "scrub_timestamps",
+            "scrub_hashes",
+            "scrub_run_ids",
+            "scrub_json_fields",
+        )
+    ]
     out.append("```")
     out.append("")
 
@@ -121,8 +158,10 @@ def render() -> str:
     out.append("")
     out.append("```python")
     out.append(signature(bench.Contract, "loop", "Contract."))
-    out += [signature(bench.Contract, n, "Contract.")
-            for n in ("max_latency", "max_mean", "max_allocs", "max_bytes")]
+    out += [
+        signature(bench.Contract, n, "Contract.")
+        for n in ("max_latency", "max_mean", "max_allocs", "max_bytes")
+    ]
     out.append("```")
     out.append("")
     out.append("Each one carries a full docstring: what it states, what every")

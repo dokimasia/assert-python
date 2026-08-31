@@ -13,7 +13,8 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from dokimi_assert._matcher.seat import Mode, Seat, report
+from dokimi_assert._matcher.seat import Mode, Seat, clock_of, report_failure
+from dokimi_assert.clock import wait
 
 #: Where the backoff in eventually_true starts, and the share of the
 #: timeout it will not exceed.
@@ -70,7 +71,8 @@ def eventually(
     __tracebackhide__ = True
     seat.helper()
 
-    deadline = time.monotonic() + timeout
+    clock = clock_of(seat)
+    deadline = clock.now() + timeout
     attempts = 0
 
     while True:
@@ -80,15 +82,16 @@ def eventually(
 
         if trial.message is None:
             return
-        if time.monotonic() >= deadline:
-            report(
+        if clock.now() >= deadline:
+            report_failure(
                 seat,
                 mode,
-                f"{msg}: still failing after {timeout}s and "
-                f"{attempts} attempts: {trial.message}",
+                "eventually",
+                msg,
+                {"attempts": attempts, "last": trial.message},
             )
             return
-        time.sleep(interval)
+        wait(clock, interval)
 
 
 def eventually_true(
@@ -111,7 +114,8 @@ def eventually_true(
     __tracebackhide__ = True
     seat.helper()
 
-    deadline = time.monotonic() + timeout
+    clock = clock_of(seat)
+    deadline = clock.now() + timeout
     backoff = FIRST_BACKOFF
     ceiling = timeout * BACKOFF_SHARE
     attempts = 0
@@ -120,14 +124,10 @@ def eventually_true(
         attempts += 1
         if predicate():
             return
-        if time.monotonic() >= deadline:
-            report(
-                seat,
-                mode,
-                f"{msg}: still false after {timeout}s and {attempts} attempts",
-            )
+        if clock.now() >= deadline:
+            report_failure(seat, mode, "eventually-true", msg, {"attempts": attempts})
             return
-        time.sleep(backoff)
+        wait(clock, backoff)
         backoff = min(backoff * 2, ceiling) if ceiling > 0 else backoff
 
 
@@ -179,11 +179,6 @@ def no_task_leaks(seat: Seat, mode: Mode, msg: str) -> Callable[[], None]:
 
         if leaked:
             names = sorted(t.get_name() for t in leaked)
-            report(
-                seat,
-                mode,
-                f"{msg}: {len(leaked)} task(s) still running after "
-                f"{LEAK_GRACE}s: {names}",
-            )
+            report_failure(seat, mode, "no-task-leaks", msg, {"leaked": names})
 
     return check

@@ -13,7 +13,7 @@ from typing import Any
 
 from dokimi_assert._matcher.compare import equal as _equal
 from dokimi_assert._matcher.option import Option, settings
-from dokimi_assert._matcher.seat import Mode, Seat, report
+from dokimi_assert._matcher.seat import Mode, Seat, report_failure
 
 
 def equal(
@@ -32,7 +32,7 @@ def equal(
     __tracebackhide__ = True
     seat.helper()
     if not _equal(got, want, settings(options)):
-        report(seat, mode, f"{msg}: want {want!r}, got {got!r}")
+        report_failure(seat, mode, "equal", msg, {"want": want, "got": got})
 
 
 def not_equal(
@@ -51,7 +51,7 @@ def not_equal(
     __tracebackhide__ = True
     seat.helper()
     if _equal(got, want, settings(options)):
-        report(seat, mode, f"{msg}: values are equal, want different: got {got!r}")
+        report_failure(seat, mode, "not-equal", msg, {"got": got})
 
 
 def is_true(seat: Seat, mode: Mode, condition: bool, msg: str) -> None:
@@ -66,7 +66,7 @@ def is_true(seat: Seat, mode: Mode, condition: bool, msg: str) -> None:
     __tracebackhide__ = True
     seat.helper()
     if not condition:
-        report(seat, mode, f"{msg}: expected true, got false")
+        report_failure(seat, mode, "true", msg)
 
 
 def is_false(seat: Seat, mode: Mode, condition: bool, msg: str) -> None:
@@ -81,7 +81,7 @@ def is_false(seat: Seat, mode: Mode, condition: bool, msg: str) -> None:
     __tracebackhide__ = True
     seat.helper()
     if condition:
-        report(seat, mode, f"{msg}: expected false, got true")
+        report_failure(seat, mode, "false", msg)
 
 
 def is_none(seat: Seat, mode: Mode, got: Any, msg: str) -> None:
@@ -96,7 +96,7 @@ def is_none(seat: Seat, mode: Mode, got: Any, msg: str) -> None:
     __tracebackhide__ = True
     seat.helper()
     if got is not None:
-        report(seat, mode, f"{msg}: expected none, got {got!r}")
+        report_failure(seat, mode, "nil", msg, {"got": got})
 
 
 def is_not_none(seat: Seat, mode: Mode, got: Any, msg: str) -> None:
@@ -111,7 +111,7 @@ def is_not_none(seat: Seat, mode: Mode, got: Any, msg: str) -> None:
     __tracebackhide__ = True
     seat.helper()
     if got is None:
-        report(seat, mode, f"{msg}: expected a value, got none")
+        report_failure(seat, mode, "not-nil", msg)
 
 
 def length(seat: Seat, mode: Mode, got: Any, want: int, msg: str) -> None:
@@ -130,10 +130,10 @@ def length(seat: Seat, mode: Mode, got: Any, want: int, msg: str) -> None:
     __tracebackhide__ = True
     seat.helper()
     if not isinstance(got, Sized):
-        report(seat, mode, f"{msg}: length not supported for {type(got).__name__}")
+        report_failure(seat, mode, "length", msg, {"want": want, "got": got})
         return
     if len(got) != want:
-        report(seat, mode, f"{msg}: expected length {want}, got {len(got)}")
+        report_failure(seat, mode, "length", msg, {"want": want, "got": len(got)})
 
 
 def is_empty(seat: Seat, mode: Mode, got: Any, msg: str) -> None:
@@ -148,10 +148,10 @@ def is_empty(seat: Seat, mode: Mode, got: Any, msg: str) -> None:
     __tracebackhide__ = True
     seat.helper()
     if not isinstance(got, Sized):
-        report(seat, mode, f"{msg}: emptiness not supported for {type(got).__name__}")
+        report_failure(seat, mode, "empty", msg, {"length": got})
         return
     if len(got) != 0:
-        report(seat, mode, f"{msg}: expected empty, got length {len(got)}")
+        report_failure(seat, mode, "empty", msg, {"length": len(got)})
 
 
 def is_not_empty(seat: Seat, mode: Mode, got: Any, msg: str) -> None:
@@ -166,10 +166,10 @@ def is_not_empty(seat: Seat, mode: Mode, got: Any, msg: str) -> None:
     __tracebackhide__ = True
     seat.helper()
     if not isinstance(got, Sized):
-        report(seat, mode, f"{msg}: emptiness not supported for {type(got).__name__}")
+        report_failure(seat, mode, "not-empty", msg)
         return
     if len(got) == 0:
-        report(seat, mode, f"{msg}: expected non-empty, got length 0")
+        report_failure(seat, mode, "not-empty", msg)
 
 
 def _holds(haystack: Any, needle: Any, relax: Option) -> tuple[bool, bool]:
@@ -209,14 +209,14 @@ def contains(
     seat.helper()
     found, supported = _holds(haystack, needle, settings(options))
     if not supported:
-        report(
-            seat,
-            mode,
-            f"{msg}: containment not supported for {type(haystack).__name__}",
+        report_failure(
+            seat, mode, "contains", msg, {"haystack": haystack, "needle": needle}
         )
         return
     if not found:
-        report(seat, mode, f"{msg}: {haystack!r} does not contain {needle!r}")
+        report_failure(
+            seat, mode, "contains", msg, {"haystack": haystack, "needle": needle}
+        )
 
 
 def not_contains(
@@ -236,14 +236,14 @@ def not_contains(
     seat.helper()
     found, supported = _holds(haystack, needle, settings(options))
     if not supported:
-        report(
-            seat,
-            mode,
-            f"{msg}: containment not supported for {type(haystack).__name__}",
+        report_failure(
+            seat, mode, "not-contains", msg, {"haystack": haystack, "needle": needle}
         )
         return
     if found:
-        report(seat, mode, f"{msg}: {haystack!r} contains {needle!r}, want it absent")
+        report_failure(
+            seat, mode, "not-contains", msg, {"haystack": haystack, "needle": needle}
+        )
 
 
 def _text_of(got: Any) -> tuple[str, bool]:
@@ -274,10 +274,12 @@ def contains_in_order(
     seat.helper()
     text, ok = _text_of(got)
     if not ok:
-        report(
+        report_failure(
             seat,
             mode,
-            f"{msg}: ordered containment requires text, got {type(got).__name__}",
+            "contains-in-order",
+            msg,
+            {"haystack": got, "needle": "", "index": 0},
         )
         return
 
@@ -285,11 +287,12 @@ def contains_in_order(
     for index, needle in enumerate(needles):
         at = text.find(needle, cursor)
         if at < 0:
-            report(
+            report_failure(
                 seat,
                 mode,
-                f"{msg}: needle {index} ({needle!r}) not found after position "
-                f"{cursor} in {text!r}",
+                "contains-in-order",
+                msg,
+                {"haystack": text, "needle": needle, "index": index},
             )
             return
         cursor = at + len(needle)
@@ -309,10 +312,10 @@ def has_prefix(seat: Seat, mode: Mode, got: Any, prefix: str, msg: str) -> None:
     seat.helper()
     text, ok = _text_of(got)
     if not ok:
-        report(seat, mode, f"{msg}: prefix requires text, got {type(got).__name__}")
+        report_failure(seat, mode, "has-prefix", msg, {"got": got, "prefix": prefix})
         return
     if not text.startswith(prefix):
-        report(seat, mode, f"{msg}: {text!r} does not start with {prefix!r}")
+        report_failure(seat, mode, "has-prefix", msg, {"got": text, "prefix": prefix})
 
 
 def has_suffix(seat: Seat, mode: Mode, got: Any, suffix: str, msg: str) -> None:
@@ -329,10 +332,10 @@ def has_suffix(seat: Seat, mode: Mode, got: Any, suffix: str, msg: str) -> None:
     seat.helper()
     text, ok = _text_of(got)
     if not ok:
-        report(seat, mode, f"{msg}: suffix requires text, got {type(got).__name__}")
+        report_failure(seat, mode, "has-suffix", msg, {"got": got, "suffix": suffix})
         return
     if not text.endswith(suffix):
-        report(seat, mode, f"{msg}: {text!r} does not end with {suffix!r}")
+        report_failure(seat, mode, "has-suffix", msg, {"got": text, "suffix": suffix})
 
 
 def matches(seat: Seat, mode: Mode, got: Any, pattern: str, msg: str) -> None:
@@ -353,21 +356,17 @@ def matches(seat: Seat, mode: Mode, got: Any, pattern: str, msg: str) -> None:
     seat.helper()
     text, ok = _text_of(got)
     if not ok:
-        report(
-            seat,
-            mode,
-            f"{msg}: pattern matching requires text, got {type(got).__name__}",
-        )
+        report_failure(seat, mode, "matches", msg, {"got": got, "pattern": pattern})
         return
 
     try:
         compiled = re.compile(pattern)
-    except re.error as err:
-        report(seat, mode, f"{msg}: pattern {pattern!r} does not compile: {err}")
+    except re.error:
+        report_failure(seat, mode, "matches", msg, {"got": got, "pattern": pattern})
         return
 
     if compiled.search(text) is None:
-        report(seat, mode, f"{msg}: {text!r} does not match {pattern!r}")
+        report_failure(seat, mode, "matches", msg, {"got": text, "pattern": pattern})
 
 
 def _number_of(got: Any) -> tuple[float, bool]:
@@ -403,22 +402,33 @@ def close_to(
     seat.helper()
     number, ok = _number_of(got)
     if not ok:
-        report(
-            seat, mode, f"{msg}: tolerance requires a number, got {type(got).__name__}"
+        report_failure(
+            seat,
+            mode,
+            "close-to",
+            msg,
+            {"got": got, "want": want, "tolerance": tolerance},
         )
         return
 
     difference = abs(number - want) if not math.isnan(number - want) else math.nan
     if math.isnan(difference) or math.isnan(tolerance):
-        report(
+        report_failure(
             seat,
             mode,
-            f"{msg}: {number} is not within {tolerance} of {want}: "
-            "NaN is outside every tolerance",
+            "close-to",
+            msg,
+            {"got": got, "want": want, "tolerance": tolerance},
         )
         return
     if difference > tolerance:
-        report(seat, mode, f"{msg}: {number} is not within {tolerance} of {want}")
+        report_failure(
+            seat,
+            mode,
+            "close-to",
+            msg,
+            {"got": got, "want": want, "tolerance": tolerance},
+        )
 
 
 def in_range(
@@ -437,16 +447,24 @@ def in_range(
     __tracebackhide__ = True
     seat.helper()
     if low > high:
-        report(seat, mode, f"{msg}: empty range [{low}, {high}]")
+        report_failure(
+            seat, mode, "in-range", msg, {"got": got, "low": low, "high": high}
+        )
         return
 
     number, ok = _number_of(got)
     if not ok:
-        report(seat, mode, f"{msg}: range requires a number, got {type(got).__name__}")
+        report_failure(
+            seat, mode, "in-range", msg, {"got": got, "low": low, "high": high}
+        )
         return
 
     if math.isnan(number):
-        report(seat, mode, f"{msg}: NaN is not in [{low}, {high}]")
+        report_failure(
+            seat, mode, "in-range", msg, {"got": got, "low": low, "high": high}
+        )
         return
     if number < low or number > high:
-        report(seat, mode, f"{msg}: {number} is not in [{low}, {high}]")
+        report_failure(
+            seat, mode, "in-range", msg, {"got": got, "low": low, "high": high}
+        )

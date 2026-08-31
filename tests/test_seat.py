@@ -7,10 +7,16 @@ through a seat would let one bug hide another.
 
 from __future__ import annotations
 
+import threading
+
 import pytest
 
+from dokimi_assert import check
 from dokimi_assert._matcher.seat import Mode, Seat, report
 from dokimi_assert.seat import Collector, Recorder, Standard
+
+#: The seat these tests state their own verdicts on.
+OUTER = Standard()
 
 
 def test_both_seats_satisfy_the_protocol() -> None:
@@ -178,3 +184,83 @@ def test_a_collector_counts_helper_calls_without_failing() -> None:
     seat.helper()
 
     assert seat.collected == []
+
+
+def test_a_seat_counts_every_helper_mark_from_many_threads() -> None:
+    """A seat loses no count when several assertions mark at once.
+
+    A test holds one seat and hands it to every assertion in the body,
+    and several of them run the subject somewhere else.
+
+    This does not prove the lock. Under a runtime with a global
+    interpreter lock the unlocked version passes too, because the
+    interpreter does not switch often enough to lose a mark at this
+    scale. The lock is there for a free-threaded build, where it does;
+    this drives the seat under real threads and would catch a seat that
+    broke outright.
+    """
+    seat = Recorder()
+    writers = 8
+    each = 2000
+
+    def mark() -> None:
+        for _ in range(each):
+            seat.helper()
+
+    threads = [threading.Thread(target=mark) for _ in range(writers)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    check.equal(
+        OUTER,
+        seat.helper_calls,
+        writers * each,
+        "every mark from every thread is counted",
+    )
+
+
+def test_a_seat_keeps_every_failure_reported_from_many_threads() -> None:
+    """A seat loses nothing when several assertions report at once."""
+    seat = Recorder()
+    writers = 8
+    each = 250
+
+    def report(worker: int) -> None:
+        for at in range(each):
+            seat.record(f"worker {worker} failure {at}")
+
+    threads = [threading.Thread(target=report, args=(n,)) for n in range(writers)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    check.equal(
+        OUTER,
+        len(seat.messages),
+        writers * each,
+        "every failure reported from every thread is kept",
+    )
+
+
+def test_a_collector_keeps_every_failure_reported_from_many_threads() -> None:
+    """The seat a real test uses answers for the same property."""
+    seat = Collector()
+    writers = 8
+    each = 250
+
+    def report(worker: int) -> None:
+        for at in range(each):
+            seat.record(f"worker {worker} failure {at}")
+
+    threads = [threading.Thread(target=report, args=(n,)) for n in range(writers)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    check.equal(
+        OUTER, len(seat.collected), writers * each, "every failure is collected"
+    )

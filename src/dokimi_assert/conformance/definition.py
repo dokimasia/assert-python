@@ -77,6 +77,16 @@ def relaxation_names() -> dict[str, str]:
     return {rid: named.get(rid, {}).get("python", "") for rid in stated}
 
 
+def detail_fields() -> dict[str, set[str]]:
+    """What each assertion's failure carries, by canonical id.
+
+    Returns:
+        Assertion id to the field names its record holds.
+    """
+    stated = _read("assertions.json")["assertions"]
+    return {aid: set(body.get("detail_fields") or []) for aid, body in stated.items()}
+
+
 def surface_names() -> dict[str, str]:
     """Every surface id, with this language's name for it.
 

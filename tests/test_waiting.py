@@ -51,7 +51,11 @@ def test_eventually_true_reports_the_timeout() -> None:
     seat = Recorder()
     check.eventually_true(seat, 0.02, lambda: False, "it settles")
     check.is_true(OUTER, seat.failed, "a predicate that never holds is reported")
-    check.contains(OUTER, seat.message, "still false", "the failure names the wait")
+    check.is_true(
+        OUTER,
+        seat.failures[0].detail["attempts"] >= 1,
+        "the failure counts the attempts it made",
+    )
 
 
 def test_no_task_leaks_reports_a_task_left_running() -> None:

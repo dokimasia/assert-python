@@ -9,13 +9,12 @@ cancellation assertions drive a coroutine function.
 from __future__ import annotations
 
 import asyncio
-import time
 from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar
 
 from dokimi_assert._matcher.compare import equal as _equal
 from dokimi_assert._matcher.option import Option, settings
-from dokimi_assert._matcher.seat import Mode, Seat, report
+from dokimi_assert._matcher.seat import Mode, Seat, clock_of, report_failure
 
 _S = TypeVar("_S")
 
@@ -60,7 +59,7 @@ def honours_cancellation(
 
     problem = asyncio.run(drive())
     if problem is not None:
-        report(seat, mode, f"{msg}: {problem}")
+        report_failure(seat, mode, "honours-cancellation", msg, {"got": problem})
 
 
 def honours_deadline(
@@ -99,7 +98,7 @@ def honours_deadline(
 
     problem = asyncio.run(drive())
     if problem is not None:
-        report(seat, mode, f"{msg}: {problem}")
+        report_failure(seat, mode, "honours-deadline", msg, {"got": problem})
 
 
 def completes_within(
@@ -121,12 +120,21 @@ def completes_within(
     __tracebackhide__ = True
     seat.helper()
 
-    started = time.perf_counter()
+    clock = clock_of(seat)
+    started = clock.now()
     fn()
-    elapsed = time.perf_counter() - started
+    elapsed = clock.now() - started
 
     if elapsed > within:
-        report(seat, mode, f"{msg}: took {elapsed:.3f}s, want at most {within:.3f}s")
+        report_failure(
+            seat,
+            mode,
+            "completes-within",
+            msg,
+            # Milliseconds is the granularity this assertion is about,
+            # and sixteen digits of a duration is false precision.
+            {"want": within, "got": round(elapsed, 3)},
+        )
 
 
 def is_pure(
@@ -160,11 +168,7 @@ def is_pure(
     after = observe()
 
     if not _equal(after, before, settings(options)):
-        report(
-            seat,
-            mode,
-            f"{msg}: observable state changed: was {before!r}, now {after!r}",
-        )
+        report_failure(seat, mode, "pure", msg, {"want": before, "got": after})
 
 
 def none_handle_safe(
@@ -187,6 +191,6 @@ def none_handle_safe(
     try:
         fn(None)
     except (AttributeError, TypeError) as caught:
-        report(seat, mode, f"{msg}: a None handle was dereferenced: {caught!r}")
+        report_failure(seat, mode, "nil-context-safe", msg, {"got": caught})
     except Exception:
         pass

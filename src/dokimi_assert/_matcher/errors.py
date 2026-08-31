@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TypeVar
 
-from dokimi_assert._matcher.seat import Mode, Seat, report
+from dokimi_assert._matcher.seat import Mode, Seat, report_failure
 
 _E = TypeVar("_E", bound=BaseException)
 
@@ -45,7 +45,7 @@ def no_error(seat: Seat, mode: Mode, exc: BaseException | None, msg: str) -> Non
     __tracebackhide__ = True
     seat.helper()
     if exc is not None:
-        report(seat, mode, f"{msg}: unexpected error: {exc!r}")
+        report_failure(seat, mode, "err-absent", msg, {"got": exc})
 
 
 def has_error(seat: Seat, mode: Mode, exc: BaseException | None, msg: str) -> None:
@@ -60,7 +60,7 @@ def has_error(seat: Seat, mode: Mode, exc: BaseException | None, msg: str) -> No
     __tracebackhide__ = True
     seat.helper()
     if exc is None:
-        report(seat, mode, f"{msg}: expected an error, got none")
+        report_failure(seat, mode, "err-present", msg)
 
 
 def error_is(
@@ -81,7 +81,7 @@ def error_is(
     __tracebackhide__ = True
     seat.helper()
     if not any(item is target for item in _chain(exc)):
-        report(seat, mode, f"{msg}: got error {exc!r}, want one matching {target!r}")
+        report_failure(seat, mode, "err-is", msg, {"want": target, "got": exc})
 
 
 def error_is_not(
@@ -99,9 +99,7 @@ def error_is_not(
     __tracebackhide__ = True
     seat.helper()
     if any(item is target for item in _chain(exc)):
-        report(
-            seat, mode, f"{msg}: error {exc!r} matches {target!r}, want them distinct"
-        )
+        report_failure(seat, mode, "err-is-not", msg, {"got": exc})
 
 
 def error_as(
@@ -128,5 +126,5 @@ def error_as(
     for item in _chain(exc):
         if type(item) is want:
             return item
-    report(seat, mode, f"{msg}: got error {exc!r}, want one of type {want.__name__}")
+    report_failure(seat, mode, "err-as", msg, {"want": want, "got": exc})
     return None

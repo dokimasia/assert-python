@@ -8,7 +8,10 @@ recorder and a harness that collects failures for a report.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
+
+from dokimi_assert.clock import Clock, System
+from dokimi_assert.failure import Failure, call_site, render
 
 
 @runtime_checkable
@@ -68,3 +71,62 @@ def report(seat: Seat, mode: Mode, message: str) -> None:
         seat.record(message)
         return
     seat.fail(message)
+
+
+def report_failure(
+    seat: Seat,
+    mode: Mode,
+    assertion: str,
+    contract: str,
+    detail: dict[str, Any] | None = None,
+) -> None:
+    """Send one record to seat.
+
+    A seat carrying report receives the record; any other seat
+    receives the sentence rendered from it. The call site is read here,
+    so a matcher does not have to count frames.
+
+    This does not decide whether anything failed. A matcher calls it
+    only once its own comparison has failed. Under FATAL it may not
+    return.
+
+    Args:
+        seat: Where the failure is reported.
+        mode: Whether a failure stops the test or is recorded.
+        assertion: The canonical id the definition names.
+        contract: The caller's message, unchanged.
+        detail: The values this assertion declares, or None for an
+            assertion whose failure carries the contract alone.
+    """
+    __tracebackhide__ = True
+    seat.helper()
+    failure = Failure(
+        assertion=assertion,
+        contract=contract,
+        detail=detail or {},
+        where=call_site(),
+    )
+
+    take = getattr(seat, "report", None)
+    if callable(take):
+        take(failure, mode is not Mode.SOFT)
+        return
+    report(seat, mode, render(failure))
+
+
+def clock_of(seat: Seat) -> Clock:
+    """Answer the clock seat carries, or the platform clock.
+
+    Args:
+        seat: Where the failure is reported, which is also where a
+            test supplies time.
+
+    Returns:
+        What the seat carries, or System when it carries nothing.
+    """
+    held = getattr(seat, "clock", None)
+    if callable(held):
+        supplied = held()
+        if isinstance(supplied, Clock):
+            return supplied
+    return System()

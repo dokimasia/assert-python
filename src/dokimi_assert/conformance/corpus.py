@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from importlib import resources
 from types import ModuleType
-from typing import Any
+from typing import Any, cast
 
 from dokimi_assert import check, expect
 from dokimi_assert.conformance.literal import decode
+from dokimi_assert.failure import Failure
 from dokimi_assert.seat import Recorder
 
 #: This language's key in a case's skip table.
@@ -45,6 +47,16 @@ def _invokers(surface: ModuleType) -> dict[str, Callable[..., None]]:
         "matches": surface.matches,
         "close-to": surface.close_to,
         "in-range": surface.in_range,
+        # The assertions a case reaches by naming a behaviour rather
+        # than stating a value.
+        "throws": surface.raises,
+        "not-throws": surface.does_not_raise,
+        "honours-cancellation": surface.honours_cancellation,
+        "honours-deadline": surface.honours_deadline,
+        "nil-context-safe": surface.none_handle_safe,
+        "pure": surface.is_pure,
+        "eventually": surface.eventually,
+        "eventually-true": surface.eventually_true,
     }
 
 
@@ -68,7 +80,8 @@ class Case:
     assertion: str
     args: list[Any]
     expect: str
-    message_contains: list[str] = field(default_factory=list)
+    detail: dict[str, Any] = field(default_factory=dict)
+    subject: str | None = None
     skip: dict[str, str] = field(default_factory=dict)
 
     @property
@@ -101,15 +114,72 @@ class Case:
         if self.expect == FAIL:
             if not recorder.failed:
                 return f"{self.id} expects fail, got pass"
-            for wanted in self.message_contains:
-                if wanted not in recorder.message:
-                    return (
-                        f"{self.id} failure {recorder.message!r} "
-                        f"does not carry {wanted!r}"
-                    )
-            return None
+            if not recorder.failures:
+                return f"{self.id} reported no record; the assertion did not report one"
+            return self._check_detail(recorder.failures[0])
 
         return f"{self.id} states an unknown expectation {self.expect!r}"
+
+    def _check_detail(self, failure: Failure) -> str | None:
+        """Say how a record's detail differs from what the case states.
+
+        Every field the case states must match; a field it leaves out
+        is not checked.
+
+        Args:
+            failure: The record the assertion reported.
+
+        Returns:
+            What went wrong, or None when every stated field matches.
+        """
+        for name, want in self.detail.items():
+            if name not in failure.detail:
+                return f"{self.id} record holds no detail {name!r}, want {want!r}"
+            held = failure.detail[name]
+            if not _same(held, want):
+                return f"{self.id} detail {name!r} is {held!r}, want {want!r}"
+        return None
+
+
+def _same(held: Any, want: Any) -> bool:
+    """Whether a reported value matches what a case states.
+
+    A NaN is unequal to itself under the standard's own rules, which
+    would make a case stating one impossible to satisfy. Here the
+    question is whether the assertion reported the value the case
+    named, so two NaNs of the same type count as the same value.
+
+    Args:
+        held: What the assertion reported.
+        want: What the case states.
+
+    Returns:
+        True when they are the same value.
+    """
+    if (
+        isinstance(held, float)
+        and isinstance(want, float)
+        and math.isnan(held)
+        and math.isnan(want)
+    ):
+        return True
+    return bool(held == want) and type(held) is type(want)
+
+
+def _subject_kind(raw: dict[str, Any]) -> str | None:
+    """The behaviour a case names, or None when it states values.
+
+    Args:
+        raw: The case as the corpus file states it.
+
+    Returns:
+        The subject kind, or None.
+    """
+    stated: object = raw.get("subject")
+    if not isinstance(stated, dict):
+        return None
+    kind: object = cast("dict[str, object]", stated).get("kind")
+    return kind if isinstance(kind, str) else None
 
 
 def cases() -> Iterator[Case]:
@@ -128,8 +198,11 @@ def cases() -> Iterator[Case]:
             yield Case(
                 id=raw["id"],
                 assertion=assertion,
-                args=[decode(a) for a in raw["args"]],
+                args=[decode(a) for a in raw.get("args", [])],
                 expect=raw["expect"],
-                message_contains=raw.get("message_contains", []),
+                subject=_subject_kind(raw),
+                detail={
+                    name: decode(value) for name, value in raw.get("detail", {}).items()
+                },
                 skip=raw.get("skip", {}),
             )

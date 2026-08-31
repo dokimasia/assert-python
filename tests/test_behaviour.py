@@ -98,7 +98,10 @@ def test_completes_within_names_the_ceiling_it_missed() -> None:
     """The failure carries both readings, so the margin is visible."""
     seat = Recorder()
     check.completes_within(seat, 0.0, lambda: None, "it is quick")
-    check.contains(OUTER, seat.message, "want at most", "it names the ceiling")
+    check.equal(OUTER, seat.failures[0].detail["want"], 0.0, "it names the ceiling")
+    check.is_true(
+        OUTER, seat.failures[0].detail["got"] >= 0.0, "it names what it measured"
+    )
 
 
 def test_is_pure_passes_when_the_projection_holds() -> None:

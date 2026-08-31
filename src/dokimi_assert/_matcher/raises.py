@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from dokimi_assert._matcher.seat import Mode, Seat, report
+from dokimi_assert._matcher.seat import Mode, Seat, report_failure
 
 
 def raises(
@@ -35,7 +35,7 @@ def raises(
         fn()
     except Exception as caught:
         return caught
-    report(seat, mode, f"{msg}: expected an exception, the callable returned")
+    report_failure(seat, mode, "throws", msg)
     return None
 
 
@@ -59,4 +59,4 @@ def does_not_raise(seat: Seat, mode: Mode, fn: Callable[[], Any], msg: str) -> N
     try:
         fn()
     except Exception as caught:
-        report(seat, mode, f"{msg}: unexpected exception: {caught!r}")
+        report_failure(seat, mode, "not-throws", msg, {"got": caught})

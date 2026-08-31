@@ -7,7 +7,11 @@ recorder and a harness that collects failures for a report.
 
 from __future__ import annotations
 
+import threading
+
 from dokimi_assert._matcher.seat import Seat
+from dokimi_assert.clock import Clock, System
+from dokimi_assert.failure import Failure, render
 
 __all__ = ["Collector", "Recorder", "Seat", "Standard"]
 
@@ -73,10 +77,67 @@ class Recorder:
         self._fatal: str | None = None
         self._recorded: list[str] = []
         self._helpers: int = 0
+        self._records: list[Failure] = []
+        self._clock: Clock | None = None
+        self._guard: threading.Lock = threading.Lock()
 
     def helper(self) -> None:
         """Count one helper-frame mark."""
-        self._helpers += 1
+        with self._guard:
+            self._helpers += 1
+
+    def report(self, failure: Failure, aborting: bool) -> None:
+        """Record one failure as the record it is.
+
+        This is what lets a test read the assertion's own fields rather
+        than search its sentence for words. The rendered sentence is
+        kept too, so message answers what it always did.
+
+        Args:
+            failure: The record the assertion reported.
+            aborting: Whether it came from the aborting surface.
+        """
+        with self._guard:
+            self._records.append(failure)
+        if aborting:
+            self.fail(render(failure))
+            return
+        self.record(render(failure))
+
+    @property
+    def failures(self) -> list[Failure]:
+        """Every record that arrived, in call order.
+
+        A message passed straight to fail or record leaves none, so an
+        assertion that did not report a record is visible here.
+
+        Returns:
+            Every record that arrived, in call order.
+        """
+        with self._guard:
+            return list(self._records)
+
+    def clock(self) -> Clock:
+        """The clock this seat hands assertions.
+
+        Returns:
+            What with_clock set, or the platform clock.
+        """
+        with self._guard:
+            return self._clock if self._clock is not None else System()
+
+    def with_clock(self, clock: Clock) -> Recorder:
+        """Make assertions reported here read clock rather than the platform.
+
+        Args:
+            clock: Where those assertions read time.
+
+        Returns:
+            The receiver, so the call chains onto the constructor.
+        """
+        with self._guard:
+            self._clock = clock
+        return self
 
     def fail(self, message: str) -> None:
         """Record a failure. The first message is the one kept.
@@ -84,8 +145,9 @@ class Recorder:
         Args:
             message: The failure text, already formatted.
         """
-        if self._fatal is None:
-            self._fatal = message
+        with self._guard:
+            if self._fatal is None:
+                self._fatal = message
 
     def record(self, message: str) -> None:
         """Record a failure and return.
@@ -93,7 +155,8 @@ class Recorder:
         Args:
             message: The failure text, already formatted.
         """
-        self._recorded.append(message)
+        with self._guard:
+            self._recorded.append(message)
 
     @property
     def failed(self) -> bool:
@@ -102,7 +165,8 @@ class Recorder:
         Returns:
             Whether any failure was recorded, through either path.
         """
-        return self._fatal is not None or bool(self._recorded)
+        with self._guard:
+            return self._fatal is not None or bool(self._recorded)
 
     @property
     def message(self) -> str:
@@ -115,9 +179,10 @@ class Recorder:
         Returns:
             The first failure recorded, or an empty string when nothing failed.
         """
-        if self._fatal is not None:
-            return self._fatal
-        return self._recorded[0] if self._recorded else ""
+        with self._guard:
+            if self._fatal is not None:
+                return self._fatal
+            return self._recorded[0] if self._recorded else ""
 
     @property
     def messages(self) -> list[str]:
@@ -126,7 +191,8 @@ class Recorder:
         Returns:
             Every failure recorded through record, in call order.
         """
-        return list(self._recorded)
+        with self._guard:
+            return list(self._recorded)
 
     @property
     def helper_calls(self) -> int:
@@ -135,7 +201,8 @@ class Recorder:
         Returns:
             How many times helper was called.
         """
-        return self._helpers
+        with self._guard:
+            return self._helpers
 
 
 class Collector:
@@ -158,9 +225,62 @@ class Collector:
     def __init__(self) -> None:
         """Return a seat holding nothing."""
         self._collected: list[str] = []
+        self._records: list[Failure] = []
+        self._clock: Clock | None = None
+        self._guard: threading.Lock = threading.Lock()
 
     def helper(self) -> None:
         """Hide this library's frames from the reported traceback."""
+
+    def report(self, failure: Failure, aborting: bool) -> None:
+        """Take one record: raise it when aborting, keep it otherwise.
+
+        The record is kept either way, so a test can read the
+        assertion's own fields rather than search its sentence.
+
+        Args:
+            failure: The record the assertion reported.
+            aborting: Whether it came from the aborting surface.
+        """
+        __tracebackhide__ = True
+        with self._guard:
+            self._records.append(failure)
+        if aborting:
+            self.fail(render(failure))
+            return
+        self.record(render(failure))
+
+    @property
+    def failures(self) -> list[Failure]:
+        """Every record that arrived, in call order.
+
+        Returns:
+            Every record that arrived, in call order.
+        """
+        with self._guard:
+            return list(self._records)
+
+    def clock(self) -> Clock:
+        """The clock this seat hands assertions.
+
+        Returns:
+            What with_clock set, or the platform clock.
+        """
+        with self._guard:
+            return self._clock if self._clock is not None else System()
+
+    def with_clock(self, clock: Clock) -> Collector:
+        """Make assertions reported here read clock rather than the platform.
+
+        Args:
+            clock: Where those assertions read time.
+
+        Returns:
+            The receiver, so the call chains onto the constructor.
+        """
+        with self._guard:
+            self._clock = clock
+        return self
 
     def fail(self, message: str) -> None:
         """Raise AssertionError, stopping the test here.
@@ -177,7 +297,8 @@ class Collector:
         Args:
             message: The failure text, already formatted.
         """
-        self._collected.append(message)
+        with self._guard:
+            self._collected.append(message)
 
     @property
     def collected(self) -> list[str]:
@@ -186,7 +307,8 @@ class Collector:
         Returns:
             Every failure kept so far, in call order.
         """
-        return list(self._collected)
+        with self._guard:
+            return list(self._collected)
 
     def flush(self) -> None:
         """Raise one AssertionError carrying every failure.
@@ -195,10 +317,10 @@ class Collector:
         seat reused across phases does not report a failure twice.
         """
         __tracebackhide__ = True
-        if not self._collected:
-            return
-
-        collected, self._collected = self._collected, []
+        with self._guard:
+            if not self._collected:
+                return
+            collected, self._collected = self._collected, []
         if len(collected) == 1:
             raise AssertionError(collected[0])
 

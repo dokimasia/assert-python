@@ -31,6 +31,7 @@ is available with no conftest and nothing to import.
 ```python
 from dokimi_assert import check
 
+
 def test_get(seat):
     item = store.get("widget")
 
@@ -72,6 +73,7 @@ one run shows every property that failed.
 
 ```python
 from dokimi_assert import check, expect
+
 
 def test_reply(seat):
     reply = client.fetch(url)
@@ -244,6 +246,7 @@ Read them with `help(check.close_to)` or in your editor.
 ```python
 from dokimi_assert import check
 
+
 def test_shapes(seat):
     err = check.raises(seat, lambda: parse("{"), "a truncated body is refused")
     check.contains(seat, str(err), "unexpected end", "and it says where")
@@ -251,6 +254,7 @@ def test_shapes(seat):
     check.pairwise(seat, timestamps, lambda a, b: a <= b, "the log is ordered")
     check.close_to(seat, elapsed, 1.0, 0.05, "the retry waited about a second")
     check.matches(seat, request_id, r"^req_[0-9a-f]{16}$", "the id is well formed")
+
 
 def test_cancellation(seat):
     # The subject is a coroutine function; the test is not. The
@@ -291,6 +295,7 @@ another is how two tests come to mean different things.
 ```python
 from dokimi_assert import golden
 
+
 def test_render(seat):
     golden.match_at(
         seat,
@@ -330,7 +335,7 @@ The assertions are defined in
 language-neutral, and implemented in several languages. This library
 vendors the definition and holds itself to it:
 
-- 70 corpus cases state what each assertion must report, run against
+- 87 corpus cases state what each assertion must report, run against
   both surfaces. They are the same cases every other implementation
   runs.
 - A completeness gate checks every assertion is present under the name
