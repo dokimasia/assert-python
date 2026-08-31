@@ -9,7 +9,7 @@ exceeding it fails the run instead.
     for _ in c.loop(1000):
         store.get(id)
 
-    c.end()
+    c.check()
 
 Python cannot count heap allocations per iteration the way a runtime
 with a counter can. max_allocs and max_bytes measure with
@@ -146,7 +146,7 @@ class Contract:
             self._peak_blocks, self._peak_bytes = blocks, size
             tracemalloc.stop()
 
-    def end(self) -> None:
+    def check(self) -> None:
         """Fail the benchmark for every ceiling exceeded.
 
         Ceilings report through the recording surface, so one run names

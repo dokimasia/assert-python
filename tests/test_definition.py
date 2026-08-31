@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 
 from dokimi_assert import bench, check, expect, golden, option
+from dokimi_assert import seat as seat_module
 from dokimi_assert.conformance import definition
 from dokimi_assert.seat import Standard
 
@@ -176,3 +177,52 @@ def test_relaxation_is_offered_or_declined(relaxation: str) -> None:
             f"{relaxation}: {name} is named and not importable"
         )
         assert callable(getattr(option, name)), f"{relaxation}: {name} is not callable"
+
+
+SURFACE = definition.surface_names()
+
+#: Where each surface id resolves. A type or member row lands on the
+#: seat module's classes; a qualified name reaches through OWNERS the
+#: way the assertions do.
+SEAT_TYPES = {"seat", "standard-seat", "recorder-seat", "collector-seat"}
+
+
+def _surface_target(sid: str, name: str) -> tuple[Any, str]:
+    """Answer what to look on, and for what, for one surface row."""
+    if "." in name:
+        owner_name, member = name.split(".", 1)
+        return importlib.import_module(f"dokimi_assert.{owner_name}"), member
+    if "." in sid:
+        owner_id = sid.split(".", 1)[0]
+        owner = getattr(seat_module, SURFACE[owner_id])
+        return owner, name
+    return seat_module, name
+
+
+def test_the_surface_table_states_something() -> None:
+    """A table with nothing would mean the vendored copy is stale."""
+    assert SURFACE, "the surface table states ids"
+
+
+@pytest.mark.parametrize("sid", sorted(SURFACE))
+def test_surface_id_is_offered_or_declined(sid: str) -> None:
+    """An implementing language answers every surface id, one way."""
+    name = SURFACE[sid]
+    declined = definition.declines_surface(sid)
+
+    assert not (name and declined), f"{sid}: named {name!r} and declined"
+    assert name or declined, (
+        f"{sid}: the table gives no Python name and the overlay does not decline it"
+    )
+    if not name:
+        return
+
+    if sid == "contract" or sid.startswith("contract."):
+        owner: Any = importlib.import_module("dokimi_assert.bench").Contract
+        member = name.split(".")[-1]
+        found = owner if sid == "contract" else getattr(owner, member, None)
+        assert found is not None, f"{sid}: {name} is named and not implemented"
+        return
+
+    owner, member = _surface_target(sid, name)
+    assert hasattr(owner, member), f"{sid}: {name} is named and not implemented"

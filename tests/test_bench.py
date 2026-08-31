@@ -30,7 +30,7 @@ def _run(
 
     for _ in contract.loop(iterations):
         body()
-    contract.end()
+    contract.check()
 
     return seat
 

@@ -77,6 +77,37 @@ def relaxation_names() -> dict[str, str]:
     return {rid: named.get(rid, {}).get("python", "") for rid in stated}
 
 
+def surface_names() -> dict[str, str]:
+    """Every surface id, with this language's name for it.
+
+    An id the table gives Python no name for maps to the empty string,
+    which is what an overlay declining it looks like.
+
+    Returns:
+        Surface id to the name a caller types, across the types,
+        members and helpers sections.
+    """
+    table = _read("naming.json").get("surface", {})
+    out: dict[str, str] = {}
+    for section in ("types", "members", "helpers"):
+        for sid, per_language in table.get(section, {}).items():
+            out[sid] = per_language.get("python", "")
+    return out
+
+
+def declines_surface(surface_id: str) -> bool:
+    """Whether the overlay declines this surface id.
+
+    Args:
+        surface_id: The id, as the surface table states it.
+
+    Returns:
+        True when the overlay declares it not offered.
+    """
+    entries = overlay().get("surface", [])
+    return any(entry.get("id") == surface_id for entry in entries)
+
+
 def declines_relaxation(relaxation: str) -> bool:
     """Whether the overlay declines this relaxation.
 
