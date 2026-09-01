@@ -103,3 +103,38 @@ def test_a_ceiling_returns_the_contract_so_they_chain() -> None:
         contract,
         "every ceiling returns the contract",
     )
+
+
+def test_excluding_answers_what_the_setup_made() -> None:
+    """The fixture reaches the measured work, which is the point of it."""
+    seat = Recorder()
+    contract = bench.Contract(seat)
+
+    for _ in contract.loop(1):
+        held = contract.excluding(lambda: [1, 2, 3])
+        check.equal(OUTER, held, [1, 2, 3], "it answers what setup answered")
+    contract.check()
+
+
+def test_excluding_takes_the_setup_time_out_of_the_ceiling() -> None:
+    """Time spent in setup is not time the operation took."""
+    seat = Recorder()
+    contract = bench.Contract(seat).max_latency(0.005)
+
+    for _ in contract.loop(3):
+        contract.excluding(lambda: time.sleep(0.02))
+    contract.check()
+
+    check.is_false(OUTER, seat.failed, "an excluded sleep is not timed")
+
+
+def test_the_same_sleep_unexcluded_crosses_the_ceiling() -> None:
+    """Without this the case above passes against an excluding that does nothing."""
+    seat = Recorder()
+    contract = bench.Contract(seat).max_latency(0.005)
+
+    for _ in contract.loop(3):
+        time.sleep(0.02)
+    contract.check()
+
+    check.is_true(OUTER, seat.failed, "a sleep nobody excluded is timed")

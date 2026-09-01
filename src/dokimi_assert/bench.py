@@ -22,7 +22,8 @@ from __future__ import annotations
 
 import time
 import tracemalloc
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from typing import TypeVar
 
 from dokimi_assert import expect
 from dokimi_assert._matcher.seat import Seat
@@ -32,6 +33,10 @@ __all__ = ["Contract"]
 #: The quantile max_latency holds. The tail is what a caller waits
 #: for; a mean hides it.
 P99 = 0.99
+
+
+#: What a benchmark's setup answers, threaded to the measured work.
+_T = TypeVar("_T")
 
 
 class Contract:
@@ -53,6 +58,7 @@ class Contract:
         self._seat: Seat = seat
         self._each: list[float] = []
         self._traced: bool = False
+        self._excluded: float = 0.0
         self._peak_blocks: int = 0
         self._peak_bytes: int = 0
 
@@ -139,12 +145,46 @@ class Contract:
         for index in range(iterations):
             started = time.perf_counter()
             yield index
-            self._each.append(time.perf_counter() - started)
+            self._each.append(time.perf_counter() - started - self._excluded)
+            self._excluded = 0.0
 
         if self._traced:
             blocks, size = tracemalloc.get_traced_memory()
             self._peak_blocks, self._peak_bytes = blocks, size
             tracemalloc.stop()
+
+    def excluding(self, setup: Callable[[], _T]) -> _T:
+        """Run setup outside the measurement and answer what it made.
+
+        A benchmark whose operation consumes its input builds a fresh one
+        each iteration, and without this the ceilings state what the
+        build and the operation cost together::
+
+            for _ in contract.loop(10_000):
+                store = contract.excluding(fresh_store)
+                store.settle()
+
+        The time setup spends is taken out of the iteration. Its
+        allocations are not: tracemalloc answers the memory traced right
+        now rather than a count of allocations made, and a level cannot
+        have a running total subtracted from it. The allocation ceilings
+        here read that same level, so both are wrong together and this
+        does not make them worse.
+
+        Calling it outside a loop body is allowed and changes nothing a
+        caller would notice, because there is no iteration to take the
+        time from.
+
+        Args:
+            setup: The work to run outside the measurement.
+
+        Returns:
+            Whatever setup answered.
+        """
+        started = time.perf_counter()
+        made = setup()
+        self._excluded += time.perf_counter() - started
+        return made
 
     def check(self) -> None:
         """Fail the benchmark for every ceiling exceeded.
