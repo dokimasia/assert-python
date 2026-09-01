@@ -156,3 +156,30 @@ def test_none_handle_safe_reports_a_subject_that_dereferences() -> None:
         seat, lambda handle: handle.cancelled, "it survives a missing handle"
     )
     check.is_true(OUTER, seat.failed, "dereferencing a None handle is reported")
+
+
+def test_an_async_assertion_says_so_when_a_loop_is_already_running() -> None:
+    """The confusing failure is the one asyncio raises from inside here.
+
+    These assertions own the loop, which is what keeps a test using one
+    a plain def. Called from a test that is already async they cannot,
+    and the caller is told which assertion and what to do instead.
+    """
+
+    async def cancels() -> None:
+        await asyncio.sleep(0)
+        raise asyncio.CancelledError
+
+    async def from_inside_a_loop() -> str:
+        try:
+            check.honours_cancellation(Recorder(), cancels, "it honours cancellation")
+        except RuntimeError as caught:
+            return str(caught)
+        return ""
+
+    said = asyncio.run(from_inside_a_loop())
+
+    check.contains(
+        OUTER, said, "honours-cancellation", "the message names the assertion"
+    )
+    check.contains(OUTER, said, "plain def", "the message says what to do instead")

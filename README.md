@@ -178,7 +178,7 @@ check.raises(seat: Seat, fn: Callable[[], Any], msg: str) -> BaseException | Non
 check.does_not_raise(seat: Seat, fn: Callable[[], Any], msg: str)
 ```
 
-**Cancellation** — asyncio is Python's cancellation model. These run the loop themselves, so your test stays a plain def.
+**Cancellation** — asyncio is Python's cancellation model. These run the loop themselves, so your test stays a plain def. That is also the limit: the two that drive a coroutine cannot be called from a test already running a loop, and say so naming the assertion when they are.
 
 ```python
 check.honours_cancellation(seat: Seat, fn: Callable[[], Awaitable[Any]], msg: str)

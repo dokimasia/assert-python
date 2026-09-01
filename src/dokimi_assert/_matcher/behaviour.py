@@ -23,6 +23,39 @@ _S = TypeVar("_S")
 NOTICE_TIMEOUT = 1.0
 
 
+def _on_its_own_loop(assertion: str, drive: Callable[[], Awaitable[Any]]) -> Any:
+    """Run drive on an event loop belonging to this assertion.
+
+    These assertions own the loop so a test using one stays a plain def.
+    That works only where no loop is running yet. A test that is already
+    async is told so here, naming the assertion, rather than meeting
+    asyncio's own error raised from somewhere inside this library.
+
+    Args:
+        assertion: The canonical id, so the message names what failed.
+        drive: Builds the coroutine to run. Called only once the loop is
+            known to be free, so nothing is left unawaited.
+
+    Returns:
+        Whatever drive's coroutine returned.
+
+    Raises:
+        RuntimeError: When a loop is already running.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(drive())
+
+    msg = (
+        f"{assertion} runs the event loop itself, so it cannot be called "
+        f"from a test that is already running one. Write the test as a "
+        f"plain def and let the assertion drive the subject, or drive the "
+        f"subject yourself and assert on what it raised."
+    )
+    raise RuntimeError(msg)
+
+
 def honours_cancellation(
     seat: Seat, mode: Mode, fn: Callable[[], Awaitable[Any]], msg: str
 ) -> None:
@@ -57,7 +90,7 @@ def honours_cancellation(
             return f"cancellation produced {caught!r}, want CancelledError"
         return "a cancelled subject returned normally"
 
-    problem = asyncio.run(drive())
+    problem = _on_its_own_loop("honours-cancellation", drive)
     if problem is not None:
         report_failure(seat, mode, "honours-cancellation", msg, {"got": problem})
 
@@ -96,7 +129,7 @@ def honours_deadline(
             return f"an expired deadline produced {caught!r}, want a timeout"
         return "a subject given no time returned normally"
 
-    problem = asyncio.run(drive())
+    problem = _on_its_own_loop("honours-deadline", drive)
     if problem is not None:
         report_failure(seat, mode, "honours-deadline", msg, {"got": problem})
 

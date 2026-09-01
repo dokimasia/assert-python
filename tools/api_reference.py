@@ -61,7 +61,10 @@ FAMILIES: list[tuple[str, str, list[str]]] = [
     (
         "Cancellation",
         "asyncio is Python's cancellation model. These run the "
-        "loop themselves, so your test stays a plain def.",
+        "loop themselves, so your test stays a plain def. That is "
+        "also the limit: the two that drive a coroutine cannot be "
+        "called from a test already running a loop, and say so "
+        "naming the assertion when they are.",
         [
             "honours_cancellation",
             "honours_deadline",

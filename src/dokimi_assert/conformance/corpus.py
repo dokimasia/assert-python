@@ -72,7 +72,7 @@ SURFACES: dict[str, dict[str, Callable[..., None]]] = {
 INVOKERS: dict[str, Callable[..., None]] = SURFACES["check"]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Case:
     """One corpus case: what an assertion is given, and what it must report."""
 
