@@ -9,7 +9,7 @@ cancellation assertions drive a coroutine function.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine
 from typing import Any, TypeVar
 
 from dokimi_assert._matcher.compare import equal as _equal
@@ -23,7 +23,9 @@ _S = TypeVar("_S")
 NOTICE_TIMEOUT = 1.0
 
 
-def _on_its_own_loop(assertion: str, drive: Callable[[], Awaitable[Any]]) -> Any:
+def _on_its_own_loop(
+    assertion: str, drive: Callable[[], Coroutine[Any, Any, Any]]
+) -> Any:
     """Run drive on an event loop belonging to this assertion.
 
     These assertions own the loop so a test using one stays a plain def.
