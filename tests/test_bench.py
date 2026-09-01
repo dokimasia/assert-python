@@ -18,6 +18,10 @@ OUTER = Standard()
 #: enough to stay quick.
 ITERATIONS = 100
 
+#: Roughly what one bytearray(4096) costs once tracemalloc has counted
+#: its header. Ceilings below are set well clear of it.
+BLOCK = 4200
+
 
 def _run(
     iterations: int,
@@ -38,6 +42,12 @@ def _run(
 def _noop() -> object:
     """Cost as little as a body can."""
     return None
+
+
+def _churn() -> None:
+    """Allocate ten blocks and free them all before the iteration ends."""
+    held = [bytearray(4096) for _ in range(10)]
+    del held
 
 
 def test_the_body_runs_once_per_iteration() -> None:
@@ -88,10 +98,42 @@ def test_every_exceeded_ceiling_is_reported() -> None:
     check.length(OUTER, seat.messages, 2, "both exceeded ceilings are reported")
 
 
-def test_an_exceeded_allocation_ceiling_reports() -> None:
-    """A body that allocates exceeds a ceiling of none."""
-    seat = _run(ITERATIONS, lambda c: c.max_allocs(0), lambda: bytearray(4096))
-    check.is_true(OUTER, seat.failed, "a body that allocates reports")
+def test_a_body_that_allocates_nothing_holds_a_tight_ceiling() -> None:
+    """The contract's own bookkeeping must not spend a caller's ceiling."""
+    seat = _run(ITERATIONS, lambda c: c.max_bytes(1024), _noop)
+    check.is_false(OUTER, seat.failed, "an empty body holds a ceiling of 1024 bytes")
+
+
+def test_a_body_within_its_ceiling_reports_nothing() -> None:
+    """One block per iteration passes a ceiling with room for two."""
+    seat = _run(
+        ITERATIONS,
+        lambda c: c.max_bytes(BLOCK * 2),
+        lambda: bytearray(4096),
+    )
+    check.is_false(OUTER, seat.failed, "one block stays under a ceiling of two")
+
+
+def test_an_exceeded_byte_ceiling_reports() -> None:
+    """A body over its ceiling is reported."""
+    seat = _run(
+        ITERATIONS,
+        lambda c: c.max_bytes(BLOCK * 2),
+        lambda: bytearray(64 * 1024),
+    )
+    check.is_true(OUTER, seat.failed, "a body past its ceiling reports")
+
+
+def test_memory_freed_before_the_iteration_ends_still_counts() -> None:
+    """A level would read nothing here, which is the bug this holds shut.
+
+    The body allocates ten blocks and frees every one, so the memory live
+    when the iteration ends is what it was when the iteration started.
+    Measuring that level reports roughly nothing and the ceiling passes.
+    What the ceiling has to see is the peak the body reached.
+    """
+    seat = _run(ITERATIONS, lambda c: c.max_bytes(BLOCK * 4), _churn)
+    check.is_true(OUTER, seat.failed, "ten blocks freed still cross a ceiling of four")
 
 
 def test_a_ceiling_returns_the_contract_so_they_chain() -> None:
@@ -99,7 +141,7 @@ def test_a_ceiling_returns_the_contract_so_they_chain() -> None:
     contract = bench.Contract(Recorder())
     check.equal(
         OUTER,
-        contract.max_latency(1.0).max_mean(1.0).max_allocs(1).max_bytes(1),
+        contract.max_latency(1.0).max_mean(1.0).max_bytes(1),
         contract,
         "every ceiling returns the contract",
     )
@@ -138,3 +180,29 @@ def test_the_same_sleep_unexcluded_crosses_the_ceiling() -> None:
     contract.check()
 
     check.is_true(OUTER, seat.failed, "a sleep nobody excluded is timed")
+
+
+def test_excluding_takes_the_setup_bytes_out_of_the_ceiling() -> None:
+    """Memory the fixture holds is not memory the operation allocated."""
+    seat = Recorder()
+    contract = bench.Contract(seat).max_bytes(BLOCK * 2)
+
+    for _ in contract.loop(ITERATIONS):
+        held = contract.excluding(lambda: [bytearray(4096) for _ in range(10)])
+        del held
+    contract.check()
+
+    check.is_false(OUTER, seat.failed, "an excluded fixture is not measured")
+
+
+def test_the_same_fixture_unexcluded_crosses_the_ceiling() -> None:
+    """Without this the case above passes against an excluding that does nothing."""
+    seat = Recorder()
+    contract = bench.Contract(seat).max_bytes(BLOCK * 2)
+
+    for _ in contract.loop(ITERATIONS):
+        held = [bytearray(4096) for _ in range(10)]
+        del held
+    contract.check()
+
+    check.is_true(OUTER, seat.failed, "a fixture nobody excluded is measured")

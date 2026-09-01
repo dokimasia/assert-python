@@ -231,8 +231,8 @@ golden.scrub_json_fields(*fields: str) -> Scrubber
 Contract.loop(iterations: int) -> Iterator[int]
 Contract.max_latency(seconds: float) -> Contract
 Contract.max_mean(seconds: float) -> Contract
-Contract.max_allocs(count: int) -> Contract
 Contract.max_bytes(count: int) -> Contract
+Contract.excluding(setup: Callable[[], _T]) -> _T
 ```
 
 Each one carries a full docstring: what it states, what every

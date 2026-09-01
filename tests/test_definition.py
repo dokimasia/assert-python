@@ -34,11 +34,16 @@ CHECK_ONLY = {
 
 
 def _present(name: str, module: Any) -> bool:
-    """Whether module carries name, which for a method is its class."""
+    """Whether module carries name, following a dotted name to its member.
+
+    Stopping at the class would report every member of it present, which
+    reports a declined assertion as implemented.
+    """
     owner, _, rest = name.partition(".")
     if not rest:
         return hasattr(module, name)
-    return hasattr(module, owner)
+    holder = getattr(module, owner, None)
+    return holder is not None and hasattr(holder, rest)
 
 
 def _surface_for(assertion: str, name: str) -> tuple[Any, str]:
@@ -62,8 +67,20 @@ def test_every_assertion_has_a_python_name() -> None:
 
 @pytest.mark.parametrize("assertion", sorted(ASSERTIONS))
 def test_assertion_is_implemented(assertion: str) -> None:
-    """Every assertion the standard states must be present."""
+    """Every assertion the standard states is present unless declined.
+
+    An overlay declining one is checked in both directions. A library
+    that ships the member anyway is claiming a gap it does not have,
+    which the standard fails the build for.
+    """
     module, name = _surface_for(assertion, NAMES[assertion])
+    if definition.diverges(assertion):
+        check.is_false(
+            OUTER,
+            _present(name, module),
+            f"{assertion} is declined by the overlay, so {NAMES[assertion]} is absent",
+        )
+        return
     check.is_true(
         OUTER,
         _present(name, module),
@@ -127,23 +144,30 @@ def test_the_overlay_is_this_language() -> None:
     )
 
 
-def test_the_overlay_declares_no_divergence() -> None:
-    """Every assertion is implemented, so nothing is excused."""
-    check.is_empty(
-        OUTER,
-        definition.overlay()["diverge"],
-        "this library declares no divergence from the standard",
-    )
+def test_every_divergence_names_an_assertion_the_standard_states() -> None:
+    """An overlay excusing a name nobody states excuses nothing."""
+    stated = set(ASSERTIONS)
+    for entry in definition.overlay()["diverge"]:
+        check.contains(
+            OUTER,
+            stated,
+            entry["id"],
+            f"{entry['id']} is an assertion the standard states",
+        )
 
 
-@pytest.mark.parametrize("assertion", sorted(ASSERTIONS))
-def test_no_assertion_is_excused(assertion: str) -> None:
-    """A divergence for an implemented assertion is a false claim."""
-    check.is_false(
-        OUTER,
-        definition.diverges(assertion),
-        f"{assertion} is implemented, so the overlay does not excuse it",
-    )
+def test_every_divergence_says_what_it_is_and_why() -> None:
+    """A gap nobody could close and a gap nobody got to look alike.
+
+    Only the reason tells them apart, so the standard requires one.
+    """
+    for entry in definition.overlay()["diverge"]:
+        for field in ("id", "stance", "why"):
+            check.is_not_empty(
+                OUTER,
+                entry.get(field, ""),
+                f"the divergence for {entry.get('id', '?')} states {field}",
+            )
 
 
 RELAXATIONS = definition.relaxation_names()

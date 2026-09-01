@@ -4,18 +4,21 @@ A benchmark records numbers; somebody has to read them to notice a
 regression. A contract states the ceiling in the benchmark, so
 exceeding it fails the run instead.
 
-    c = bench.Contract(seat).max_latency(0.00005).max_allocs(2)
+    c = bench.Contract(seat).max_latency(0.00005).max_bytes(4096)
 
     for _ in c.loop(1000):
         store.get(id)
 
     c.check()
 
-Python cannot count heap allocations per iteration the way a runtime
-with a counter can. max_allocs and max_bytes measure with
-tracemalloc, which counts allocations Python itself made and
-carries real overhead; a ceiling set from a run without tracing will
-not hold in one with it. Latency needs no such caveat.
+There is no ceiling on allocations here. CPython counts no allocations:
+every primitive it offers answers a level of live memory rather than a
+running total, so a body that allocates ten blocks and frees them reads
+the same as one that allocates nothing. The standard's overlay for this
+language records that.
+
+max_bytes measures with tracemalloc, which carries real overhead. Set
+the ceiling from a run that had it on.
 """
 
 from __future__ import annotations
@@ -59,12 +62,12 @@ class Contract:
         self._each: list[float] = []
         self._traced: bool = False
         self._excluded: float = 0.0
-        self._peak_blocks: int = 0
-        self._peak_bytes: int = 0
+        self._peaks: list[int] = []
+        self._held: int = 0
+        self._base: int = 0
 
         self._max_latency: float | None = None
         self._max_mean: float | None = None
-        self._max_allocs: int | None = None
         self._max_bytes: int | None = None
 
     def max_latency(self, seconds: float) -> Contract:
@@ -99,26 +102,20 @@ class Contract:
         self._max_mean = seconds
         return self
 
-    def max_allocs(self, count: int) -> Contract:
-        """State the most allocations per iteration, and chain.
-
-        Turns on tracemalloc, which slows the benchmark. Set the
-        ceiling from a traced run.
-
-        Args:
-            count: The highest acceptable allocations per iteration.
-
-        Returns:
-            The contract, so ceilings can be chained.
-        """
-        self._max_allocs = count
-        return self
-
     def max_bytes(self, count: int) -> Contract:
-        """State the most bytes allocated per iteration, and chain.
+        """State the most bytes an iteration may hold at once, and chain.
+
+        The number held is the high-water mark of traced memory reached
+        during one iteration, measured above what was already live when
+        that iteration started. A body that allocates a megabyte and
+        frees it is measured at a megabyte, which is what a ceiling on
+        allocation is asked to catch.
+
+        Turns on tracemalloc, which slows the benchmark. Set the ceiling
+        from a traced run.
 
         Args:
-            count: The highest acceptable bytes allocated per iteration.
+            count: The highest acceptable bytes held per iteration.
 
         Returns:
             The contract, so ceilings can be chained.
@@ -127,10 +124,10 @@ class Contract:
         return self
 
     def loop(self, iterations: int) -> Iterator[int]:
-        """Yield each iteration index, timing the body between yields.
+        """Yield each iteration index, measuring the body between yields.
 
-        Allocation tracing starts here rather than at construction, so
-        the setup before the loop is not counted.
+        Tracing starts here rather than at construction, so whatever the
+        caller built before the loop is not measured.
 
         Args:
             iterations: How many times to run the body.
@@ -138,19 +135,24 @@ class Contract:
         Returns:
             The measurement, for a later assertion to read.
         """
-        if self._tracing_wanted():
+        if self._max_bytes is not None:
             tracemalloc.start()
             self._traced = True
 
         for index in range(iterations):
+            self._held = 0
+            self._rebase()
             started = time.perf_counter()
+
             yield index
-            self._each.append(time.perf_counter() - started - self._excluded)
+
+            stopped = time.perf_counter()
+            if self._traced:
+                self._peaks.append(self._held + self._reached())
+            self._each.append(stopped - started - self._excluded)
             self._excluded = 0.0
 
         if self._traced:
-            blocks, size = tracemalloc.get_traced_memory()
-            self._peak_blocks, self._peak_bytes = blocks, size
             tracemalloc.stop()
 
     def excluding(self, setup: Callable[[], _T]) -> _T:
@@ -164,16 +166,14 @@ class Contract:
                 store = contract.excluding(fresh_store)
                 store.settle()
 
-        The time setup spends is taken out of the iteration. Its
-        allocations are not: tracemalloc answers the memory traced right
-        now rather than a count of allocations made, and a level cannot
-        have a running total subtracted from it. The allocation ceilings
-        here read that same level, so both are wrong together and this
-        does not make them worse.
+        Neither the time setup spends nor the memory it holds counts
+        against a ceiling. The bytes it left live become part of the
+        baseline the rest of the iteration is measured above.
 
-        Calling it outside a loop body is allowed and changes nothing a
-        caller would notice, because there is no iteration to take the
-        time from.
+        Calling it more than once in a body splits the iteration into
+        spans, and what each span held at once is summed. Calling it
+        outside a loop body is allowed and changes nothing a caller would
+        notice, because there is no iteration to take the time from.
 
         Args:
             setup: The work to run outside the measurement.
@@ -181,9 +181,14 @@ class Contract:
         Returns:
             Whatever setup answered.
         """
+        if self._traced:
+            self._held += self._reached()
+
         started = time.perf_counter()
         made = setup()
         self._excluded += time.perf_counter() - started
+
+        self._rebase()
         return made
 
     def check(self) -> None:
@@ -217,23 +222,21 @@ class Contract:
                 self._max_mean,
                 "the mean latency per iteration stays within its ceiling",
             )
-        if self._max_allocs is not None:
+        if self._max_bytes is not None and self._peaks:
             expect.in_range(
                 self._seat,
-                self._peak_blocks / count,
-                0,
-                self._max_allocs,
-                "the allocations per iteration stay within their ceiling",
-            )
-        if self._max_bytes is not None:
-            expect.in_range(
-                self._seat,
-                self._peak_bytes / count,
+                sum(self._peaks) / len(self._peaks),
                 0,
                 self._max_bytes,
-                "the bytes allocated per iteration stay within their ceiling",
+                "the bytes held per iteration stay within their ceiling",
             )
 
-    def _tracing_wanted(self) -> bool:
-        """Whether a stated ceiling needs allocation tracing."""
-        return self._max_allocs is not None or self._max_bytes is not None
+    def _rebase(self) -> None:
+        """Start a fresh span, measured above what is live right now."""
+        if self._traced:
+            tracemalloc.reset_peak()
+            self._base = tracemalloc.get_traced_memory()[0]
+
+    def _reached(self) -> int:
+        """Return the most the current span held above its baseline."""
+        return tracemalloc.get_traced_memory()[1] - self._base

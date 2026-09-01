@@ -160,7 +160,7 @@ def render() -> str:
     out.append(signature(bench.Contract, "loop", "Contract."))
     out += [
         signature(bench.Contract, n, "Contract.")
-        for n in ("max_latency", "max_mean", "max_allocs", "max_bytes")
+        for n in ("max_latency", "max_mean", "max_bytes", "excluding")
     ]
     out.append("```")
     out.append("")
