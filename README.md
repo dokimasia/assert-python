@@ -340,8 +340,9 @@ vendors the definition and holds itself to it:
   runs.
 - A completeness gate checks every assertion is present under the name
   the naming table gives it.
-- An overlay records any assertion this library cannot supply. It is
-  empty: all 41 are implemented.
+- An overlay records any assertion this library cannot supply: the two
+  that count allocations, `max_allocs` on a call and
+  `bench.Contract.max_allocs`. The other 40 of the 42 are implemented.
 
 ### Where Python differs
 
@@ -355,9 +356,11 @@ coroutine function rather than a callable.
 a subject finished in time, and a slow subject runs to completion
 first.
 
-Allocation ceilings use `tracemalloc`, which counts what Python itself
-allocated and carries real overhead. Set those ceilings from a traced
-run; latency ceilings need no such care.
+CPython counts no allocations, only the memory alive at one moment, so
+neither allocation-count ceiling exists here. The byte ceiling,
+`bench.Contract.max_bytes`, uses `tracemalloc`, which measures what
+Python itself allocated and carries real overhead. Set that ceiling from
+a traced run; latency ceilings need no such care.
 
 ## Development
 

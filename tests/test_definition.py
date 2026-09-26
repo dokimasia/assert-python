@@ -93,8 +93,21 @@ def test_assertion_is_implemented(assertion: str) -> None:
     sorted(a for a in ASSERTIONS if not ASSERTIONS[a].get("package")),
 )
 def test_unqualified_assertion_is_on_both_surfaces(assertion: str) -> None:
-    """An assertion in the root namespace is on both surfaces."""
+    """An assertion in the root namespace is on both surfaces.
+
+    One the overlay declines is on neither, for the reason the
+    completeness check above gives.
+    """
     name = NAMES[assertion]
+    if definition.diverges(assertion):
+        declined = f"{name} is declined by the overlay"
+        check.not_contains(
+            OUTER, check.__all__, name, f"{declined}, so off the aborting surface"
+        )
+        check.not_contains(
+            OUTER, expect.__all__, name, f"{declined}, so off the recording surface"
+        )
+        return
     if name in CHECK_ONLY:
         check.not_contains(
             OUTER,
