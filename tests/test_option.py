@@ -1,65 +1,72 @@
-"""Relaxations a caller may apply to one comparison."""
+"""The spec of option.py: the relaxations that a caller passes to one comparison."""
 
 from __future__ import annotations
 
 import math
 
-from dokimi_assert import check
-from dokimi_assert._matcher.option import equate_empty, equate_nans, settings
-from dokimi_assert.seat import Recorder, Standard
-
-OUTER = Standard()
+from dokimi_assert import check, option
+from dokimi_assert._matcher import option as matcher
+from dokimi_assert.seat import Collector, Recorder
 
 
-def test_no_options_relax_nothing() -> None:
-    """The default comparison applies every rule."""
-    folded = settings(())
-    check.is_false(OUTER, folded.equate_empty, "empty is not relaxed by default")
-    check.is_false(OUTER, folded.equate_nans, "NaN is not relaxed by default")
-
-
-def test_an_option_relaxes_only_its_own_rule() -> None:
-    """The flags are independent."""
-    folded = settings((equate_empty(),))
-    check.is_true(OUTER, folded.equate_empty, "the asked-for rule is relaxed")
-    check.is_false(OUTER, folded.equate_nans, "the other rule is not")
-
-
-def test_options_fold_together() -> None:
-    """Several options apply at once."""
-    folded = settings((equate_empty(), equate_nans()))
-    check.is_true(OUTER, folded.equate_empty, "the first is relaxed")
-    check.is_true(OUTER, folded.equate_nans, "the second is relaxed")
-
-
-def test_passing_one_twice_is_passing_it_once() -> None:
-    """An option sets a flag rather than appending to a list."""
+def test_re_exports_the_options_of_the_matcher(seat: Collector) -> None:
+    """Each public option is the matcher's function."""
     check.equal(
-        OUTER,
-        settings((equate_empty(), equate_empty())),
-        settings((equate_empty(),)),
-        "a repeated option changes nothing",
+        seat,
+        [
+            option.equate_empty is matcher.equate_empty,
+            option.equate_nans is matcher.equate_nans,
+            option.by_identity is matcher.by_identity,
+            option.Option is matcher.Option,
+        ],
+        [True, True, True, True],
+        "the public options",
     )
 
 
-def test_an_option_applies_to_one_call_only() -> None:
-    """An option never leaks into a call it was not passed to."""
-    relaxed, strict = Recorder(), Recorder()
+class TestEquateEmpty:
+    """equate_empty."""
 
-    check.equal(relaxed, [], None, "opted in", equate_empty())
-    check.equal(strict, [], None, "not opted in")
+    def test_relaxes_the_call_that_it_is_passed_to_alone(self, seat: Collector) -> None:
+        """A call without the option compares strictly."""
+        recorder = Recorder()
+        check.equal(recorder, None, [], "relaxed", option.equate_empty())
+        check.equal(recorder, None, [], "strict")
+        check.equal(
+            seat,
+            [f.contract for f in recorder.failures],
+            ["strict"],
+            "only the call without the option fails",
+        )
 
-    check.is_false(OUTER, relaxed.failed, "the opted-in call passes")
-    check.is_true(OUTER, strict.failed, "the next call is unaffected")
+
+class TestEquateNans:
+    """equate_nans."""
+
+    def test_relaxes_the_call_that_it_is_passed_to_alone(self, seat: Collector) -> None:
+        """A call without the option compares strictly."""
+        recorder = Recorder()
+        check.equal(recorder, math.nan, math.nan, "relaxed", option.equate_nans())
+        check.equal(recorder, math.nan, math.nan, "strict")
+        check.equal(
+            seat,
+            [f.contract for f in recorder.failures],
+            ["strict"],
+            "only the call without the option fails",
+        )
 
 
-def test_equate_nans_applies_to_one_call_only() -> None:
-    """The same holds for the NaN relaxation."""
-    relaxed, strict = Recorder(), Recorder()
-    nan = math.nan
+class TestByIdentity:
+    """by_identity."""
 
-    check.equal(relaxed, nan, nan, "opted in", equate_nans())
-    check.equal(strict, nan, nan, "not opted in")
-
-    check.is_false(OUTER, relaxed.failed, "the opted-in call passes")
-    check.is_true(OUTER, strict.failed, "the next call is unaffected")
+    def test_narrows_the_call_that_it_is_passed_to_alone(self, seat: Collector) -> None:
+        """A call without the option compares by structure."""
+        recorder = Recorder()
+        check.equal(recorder, {"n": 1}, {"n": 1}, "by identity", option.by_identity())
+        check.equal(recorder, {"n": 1}, {"n": 1}, "by structure")
+        check.equal(
+            seat,
+            [f.contract for f in recorder.failures],
+            ["by identity"],
+            "only the call with the option fails",
+        )

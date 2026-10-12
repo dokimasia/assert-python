@@ -1,4 +1,4 @@
-"""The clock a seat carries, and what a test can do with it."""
+"""The spec of clock.py: the clocks that an assertion reads."""
 
 from __future__ import annotations
 
@@ -6,105 +6,115 @@ import threading
 import time
 
 from dokimi_assert import check
-from dokimi_assert.clock import Controlled, System
-from dokimi_assert.seat import Recorder, Seat, Standard
-
-#: The seat these tests state their own verdicts on. A test of the
-#: clock cannot report through a seat it is driving.
-OUTER = Standard()
+from dokimi_assert.clock import Controlled, System, wait
+from dokimi_assert.seat import Collector
 
 
-def test_now_answers_the_start_until_it_is_advanced() -> None:
-    """A controlled clock reads what it was given until something moves it."""
-    clock = Controlled(100.0)
+class TestSystemNow:
+    """System.now, the reading of the platform clock."""
 
-    check.equal(OUTER, clock.now(), 100.0, "it reads the start")
-    clock.advance(30.0)
-    check.equal(OUTER, clock.now(), 130.0, "it reads the advance")
-
-
-def test_advance_does_not_move_time_backwards() -> None:
-    """Time on this clock only goes forward."""
-    clock = Controlled(100.0)
-    clock.advance(-30.0)
-
-    check.equal(OUTER, clock.now(), 100.0, "a negative advance moves nothing")
+    def test_returns_the_monotonic_reading_of_the_platform(
+        self, seat: Collector
+    ) -> None:
+        """The reading lies between two readings of the platform."""
+        before = time.monotonic()
+        now = System().now()
+        check.in_range(seat, now, before, time.monotonic(), "the reading")
 
 
-def test_sleep_returns_once_another_thread_advances_past_it() -> None:
-    """A sleeper waits for the clock, not for the wall."""
-    clock = Controlled(0.0)
-    done = threading.Event()
+class TestSystemSleep:
+    """System.sleep, a wait on the platform clock."""
 
-    def sleeper() -> None:
-        clock.sleep(60.0)
-        done.set()
+    def test_waits_the_duration_on_the_platform(self, seat: Collector) -> None:
+        """The platform clock passes the duration."""
+        before = time.monotonic()
+        System().sleep(0.01)
+        check.is_true(seat, time.monotonic() - before >= 0.01, "the time passed")
 
-    thread = threading.Thread(target=sleeper)
-    thread.start()
-    try:
+
+class TestControlledNow:
+    """Controlled.now, the reading of a clock that a test moves."""
+
+    def test_returns_the_start_until_the_clock_is_advanced(
+        self, seat: Collector
+    ) -> None:
+        """A new clock reads its start."""
+        check.equal(seat, Controlled(100.0).now(), 100.0, "the start")
+
+
+class TestControlledAdvance:
+    """Controlled.advance, the clock moved forward."""
+
+    def test_moves_the_clock_forward(self, seat: Collector) -> None:
+        """The reading rises by the duration."""
+        clock = Controlled(100.0)
         clock.advance(30.0)
-        check.is_false(
-            OUTER, done.wait(0.05), "it does not return before the clock reaches it"
-        )
+        check.equal(seat, clock.now(), 130.0, "the reading after the advance")
 
-        # Advancing well past the duration releases the sleeper
-        # whichever side of the first advance it started on, which
-        # keeps this from turning on thread scheduling.
-        clock.advance(3600.0)
-        check.is_true(
-            OUTER, done.wait(1.0), "it returns once the clock passes the duration"
-        )
-    finally:
-        clock.advance(3600.0)
-        thread.join(timeout=1.0)
+    def test_ignores_a_duration_that_is_not_positive(self, seat: Collector) -> None:
+        """Time on the clock does not run backwards."""
+        clock = Controlled(100.0)
+        clock.advance(-30.0)
+        clock.advance(0.0)
+        check.equal(seat, clock.now(), 100.0, "the reading")
 
 
-def test_a_recorder_answers_the_platform_clock_by_default() -> None:
-    """A seat that was given no clock reads the platform."""
-    seat = Recorder()
+class TestControlledSleep:
+    """Controlled.sleep, a wait until the clock passes a duration."""
 
-    check.is_true(
-        OUTER, isinstance(seat.clock(), System), "it answers the platform clock"
-    )
+    def test_returns_at_once_for_a_duration_that_is_not_positive(
+        self, seat: Collector
+    ) -> None:
+        """No advance is needed for a sleep of nothing."""
+        clock = Controlled(5.0)
+        clock.sleep(0.0)
+        clock.sleep(-1.0)
+        check.equal(seat, clock.now(), 5.0, "the reading")
 
+    def test_returns_once_another_thread_advances_the_clock_past_it(
+        self, seat: Collector
+    ) -> None:
+        """A sleeper waits for the clock, not for the platform."""
+        clock = Controlled(0.0)
+        stop = threading.Event()
 
-def test_with_clock_supplies_the_clock_an_assertion_reads() -> None:
-    """A test that wants control says so on the seat."""
-    seat = Recorder().with_clock(Controlled(100.0))
+        def advancer() -> None:
+            while not stop.is_set():
+                clock.advance(10.0)
+                stop.wait(0.001)
 
-    check.equal(
-        OUTER, seat.clock().now(), 100.0, "the assertion reads what it was given"
-    )
-
-
-def test_eventually_gives_up_without_spending_real_time() -> None:
-    """An hour of controlled timeout costs no waiting."""
-    seat = Recorder().with_clock(Controlled(0.0))
-
-    started = time.monotonic()
-
-    def never(inner: Seat) -> None:
-        check.is_true(inner, False, "never settles")
-
-    check.eventually(seat, 3600.0, 60.0, never, "the body settles")
-    elapsed = time.monotonic() - started
-
-    check.is_true(OUTER, seat.failed, "a body that never settles reports")
-    check.is_true(OUTER, elapsed < 5.0, "an hour of controlled time costs no waiting")
+        thread = threading.Thread(target=advancer, daemon=True)
+        thread.start()
+        clock.sleep(60.0)
+        stop.set()
+        thread.join(5.0)
+        check.is_true(seat, clock.now() >= 60.0, "the clock passed the duration")
 
 
-def test_eventually_passes_once_the_body_settles() -> None:
-    """A body that comes right is not reported, and stops being retried."""
-    seat = Recorder().with_clock(Controlled(0.0))
-    attempts = 0
+class _Sleeping:
+    """A clock without advance, which keeps the durations that it slept."""
 
-    def settles_on_the_third(inner: Seat) -> None:
-        nonlocal attempts
-        attempts += 1
-        check.is_true(inner, attempts >= 3, "not yet")
+    def __init__(self) -> None:
+        self.slept: list[float] = []
 
-    check.eventually(seat, 3600.0, 60.0, settles_on_the_third, "the body settles")
+    def now(self) -> float:
+        return 0.0
 
-    check.is_false(OUTER, seat.failed, "a body that settles is not reported")
-    check.equal(OUTER, attempts, 3, "it stops once the body comes right")
+    def sleep(self, duration: float) -> None:
+        self.slept.append(duration)
+
+
+class TestWait:
+    """wait, time moved forward on a clock."""
+
+    def test_advances_a_controlled_clock(self, seat: Collector) -> None:
+        """A controlled clock moves at once."""
+        clock = Controlled(0.0)
+        wait(clock, 2.5)
+        check.equal(seat, clock.now(), 2.5, "the reading")
+
+    def test_sleeps_on_a_clock_without_advance(self, seat: Collector) -> None:
+        """Any other clock is slept against."""
+        clock = _Sleeping()
+        wait(clock, 2.5)
+        check.equal(seat, clock.slept, [2.5], "the sleeps")

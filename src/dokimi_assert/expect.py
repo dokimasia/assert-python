@@ -1,35 +1,35 @@
-"""Assertions that record a failure and let the test continue.
+"""The assertions that record a failure and let the test continue.
 
-Every assertion takes a seat first and a message last. The message
-states the contract under test and is the first line of the failure, so
-a failure says what was supposed to be true rather than only what was
-observed.
-
-Reach for this where several properties of one value are each worth
-seeing. One run reports all of them rather than the first:
+The seat fixture raises every recorded failure when the test body ends, so
+one run reports every property of a value that failed.
 
     from dokimi_assert import expect
 
-    expect.is_not_none(seat, user, "the user was found")
-    expect.has_prefix(seat, user.id, "usr_", "the id carries its prefix")
+    def test_reply(seat):
+        expect.equal(seat, reply.status, 200, "the request succeeds")
+        expect.contains(seat, reply.headers, "etag", "the reply is cacheable")
 
-dokimi_assert.check carries the same assertions under the same names
-and runs the same comparison. Only what happens on failure differs.
+dokimi_assert.check has the same assertions under the same names and runs
+the same comparisons. Only what happens on a failure differs. The
+docstrings of check describe the rules of each assertion in full.
 """
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from typing import Any, TypeVar
 
-from dokimi_assert._matcher import behaviour, errors, order, value, waiting
-from dokimi_assert._matcher import raises as raising
+from dokimi_assert import rejects as _rejects
+from dokimi_assert._matcher import behaviour, errors, order, relation, value, waiting
+from dokimi_assert._matcher import raises as _raises
 from dokimi_assert._matcher.option import Option
 from dokimi_assert._matcher.seat import Mode, Seat
+from dokimi_assert.failure import Failure
 
 _E = TypeVar("_E", bound=BaseException)
 
 __all__ = [
+    "accumulates",
     "close_to",
     "completes_within",
     "contains",
@@ -41,21 +41,33 @@ __all__ = [
     "error_is_not",
     "eventually",
     "eventually_true",
+    "fails_after_close",
     "has_error",
     "has_prefix",
+    "has_stable_order",
     "has_suffix",
     "honours_cancellation",
     "honours_deadline",
     "in_range",
+    "is_associative",
+    "is_commutative",
+    "is_deterministic",
     "is_empty",
     "is_false",
+    "is_idempotent",
+    "is_monotonic",
     "is_none",
     "is_not_empty",
     "is_not_none",
+    "is_not_pure",
+    "is_permutation",
+    "is_poisoned",
     "is_pure",
+    "is_total",
     "is_true",
     "length",
     "matches",
+    "no_duplicates",
     "no_error",
     "no_task_leaks",
     "none_handle_safe",
@@ -63,6 +75,8 @@ __all__ = [
     "not_equal",
     "pairwise",
     "raises",
+    "rejects",
+    "round_trip",
 ]
 
 _MODE = Mode.SOFT
@@ -71,27 +85,15 @@ _MODE = Mode.SOFT
 def equal(seat: Seat, got: Any, want: Any, msg: str, *options: Option) -> None:
     """Record a failure when got and want differ.
 
-    Comparison is structural and reaches nested values. Types must match
-    exactly: 0 does not equal False and 1 does not equal
-    1.0, because bool subclasses int and Python's == calls
-    both pairs equal.
-
-    An absent collection does not equal an empty one, and NaN does not
-    equal itself. The failure carries want and then got.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.equal() for the rules this shares with the
-    aborting surface.
-
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        got: The value produced by the code under test.
-        want: The value it is supposed to produce.
-        msg: The contract under test. It is the first line of the failure.
-        *options: Relaxations for this call alone, from dokimi_assert.option.
+        seat: The seat that receives the failure. Use the seat fixture.
+        got: The value that the code under test produced.
+        want: The value that it is supposed to produce.
+        msg: The contract under test.
+        *options: The relaxations of dokimi_assert.option that apply to the call.
 
     Example:
-        expect.equal(seat, store.get(id), item, "Get returns the item")
+        expect.equal(seat, store.get(key), item, "get returns the stored item")
     """
     __tracebackhide__ = True
     seat.helper()
@@ -99,45 +101,30 @@ def equal(seat: Seat, got: Any, want: Any, msg: str, *options: Option) -> None:
 
 
 def not_equal(seat: Seat, got: Any, want: Any, msg: str, *options: Option) -> None:
-    """Record a failure when got and want are equal.
-
-    Comparison follows the rules of equal(). The failure shows the
-    value the two shared, since printing one says everything.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.not_equal() for the rules this shares with
-    the aborting surface.
+    """Record a failure when got and want are equal by the rules of equal.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        got: The value produced by the code under test.
-        want: The value it must not equal.
-        msg: The contract under test. It is the first line of the failure.
-        *options: Relaxations for this call alone, from dokimi_assert.option.
+        seat: The seat that receives the failure. Use the seat fixture.
+        got: The value that the code under test produced.
+        want: The value that it must not equal.
+        msg: The contract under test.
+        *options: The relaxations of dokimi_assert.option that apply to the call.
 
     Example:
-        expect.not_equal(seat, token, previous, "Refresh issues a new token")
+        expect.not_equal(seat, token, previous, "a refresh issues a new token")
     """
     __tracebackhide__ = True
     seat.helper()
     value.not_equal(seat, _MODE, got, want, msg, *options)
 
 
-def is_true(seat: Seat, condition: bool, msg: str) -> None:
-    """Record a failure when the condition does not hold.
-
-    The failure carries the message alone: a bare False says nothing
-    the message does not. Where a more specific assertion exists, it will
-    say more on failure than this one can.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.is_true() for the rules this shares with
-    the aborting surface.
+def is_true(seat: Seat, condition: object, msg: str) -> None:
+    """Record a failure when the condition is not true.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        condition: The condition that must hold.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        condition: The condition.
+        msg: The contract under test.
 
     Example:
         expect.is_true(seat, user.is_active, "a new user starts active")
@@ -147,19 +134,13 @@ def is_true(seat: Seat, condition: bool, msg: str) -> None:
     value.is_true(seat, _MODE, condition, msg)
 
 
-def is_false(seat: Seat, condition: bool, msg: str) -> None:
-    """Record a failure when the condition holds.
-
-    The failure carries the message alone, as is_true() describes.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.is_false() for the rules this shares with
-    the aborting surface.
+def is_false(seat: Seat, condition: object, msg: str) -> None:
+    """Record a failure when the condition is true.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        condition: The condition that must not hold.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        condition: The condition.
+        msg: The contract under test.
 
     Example:
         expect.is_false(seat, cache.is_stale(), "a fresh read is not stale")
@@ -172,17 +153,10 @@ def is_false(seat: Seat, condition: bool, msg: str) -> None:
 def is_none(seat: Seat, got: Any, msg: str) -> None:
     """Record a failure when got is not None.
 
-    For a function that answers with an error or None, this states that
-    it found nothing to report.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.is_none() for the rules this shares with
-    the aborting surface.
-
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
+        seat: The seat that receives the failure. Use the seat fixture.
         got: The value that must be absent.
-        msg: The contract under test. It is the first line of the failure.
+        msg: The contract under test.
 
     Example:
         expect.is_none(seat, validate(name), "a good name is accepted")
@@ -195,21 +169,13 @@ def is_none(seat: Seat, got: Any, msg: str) -> None:
 def is_not_none(seat: Seat, got: Any, msg: str) -> None:
     """Record a failure when got is None.
 
-    Use it before reading attributes of a value that may be absent: the
-    test stops here with your message rather than further down with an
-    AttributeError nobody wrote.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.is_not_none() for the rules this shares
-    with the aborting surface.
-
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
+        seat: The seat that receives the failure. Use the seat fixture.
         got: The value that must be present.
-        msg: The contract under test. It is the first line of the failure.
+        msg: The contract under test.
 
     Example:
-        expect.is_not_none(seat, store.get(id), "Get returns the item")
+        expect.is_not_none(seat, store.get(key), "get returns the stored item")
     """
     __tracebackhide__ = True
     seat.helper()
@@ -217,21 +183,13 @@ def is_not_none(seat: Seat, got: Any, msg: str) -> None:
 
 
 def length(seat: Seat, got: Any, want: int, msg: str) -> None:
-    """Record a failure when got does not hold want items.
-
-    Answers for anything with a length: a string, bytes, a list, a tuple,
-    a dict, a set. A value with no length is itself the failure rather
-    than a TypeError, so a wrong type reads like every other failure.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.length() for the rules this shares with
-    the aborting surface.
+    """Record a failure when got does not have want items.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        got: The container to measure.
-        want: The number of items it must hold.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        got: The container.
+        want: The number of items that it must have.
+        msg: The contract under test.
 
     Example:
         expect.length(seat, reply.items, 3, "every item comes back")
@@ -242,19 +200,12 @@ def length(seat: Seat, got: Any, want: int, msg: str) -> None:
 
 
 def is_empty(seat: Seat, got: Any, msg: str) -> None:
-    """Record a failure when got holds anything.
-
-    Empty is not absent. None has no length, so it fails here rather
-    than passing as empty.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.is_empty() for the rules this shares with
-    the aborting surface.
+    """Record a failure when got has an item or does not have a length.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        got: The container that must hold nothing.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        got: The container that must be empty.
+        msg: The contract under test.
 
     Example:
         expect.is_empty(seat, reply.errors, "a valid request has no errors")
@@ -265,18 +216,12 @@ def is_empty(seat: Seat, got: Any, msg: str) -> None:
 
 
 def is_not_empty(seat: Seat, got: Any, msg: str) -> None:
-    """Record a failure when got holds nothing.
-
-    A value with no length fails here, as is_empty() describes.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.is_not_empty() for the rules this shares
-    with the aborting surface.
+    """Record a failure when got is empty or does not have a length.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        got: The container that must hold something.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        got: The container that must have an item.
+        msg: The contract under test.
 
     Example:
         expect.is_not_empty(seat, results, "the search finds something")
@@ -289,26 +234,14 @@ def is_not_empty(seat: Seat, got: Any, msg: str) -> None:
 def contains(
     seat: Seat, haystack: Any, needle: Any, msg: str, *options: Option
 ) -> None:
-    """Record a failure when haystack does not hold needle.
-
-    What containment means follows the haystack. Text holds a substring;
-    bytes hold a substring, with a str needle encoded first; a mapping
-    holds a key; any other sequence or set holds an element, compared by
-    the rules of equal().
-
-    A haystack that cannot be searched, or a needle that cannot be in it,
-    is reported rather than raised.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.contains() for the rules this shares with
-    the aborting surface.
+    """Record a failure when haystack does not contain needle.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        haystack: The container or text to search.
-        needle: The element, key or substring to find.
-        msg: The contract under test. It is the first line of the failure.
-        *options: Relaxations for this call alone, from dokimi_assert.option.
+        seat: The seat that receives the failure. Use the seat fixture.
+        haystack: The text or the collection.
+        needle: The substring, the element or the key.
+        msg: The contract under test.
+        *options: The relaxations of dokimi_assert.option that apply to the call.
 
     Example:
         expect.contains(seat, reply.headers, "etag", "the reply is cacheable")
@@ -321,20 +254,14 @@ def contains(
 def not_contains(
     seat: Seat, haystack: Any, needle: Any, msg: str, *options: Option
 ) -> None:
-    """Record a failure when haystack holds needle.
-
-    Containment follows the rules of contains().
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.not_contains() for the rules this shares
-    with the aborting surface.
+    """Record a failure when haystack contains needle.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        haystack: The container or text to search.
-        needle: The element, key or substring that must be absent.
-        msg: The contract under test. It is the first line of the failure.
-        *options: Relaxations for this call alone, from dokimi_assert.option.
+        seat: The seat that receives the failure. Use the seat fixture.
+        haystack: The text or the collection.
+        needle: The substring, the element or the key that must be absent.
+        msg: The contract under test.
+        *options: The relaxations of dokimi_assert.option that apply to the call.
 
     Example:
         expect.not_contains(seat, body, "password", "no secret leaks")
@@ -345,24 +272,16 @@ def not_contains(
 
 
 def contains_in_order(seat: Seat, got: Any, needles: Sequence[str], msg: str) -> None:
-    """Record a failure when got does not hold every needle, in order.
-
-    Each needle is looked for after the previous one's match ends, so the
-    same text cannot satisfy two needles. Anything may sit between them.
-    An empty list of needles passes.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.contains_in_order() for the rules this
-    shares with the aborting surface.
+    """Record a failure when got does not contain the needles in order.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        got: The text to search.
-        needles: The substrings, in the order they must appear.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        got: The text.
+        needles: The substrings in the order in which they must appear.
+        msg: The contract under test.
 
     Example:
-        expect.contains_in_order(seat, log, ["open", "close"], "it runs in order")
+        expect.contains_in_order(seat, log, ["open", "close"], "it closes last")
     """
     __tracebackhide__ = True
     seat.helper()
@@ -370,23 +289,16 @@ def contains_in_order(seat: Seat, got: Any, needles: Sequence[str], msg: str) ->
 
 
 def has_prefix(seat: Seat, got: Any, prefix: str, msg: str) -> None:
-    """Record a failure when got does not start with prefix.
-
-    Answers for str and bytes. A value that is neither is reported
-    rather than raised.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.has_prefix() for the rules this shares
-    with the aborting surface.
+    """Record a failure when got is not a str that starts with prefix.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        got: The text to inspect.
-        prefix: What it must start with.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        got: The text.
+        prefix: The text that got must start with.
+        msg: The contract under test.
 
     Example:
-        expect.has_prefix(seat, request_id, "req_", "the id carries its prefix")
+        expect.has_prefix(seat, request_id, "req_", "the id has its prefix")
     """
     __tracebackhide__ = True
     seat.helper()
@@ -394,19 +306,13 @@ def has_prefix(seat: Seat, got: Any, prefix: str, msg: str) -> None:
 
 
 def has_suffix(seat: Seat, got: Any, suffix: str, msg: str) -> None:
-    """Record a failure when got does not end with suffix.
-
-    Answers for str and bytes, as has_prefix() describes.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.has_suffix() for the rules this shares
-    with the aborting surface.
+    """Record a failure when got is not a str that ends with suffix.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        got: The text to inspect.
-        suffix: What it must end with.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        got: The text.
+        suffix: The text that got must end with.
+        msg: The contract under test.
 
     Example:
         expect.has_suffix(seat, path, ".json", "the export is JSON")
@@ -417,22 +323,13 @@ def has_suffix(seat: Seat, got: Any, suffix: str, msg: str) -> None:
 
 
 def matches(seat: Seat, got: Any, pattern: str, msg: str) -> None:
-    """Record a failure when got does not match the pattern.
-
-    The pattern is searched rather than anchored: use ^ and $
-    where you mean the whole value. A pattern that does not compile is
-    reported as the failure, so a typo in a pattern does not read like a
-    failing subject.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.matches() for the rules this shares with
-    the aborting surface.
+    """Record a failure when got is not a str that a pattern of the subset matches.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        got: The text to match.
-        pattern: A Python regular expression.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        got: The text.
+        pattern: A pattern of the portable subset.
+        msg: The contract under test.
 
     Example:
         expect.matches(seat, rid, r"^req_[0-9a-f]{16}$", "the id is well formed")
@@ -443,25 +340,14 @@ def matches(seat: Seat, got: Any, pattern: str, msg: str) -> None:
 
 
 def close_to(seat: Seat, got: Any, want: float, tolerance: float, msg: str) -> None:
-    """Record a failure when got is further than tolerance from want.
-
-    The tolerance is an absolute difference and the bound is inclusive,
-    so a difference exactly equal to tolerance passes. This is the
-    assertion for a float, where exact equality is the wrong question.
-
-    NaN is outside every tolerance, whether it is the value, the target or
-    the tolerance. bool is not a number here.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.close_to() for the rules this shares with
-    the aborting surface.
+    """Record a failure when got is not a number within tolerance of want.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        got: The number produced.
-        want: The number it should be near.
-        tolerance: The largest acceptable absolute difference.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        got: The number.
+        want: The number that got must be near.
+        tolerance: The largest absolute difference that passes.
+        msg: The contract under test.
 
     Example:
         expect.close_to(seat, elapsed, 1.0, 0.05, "it waited about a second")
@@ -472,22 +358,14 @@ def close_to(seat: Seat, got: Any, want: float, tolerance: float, msg: str) -> N
 
 
 def in_range(seat: Seat, got: Any, low: float, high: float, msg: str) -> None:
-    """Record a failure when got falls outside low to high.
-
-    The interval is closed, so both bounds pass. A range with low above
-    high can hold nothing, and says so rather than reporting the value.
-    NaN is in no range.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.in_range() for the rules this shares with
-    the aborting surface.
+    """Record a failure when got is not a number in the closed interval [low, high].
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        got: The number to place.
-        low: The lowest acceptable value.
-        high: The highest acceptable value.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        got: The number.
+        low: The lowest number of the range.
+        high: The highest number of the range.
+        msg: The contract under test.
 
     Example:
         expect.in_range(seat, reply.status, 200, 299, "the request succeeds")
@@ -497,209 +375,144 @@ def in_range(seat: Seat, got: Any, low: float, high: float, msg: str) -> None:
     value.in_range(seat, _MODE, got, low, high, msg)
 
 
-def no_error(seat: Seat, exc: BaseException | None, msg: str) -> None:
-    """Record a failure when exc is not None.
-
-    For code that hands an exception back rather than raising it. Where
-    the code raises, use raises() or does_not_raise().
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.no_error() for the rules this shares with
-    the aborting surface.
+def no_error(seat: Seat, error: BaseException | None, msg: str) -> None:
+    """Record a failure when error is not None.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        exc: The error value, or None when there was none.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        error: The error, or None when there was none.
+        msg: The contract under test.
 
     Example:
         expect.no_error(seat, err, "the write succeeds")
     """
     __tracebackhide__ = True
     seat.helper()
-    errors.no_error(seat, _MODE, exc, msg)
+    errors.no_error(seat, _MODE, error, msg)
 
 
-def has_error(seat: Seat, exc: BaseException | None, msg: str) -> None:
-    """Record a failure when exc is None.
-
-    For code that hands an exception back rather than raising it.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.has_error() for the rules this shares with
-    the aborting surface.
+def has_error(seat: Seat, error: BaseException | None, msg: str) -> None:
+    """Record a failure when error is None.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        exc: The error value, or None when there was none.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        error: The error, or None when there was none.
+        msg: The contract under test.
 
     Example:
         expect.has_error(seat, err, "an unwritable path is refused")
     """
     __tracebackhide__ = True
     seat.helper()
-    errors.has_error(seat, _MODE, exc, msg)
+    errors.has_error(seat, _MODE, error, msg)
 
 
-def error_is(
-    seat: Seat, exc: BaseException | None, target: BaseException, msg: str
-) -> None:
-    """Record a failure when exc does not match target.
-
-    Matching follows the chain of causes, so an exception wrapped by
-    raise ... from still matches.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.error_is() for the rules this shares with
-    the aborting surface.
+def error_is(seat: Seat, error: BaseException | None, target: object, msg: str) -> None:
+    """Record a failure when target does not match an exception of the chain of error.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        exc: The error to inspect, or None.
-        target: The sentinel exception or class it must match.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        error: The error, or None.
+        target: The sentinel exception, or a class of exceptions.
+        msg: The contract under test.
 
     Example:
-        expect.error_is(seat, err, StoreClosed, "a closed store says so")
+        expect.error_is(seat, err, StoreClosed, "a closed store raises StoreClosed")
     """
     __tracebackhide__ = True
     seat.helper()
-    errors.error_is(seat, _MODE, exc, target, msg)
+    errors.error_is(seat, _MODE, error, target, msg)
 
 
 def error_is_not(
-    seat: Seat, exc: BaseException | None, target: BaseException, msg: str
+    seat: Seat, error: BaseException | None, target: object, msg: str
 ) -> None:
-    """Record a failure when exc matches target.
-
-    Matching follows the chain of causes, as error_is() describes.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.error_is_not() for the rules this shares
-    with the aborting surface.
+    """Record a failure when target matches error or an exception that it wraps.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        exc: The error to inspect, or None.
-        target: The sentinel exception or class it must not match.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        error: The error, or None.
+        target: The sentinel exception, or a class of exceptions.
+        msg: The contract under test.
 
     Example:
         expect.error_is_not(seat, err, Timeout, "a refusal is not a timeout")
     """
     __tracebackhide__ = True
     seat.helper()
-    errors.error_is_not(seat, _MODE, exc, target, msg)
+    errors.error_is_not(seat, _MODE, error, target, msg)
 
 
 def error_as(
-    seat: Seat, exc: BaseException | None, want: type[_E], msg: str
+    seat: Seat, error: BaseException | None, want: type[_E], msg: str
 ) -> _E | None:
-    """Record a failure when no error of type want is in the chain.
-
-    Use it to read fields off a specific error type rather than parsing
-    its text.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.error_as() for the rules this shares with
-    the aborting surface.
+    """Record a failure when the chain of error lacks an exception of the class want.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        exc: The error to inspect, or None.
-        want: The exception class to look for.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        error: The error, or None.
+        want: The class of exceptions.
+        msg: The contract under test.
 
     Returns:
-        The matching exception, so its fields can be read, or None when
-        nothing matched.
+        The exception, or None when the chain does not have one.
 
     Example:
         clash = expect.error_as(seat, err, Conflict, "a duplicate conflicts")
     """
     __tracebackhide__ = True
     seat.helper()
-    return errors.error_as(seat, _MODE, exc, want, msg)
+    return errors.error_as(seat, _MODE, error, want, msg)
 
 
-def raises(seat: Seat, fn: Callable[[], Any], msg: str) -> BaseException | None:
-    """Record a failure when fn does not raise.
-
-    Any BaseException counts, including KeyboardInterrupt and SystemExit.
-    Where the type matters, assert on the return value or use
-    error_as().
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.raises() for the rules this shares with
-    the aborting surface.
+def raises(seat: Seat, fn: Callable[[], Any], msg: str) -> Exception | None:
+    """Record a failure when fn returns without raising an exception.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        fn: Called with no arguments.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        fn: A callable without arguments.
+        msg: The contract under test.
 
     Returns:
-        What fn raised, so the reason can be asserted on, or None when fn
-        returned.
+        The exception that fn raised, or None when fn returned.
 
     Example:
         err = expect.raises(seat, lambda: parse("{"), "a cut body is refused")
     """
     __tracebackhide__ = True
     seat.helper()
-    return raising.raises(seat, _MODE, fn, msg)
+    return _raises.raises(seat, _MODE, fn, msg)
 
 
 def does_not_raise(seat: Seat, fn: Callable[[], Any], msg: str) -> None:
-    """Record a failure when fn raises.
-
-    The failure carries what was raised.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.does_not_raise() for the rules this shares
-    with the aborting surface.
+    """Record a failure when fn raises an exception.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        fn: Called with no arguments.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        fn: A callable without arguments.
+        msg: The contract under test.
 
     Example:
         expect.does_not_raise(seat, lambda: parse(body), "a valid body parses")
     """
     __tracebackhide__ = True
     seat.helper()
-    raising.does_not_raise(seat, _MODE, fn, msg)
+    _raises.does_not_raise(seat, _MODE, fn, msg)
 
 
 def pairwise(
-    seat: Seat,
-    items: Sequence[Any],
-    predicate: Callable[[Any, Any], bool],
-    msg: str,
+    seat: Seat, items: Sequence[Any], predicate: Callable[[Any, Any], object], msg: str
 ) -> None:
-    """Record a failure when an adjacent pair does not satisfy the predicate.
-
-    The predicate is called on every neighbouring pair in turn and must
-    answer True for each. Nought or one item passes, since neither has a
-    pair. The failure names the index where it broke.
-
-    This is one assertion rather than sorted, unique and strictly
-    increasing, because each of those is a relation between neighbours.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.pairwise() for the rules this shares with
-    the aborting surface.
+    """Record a failure when an adjacent pair of items does not satisfy the predicate.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        items: The sequence to walk.
-        predicate: Called as predicate(earlier, later) for each pair.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        items: The sequence.
+        predicate: Receives an item and the item after it.
+        msg: The contract under test.
 
     Example:
-        expect.pairwise(seat, timestamps, lambda a, b: a <= b, "the log is ordered")
+        expect.pairwise(seat, stamps, lambda a, b: a <= b, "the log is ordered")
     """
     __tracebackhide__ = True
     seat.helper()
@@ -711,24 +524,13 @@ def honours_cancellation(
 ) -> None:
     """Record a failure when a cancelled subject does not stop.
 
-    The subject is started, cancelled at once, and must raise
-    CancelledError. One that returns without ever awaiting, or that
-    catches the cancellation and carries on, fails.
-
-    The assertion runs the event loop itself, so the test stays a plain
-    def and needs no async plugin.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.honours_cancellation() for the rules this
-    shares with the aborting surface.
-
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        fn: A coroutine function, called with no arguments.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        fn: A coroutine function without arguments.
+        msg: The contract under test.
 
     Example:
-        expect.honours_cancellation(seat, worker.serve, "it stops when told")
+        expect.honours_cancellation(seat, worker.serve, "it stops when cancelled")
     """
     __tracebackhide__ = True
     seat.helper()
@@ -736,23 +538,12 @@ def honours_cancellation(
 
 
 def honours_deadline(seat: Seat, fn: Callable[[], Awaitable[Any]], msg: str) -> None:
-    """Record a failure when a subject given no time runs to completion.
-
-    The subject runs under a deadline that has already passed. One that
-    yields is cut short and passes; one that never yields, or that catches
-    the cancellation and returns anyway, fails.
-
-    This asks whether the subject can be interrupted at all, not how
-    quickly it notices.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.honours_deadline() for the rules this
-    shares with the aborting surface.
+    """Record a failure when a subject runs to its end under a deadline that has passed.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        fn: A coroutine function, called with no arguments.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        fn: A coroutine function without arguments.
+        msg: The contract under test.
 
     Example:
         expect.honours_deadline(seat, client.fetch, "the fetch has a deadline")
@@ -765,23 +556,16 @@ def honours_deadline(seat: Seat, fn: Callable[[], Awaitable[Any]], msg: str) -> 
 def completes_within(
     seat: Seat, within: float, fn: Callable[[], Any], msg: str
 ) -> None:
-    """Record a failure when fn takes longer than within seconds.
-
-    fn is measured, not interrupted: a slow subject runs to completion
-    and then fails. This spends real time, up to however long fn takes.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.completes_within() for the rules this
-    shares with the aborting surface.
+    """Record a failure when fn has not returned within within seconds.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        within: The ceiling, in seconds.
-        fn: Called with no arguments.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        within: The most seconds that fn can take.
+        fn: A callable without arguments.
+        msg: The contract under test.
 
     Example:
-        expect.completes_within(seat, 0.5, index.rebuild, "rebuilds stay quick")
+        expect.completes_within(seat, 0.5, index.rebuild, "a rebuild is quick")
     """
     __tracebackhide__ = True
     seat.helper()
@@ -795,28 +579,17 @@ def is_pure(
     msg: str,
     *options: Option,
 ) -> None:
-    """Record a failure when fn changes what observe reads.
-
-    observe is read before and after fn, and the two readings must be
-    equal by the rules of equal(). What observe returns defines what
-    nothing means: whatever it leaves out, fn may change.
-
-    Return a copy from observe. A projection sharing memory with the
-    subject reads the same object twice and passes whatever fn did.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.is_pure() for the rules this shares with
-    the aborting surface.
+    """Record a failure when fn changes what observe returns.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        observe: Called before and after fn; returns a projection of state.
-        fn: The call that must change nothing observed.
-        msg: The contract under test. It is the first line of the failure.
-        *options: Relaxations for this call alone, from dokimi_assert.option.
+        seat: The seat that receives the failure. Use the seat fixture.
+        observe: Returns a copy of the state.
+        fn: The call that must not change what observe returns.
+        msg: The contract under test.
+        *options: The relaxations of dokimi_assert.option that apply to the call.
 
     Example:
-        expect.is_pure(seat, store.snapshot, reader.peek, "peek changes nothing")
+        expect.is_pure(seat, store.snapshot, reader.peek, "peek is read-only")
     """
     __tracebackhide__ = True
     seat.helper()
@@ -824,23 +597,15 @@ def is_pure(
 
 
 def none_handle_safe(seat: Seat, fn: Callable[[Any], Any], msg: str) -> None:
-    """Record a failure when fn crashes on a None handle.
-
-    Raising an error of its own is fine and is usually the right answer.
-    What fails here is dereferencing the None, which is what a caller hits
-    by accident and a middlebox by omission.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.none_handle_safe() for the rules this
-    shares with the aborting surface.
+    """Record a failure when fn crashes on None in place of a handle.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        fn: Called with a single argument, None.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        fn: A callable. The assertion calls it with None.
+        msg: The contract under test.
 
     Example:
-        expect.none_handle_safe(seat, worker.attach, "no handle is not fatal")
+        expect.none_handle_safe(seat, worker.attach, "a missing handle does not crash")
     """
     __tracebackhide__ = True
     seat.helper()
@@ -848,33 +613,16 @@ def none_handle_safe(seat: Seat, fn: Callable[[Any], Any], msg: str) -> None:
 
 
 def eventually(
-    seat: Seat,
-    timeout: float,
-    interval: float,
-    body: Callable[[Any], None],
-    msg: str,
+    seat: Seat, timeout: float, interval: float, body: Callable[[Any], object], msg: str
 ) -> None:
-    """Record a failure when a body of assertions never passes in time.
-
-    The body is called with a seat of its own, so assertions inside it
-    record an attempt rather than ending the test. It runs at least once
-    however short the timeout, and the failure carries the last attempt's
-    own reason rather than a bare timeout.
-
-    This spends real time. It is for a condition something outside the
-    test makes true; where the subject reads a clock the test controls,
-    drive that clock and assert the answer instead.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.eventually() for the rules this shares
-    with the aborting surface.
+    """Record a failure when a body of assertions does not pass within the timeout.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        timeout: How long to keep retrying, in seconds.
-        interval: How long to wait between attempts, in seconds.
-        body: Called with a seat; states the condition as assertions.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        timeout: The most seconds that the attempts can take.
+        interval: The seconds between two attempts.
+        body: Receives a seat and asserts the condition.
+        msg: The contract under test.
 
     Example:
         expect.eventually(seat, 5.0, 0.1, settled, "the cache converges")
@@ -885,24 +633,15 @@ def eventually(
 
 
 def eventually_true(
-    seat: Seat, timeout: float, predicate: Callable[[], bool], msg: str
+    seat: Seat, timeout: float, predicate: Callable[[], object], msg: str
 ) -> None:
-    """Record a failure when a predicate never becomes true in time.
-
-    Retried with a backoff that starts small and doubles. A predicate
-    carries no reason, so the failure says only that the wait ran out;
-    where the reason matters, write the condition as assertions and use
-    eventually(). This spends real time for the same reason.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.eventually_true() for the rules this
-    shares with the aborting surface.
+    """Record a failure when a predicate does not become true within the timeout.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        timeout: How long to keep retrying, in seconds.
-        predicate: Called with no arguments; must eventually answer True.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        timeout: The most seconds that the attempts can take.
+        predicate: Returns True when the condition is met.
+        msg: The contract under test.
 
     Example:
         expect.eventually_true(seat, 5.0, queue.is_drained, "the queue drains")
@@ -913,28 +652,358 @@ def eventually_true(
 
 
 def no_task_leaks(seat: Seat, msg: str) -> Callable[[], None]:
-    """Answer a callable that records a failure when a task outlives the scope.
-
-    Any asyncio task started after this call and still running when the
-    returned callable runs is a leak, which is how a cancelled request
-    leaves work going behind it.
-
-    The test carries on either way, and everything recorded is reported when
-    the test body ends. See check.no_task_leaks() for the rules this shares
-    with the aborting surface.
+    """Return a check that records a failure when a thread or a task outlives the scope.
 
     Args:
-        seat: Where the failure is reported. Use the seat fixture.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure. Use the seat fixture.
+        msg: The contract under test.
 
     Returns:
-        A callable to invoke where the scope ends. It reports the leak.
+        The check. Call it where the scope ends.
 
     Example:
         done = expect.no_task_leaks(seat, "the handler cleans up")
-        await handler.serve(request)
+        handler.serve(request)
         done()
     """
     __tracebackhide__ = True
     seat.helper()
     return waiting.no_task_leaks(seat, _MODE, msg)
+
+
+def rejects(seat: Seat, msg: str, body: Callable[[Any], object]) -> list[Failure]:
+    """Record a failure when a check passes against a subject that it must reject.
+
+    Args:
+        seat: The seat that receives the failure. Use the seat fixture.
+        msg: The contract under test.
+        body: The check that must fail.
+
+    Returns:
+        The failure records of the check in call order.
+
+    Example:
+        failures = expect.rejects(seat, "an overwriting store fails the check",
+                                  lambda tb: refuses_a_duplicate(tb, Overwriting()))
+    """
+    __tracebackhide__ = True
+    seat.helper()
+    return _rejects.rejects(seat, _MODE, msg, body)
+
+
+def is_idempotent(
+    seat: Seat,
+    call: Callable[[Any], Any],
+    value: Any,
+    observe: Callable[[], Any],
+    msg: str,
+    *options: Option,
+) -> None:
+    """Record a failure when a second call of call changes what observe returns.
+
+    Args:
+        seat: The seat that receives the failure. Use the seat fixture.
+        call: The subject, which receives value.
+        value: The input of both calls.
+        observe: Returns a copy of the state.
+        msg: The contract under test.
+        *options: The relaxations of dokimi_assert.option that apply to the call.
+
+    Example:
+        expect.is_idempotent(seat, store.put, entry, store.snapshot,
+                             "a second put of one entry does not change the store")
+    """
+    __tracebackhide__ = True
+    seat.helper()
+    relation.is_idempotent(seat, _MODE, call, value, observe, msg, *options)
+
+
+def accumulates(
+    seat: Seat,
+    call: Callable[[Any], Any],
+    value: Any,
+    observe: Callable[[], Any],
+    msg: str,
+) -> None:
+    """Record a failure when two calls of call change a number by different amounts.
+
+    Args:
+        seat: The seat that receives the failure. Use the seat fixture.
+        call: The subject, which receives value.
+        value: The input of both calls.
+        observe: Returns the number.
+        msg: The contract under test.
+
+    Example:
+        expect.accumulates(seat, counter.add, 2, counter.total, "each add adds 2")
+    """
+    __tracebackhide__ = True
+    seat.helper()
+    relation.accumulates(seat, _MODE, call, value, observe, msg)
+
+
+def is_deterministic(
+    seat: Seat, call: Callable[[Any], Any], value: Any, msg: str, *options: Option
+) -> None:
+    """Record a failure when one of 32 calls of call returns a different result.
+
+    Args:
+        seat: The seat that receives the failure. Use the seat fixture.
+        call: The subject, which receives value.
+        value: The input of every call.
+        msg: The contract under test.
+        *options: The relaxations of dokimi_assert.option that apply to the call.
+
+    Example:
+        expect.is_deterministic(seat, render, page, "a page renders one way")
+    """
+    __tracebackhide__ = True
+    seat.helper()
+    relation.is_deterministic(seat, _MODE, call, value, msg, *options)
+
+
+def is_commutative(
+    seat: Seat,
+    combine: Callable[[Any, Any], Any],
+    a: Any,
+    b: Any,
+    msg: str,
+    *options: Option,
+) -> None:
+    """Record a failure when combine(a, b) differs from combine(b, a).
+
+    Args:
+        seat: The seat that receives the failure. Use the seat fixture.
+        combine: The subject.
+        a: The first operand.
+        b: The second operand.
+        msg: The contract under test.
+        *options: The relaxations of dokimi_assert.option that apply to the call.
+
+    Example:
+        expect.is_commutative(seat, merge, left, right, "merge ignores order")
+    """
+    __tracebackhide__ = True
+    seat.helper()
+    relation.is_commutative(seat, _MODE, combine, a, b, msg, *options)
+
+
+def is_associative(
+    seat: Seat,
+    combine: Callable[[Any, Any], Any],
+    a: Any,
+    b: Any,
+    c: Any,
+    msg: str,
+    *options: Option,
+) -> None:
+    """Record a failure when the two groupings of three operands differ.
+
+    Args:
+        seat: The seat that receives the failure. Use the seat fixture.
+        combine: The subject.
+        a: The first operand.
+        b: The second operand.
+        c: The third operand.
+        msg: The contract under test.
+        *options: The relaxations of dokimi_assert.option that apply to the call.
+
+    Example:
+        expect.is_associative(seat, merge, x, y, z, "merge ignores grouping")
+    """
+    __tracebackhide__ = True
+    seat.helper()
+    relation.is_associative(seat, _MODE, combine, a, b, c, msg, *options)
+
+
+def round_trip(
+    seat: Seat,
+    forward: Callable[[Any], Any],
+    inverse: Callable[[Any], Any],
+    value: Any,
+    msg: str,
+    *options: Option,
+) -> None:
+    """Record a failure when inverse of forward of value differs from value.
+
+    Args:
+        seat: The seat that receives the failure. Use the seat fixture.
+        forward: The conversion.
+        inverse: The inverse conversion.
+        value: The input.
+        msg: The contract under test.
+        *options: The relaxations of dokimi_assert.option that apply to the call.
+
+    Example:
+        expect.round_trip(seat, encode, decode, order, "decoding undoes encoding")
+    """
+    __tracebackhide__ = True
+    seat.helper()
+    relation.round_trip(seat, _MODE, forward, inverse, value, msg, *options)
+
+
+def has_stable_order(
+    seat: Seat, iterate: Callable[[], Any], msg: str, *options: Option
+) -> None:
+    """Record a failure when an iteration of iterate yields a different sequence.
+
+    Args:
+        seat: The seat that receives the failure. Use the seat fixture.
+        iterate: Returns an iterable, or an asynchronous iterable.
+        msg: The contract under test.
+        *options: The relaxations of dokimi_assert.option that apply to the call.
+
+    Example:
+        expect.has_stable_order(seat, index.keys, "the keys come in one order")
+    """
+    __tracebackhide__ = True
+    seat.helper()
+    relation.has_stable_order(seat, _MODE, iterate, msg, *options)
+
+
+def no_duplicates(
+    seat: Seat, iterate: Callable[[], Any], msg: str, *options: Option
+) -> None:
+    """Record a failure when one iteration of iterate yields an element twice.
+
+    Args:
+        seat: The seat that receives the failure. Use the seat fixture.
+        iterate: Returns an iterable, or an asynchronous iterable.
+        msg: The contract under test.
+        *options: The relaxations of dokimi_assert.option that apply to the call.
+
+    Example:
+        expect.no_duplicates(seat, feed.items, "the feed lists each item once")
+    """
+    __tracebackhide__ = True
+    seat.helper()
+    relation.no_duplicates(seat, _MODE, iterate, msg, *options)
+
+
+def is_monotonic(
+    seat: Seat,
+    observe: Callable[[], Any],
+    advance: Callable[[], Any],
+    steps: int,
+    msg: str,
+) -> None:
+    """Record a failure when a reading of observe falls or is NaN.
+
+    Args:
+        seat: The seat that receives the failure. Use the seat fixture.
+        observe: Returns the number.
+        advance: Moves the subject one step.
+        steps: The number of steps that the subject advances.
+        msg: The contract under test.
+
+    Example:
+        expect.is_monotonic(seat, clock.read, clock.tick, 100, "time never falls")
+    """
+    __tracebackhide__ = True
+    seat.helper()
+    relation.is_monotonic(seat, _MODE, observe, advance, steps, msg)
+
+
+def is_total(
+    seat: Seat, call: Callable[[Any], Any], domain: Iterable[Any], msg: str
+) -> None:
+    """Record a failure at the first element of domain for which call raises.
+
+    Args:
+        seat: The seat that receives the failure. Use the seat fixture.
+        call: The subject, which receives each element.
+        domain: The inputs.
+        msg: The contract under test.
+
+    Example:
+        expect.is_total(seat, parse_level, LEVELS, "every level parses")
+    """
+    __tracebackhide__ = True
+    seat.helper()
+    relation.is_total(seat, _MODE, call, domain, msg)
+
+
+def is_not_pure(
+    seat: Seat,
+    observe: Callable[[], Any],
+    fn: Callable[[], Any],
+    msg: str,
+    *options: Option,
+) -> None:
+    """Record a failure when fn leaves what observe returns unchanged.
+
+    Args:
+        seat: The seat that receives the failure. Use the seat fixture.
+        observe: Returns a copy of the state.
+        fn: The call that must change what observe returns.
+        msg: The contract under test.
+        *options: The relaxations of dokimi_assert.option that apply to the call.
+
+    Example:
+        expect.is_not_pure(seat, store.snapshot, store.clear, "clear removes data")
+    """
+    __tracebackhide__ = True
+    seat.helper()
+    relation.is_not_pure(seat, _MODE, observe, fn, msg, *options)
+
+
+def fails_after_close(
+    seat: Seat,
+    close: Callable[[], Any],
+    call: Callable[[], Any],
+    sentinel: object,
+    msg: str,
+) -> None:
+    """Record a failure when call does not raise the sentinel after close.
+
+    Args:
+        seat: The seat that receives the failure. Use the seat fixture.
+        close: Closes the subject.
+        call: A call of the closed subject.
+        sentinel: The exception, or the class of exceptions.
+        msg: The contract under test.
+
+    Example:
+        expect.fails_after_close(seat, conn.close, conn.ping, Closed,
+                                 "a closed connection refuses a ping")
+    """
+    __tracebackhide__ = True
+    seat.helper()
+    relation.fails_after_close(seat, _MODE, close, call, sentinel, msg)
+
+
+def is_poisoned(
+    seat: Seat, induce: Callable[[], Any], observe: Callable[[], Any], msg: str
+) -> None:
+    """Record a failure when one of 32 readings of observe returns after induce.
+
+    Args:
+        seat: The seat that receives the failure. Use the seat fixture.
+        induce: Induces the failure.
+        observe: The reading that must raise.
+        msg: The contract under test.
+
+    Example:
+        expect.is_poisoned(seat, disk.corrupt, store.read, "a corrupt store fails")
+    """
+    __tracebackhide__ = True
+    seat.helper()
+    relation.is_poisoned(seat, _MODE, induce, observe, msg)
+
+
+def is_permutation(seat: Seat, got: Any, want: Any, msg: str, *options: Option) -> None:
+    """Record a failure when got is not a permutation of want.
+
+    Args:
+        seat: The seat that receives the failure. Use the seat fixture.
+        got: The sequence that the code under test produced.
+        want: The elements that it must contain.
+        msg: The contract under test.
+        *options: The relaxations of dokimi_assert.option that apply to the call.
+
+    Example:
+        expect.is_permutation(seat, shuffle(deck), deck, "a shuffle keeps every card")
+    """
+    __tracebackhide__ = True
+    seat.helper()
+    relation.is_permutation(seat, _MODE, got, want, msg, *options)

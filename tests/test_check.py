@@ -1,62 +1,73 @@
-"""The aborting surface.
+"""The spec of check.py tests the surface that stops the test at the first failure.
 
-The corpus already drives what each assertion means. These are the
-things that belong to the surface rather than to an assertion: that it
-reports fatally, marks its frame, and carries what the definition says
-it should.
+It uses pytest's assert alone, because the other specs assert with this
+surface.
 """
 
 from __future__ import annotations
 
+import pytest
+
 from dokimi_assert import check
-from dokimi_assert.seat import Recorder, Standard
-
-OUTER = Standard()
-
-
-def test_a_failure_stops_a_standard_seat() -> None:
-    """The aborting surface raises rather than returning."""
-    caught = check.raises(
-        OUTER,
-        lambda: check.equal(Standard(), 1, 2, "the values match"),
-        "a failing assertion stops the test",
-    )
-    check.is_true(
-        OUTER, isinstance(caught, AssertionError), "it raises an AssertionError"
-    )
+from dokimi_assert.seat import Recorder
+from helpers import FAILING, MSG, records, seated
 
 
-def test_a_failure_reports_through_the_fatal_path() -> None:
-    """A recorder shows which of its two paths was used."""
-    seat = Recorder()
-    check.equal(seat, 1, 2, "the values match")
-
-    check.is_true(OUTER, seat.failed, "the assertion failed")
-    check.is_empty(OUTER, seat.messages, "it did not use the recording path")
+def test_exports_an_assertion_for_each_failing_call_of_the_shared_table() -> None:
+    """The names of the surface are the names of the table."""
+    assert sorted(check.__all__) == sorted(FAILING)
 
 
-def test_the_message_leads_the_failure() -> None:
-    """The contract under test is the first thing a reader sees."""
-    seat = Recorder()
-    check.equal(seat, 1, 2, "the values match")
-    check.has_prefix(OUTER, seat.message, "the values match", "the message leads")
+@pytest.mark.parametrize("name", sorted(FAILING))
+def test_reports_its_failure_through_fail(name: str) -> None:
+    """A failure goes to the aborting surface of the seat alone."""
+    seat, clock = seated()
+    FAILING[name](check, seat, clock, MSG)
+    assert [f.contract for f in seat.failures] == [MSG]
+    assert seat.message != ""
+    assert seat.messages == []
 
 
-def test_an_assertion_marks_its_own_frame() -> None:
-    """A failure is attributed to the caller, not to the library."""
-    seat = Recorder()
-    check.equal(seat, 1, 1, "the values match")
-    check.is_true(OUTER, seat.helper_calls > 0, "the frame was marked")
+@pytest.mark.parametrize("name", sorted(FAILING))
+def test_writes_a_call_record_of_the_aborting_surface(name: str) -> None:
+    """The record of the call has aborting true."""
+    seat, clock = seated()
+    FAILING[name](check, seat, clock, MSG)
+    assert [r["aborting"] for r in records(seat) if r.get("parent") is None] == [True]
 
 
-def test_a_passing_assertion_reports_nothing() -> None:
-    """Nothing is recorded when nothing failed."""
-    seat = Recorder()
-    check.equal(seat, 1, 1, "the values match")
-    check.is_false(OUTER, seat.failed, "a passing assertion is silent")
+class TestRaises:
+    """check.raises returns the exception that fn raised."""
+
+    def test_returns_what_fn_raised(self) -> None:
+        """A caller reads the exception that the call returns."""
+        error = ValueError("boom")
+
+        def fn() -> None:
+            raise error
+
+        assert check.raises(Recorder(), fn, MSG) is error
 
 
-def test_the_surface_carries_what_all_says_it_does() -> None:
-    """A name in __all__ that is not there would break a caller."""
-    for name in check.__all__:
-        check.is_true(OUTER, hasattr(check, name), f"check carries {name}")
+class TestErrorAs:
+    """check.error_as returns the exception of a class in the chain of an error."""
+
+    def test_returns_the_exception_of_the_class_in_the_chain(self) -> None:
+        """A caller reads the fields of the exception that the call returns."""
+        cause = KeyError("k")
+        error = ValueError("v")
+        error.__cause__ = cause
+        assert check.error_as(Recorder(), error, KeyError, MSG) is cause
+
+
+class TestRejects:
+    """check.rejects returns the failure records of a check."""
+
+    def test_returns_the_failure_records_of_the_check(self) -> None:
+        """A caller reads the records of the check that the call returns."""
+        failures = check.rejects(
+            Recorder(),
+            MSG,
+            lambda inner: check.is_true(inner, False, "the flag is true"),
+        )
+        assert [f.contract for f in failures] == ["the flag is true"]
