@@ -1,0 +1,273 @@
+"""The spec of _record/calls.py tests the numbering of call records.
+
+The records are the verdicts of the conformance runner, so this spec checks
+its verdicts with the assert statement of pytest.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from dokimi_assert._record.call import Call
+from dokimi_assert._record.calls import (
+    Calls,
+    Slot,
+    add,
+    calls_of,
+    cut,
+    keep,
+    lines,
+    own,
+    run,
+    write,
+)
+
+
+class Seat:
+    """An object in the role of a seat of the library."""
+
+
+def call(contract: str) -> Call:
+    """Return a passing call of true with contract."""
+    return Call("true", contract, "pass", True)
+
+
+def decoded(calls: Calls) -> list[dict[str, Any]]:
+    """Return the decoded records that calls keep."""
+    return [json.loads(line) for line in lines(calls)]
+
+
+class TestOwn:
+    """own returns the calls of a seat."""
+
+    def test_returns_one_set_of_calls_per_seat(self) -> None:
+        """A seat has one set of calls."""
+        seat = Seat()
+        assert own(seat) is own(seat)
+
+    def test_returns_calls_that_are_off_at_first(self) -> None:
+        """New calls are off."""
+        assert own(Seat()).state == "off"
+
+
+class TestCallsOf:
+    """calls_of returns the calls that record a call on a seat."""
+
+    def test_returns_none_for_a_seat_of_another_library(self) -> None:
+        """A seat that own did not see does not have calls."""
+        assert calls_of(Seat()) is None
+
+    def test_returns_none_for_a_seat_that_cannot_be_a_key(self) -> None:
+        """An unhashable seat does not have calls."""
+        assert calls_of([]) is None
+
+    def test_returns_none_for_calls_that_are_off(self) -> None:
+        """Calls that are off do not record."""
+        seat = Seat()
+        own(seat)
+        assert calls_of(seat) is None
+
+    def test_returns_the_calls_of_a_recorder(self) -> None:
+        """calls_of returns the calls that keep their records."""
+        seat = Seat()
+        keep(own(seat))
+        assert calls_of(seat) is own(seat)
+
+
+class TestKeep:
+    """keep makes calls the calls of a recorder."""
+
+    def test_numbers_each_record_from_1(self) -> None:
+        """The calls of a recorder number their records in order."""
+        calls = Calls()
+        keep(calls)
+        add(calls, call("a"))
+        add(calls, call("b"))
+        assert [(r["seq"], r["contract"]) for r in decoded(calls)] == [
+            (1, "a"),
+            (2, "b"),
+        ]
+
+    def test_drops_what_the_calls_kept_before(self) -> None:
+        """The calls of a recorder start over."""
+        calls = Calls()
+        keep(calls)
+        add(calls, call("a"))
+        keep(calls)
+        add(calls, call("b"))
+        assert [(r["seq"], r["contract"]) for r in decoded(calls)] == [(1, "b")]
+
+
+class TestWrite:
+    """write makes calls the calls of a test."""
+
+    def test_writes_each_record_through_the_sink(self) -> None:
+        """The calls of a test write their records and do not keep them."""
+        written: list[tuple[int, str]] = []
+        calls = Calls()
+        write(calls, lambda seq, line: written.append((seq, line)))
+        add(calls, call("a"))
+        assert [seq for seq, _ in written] == [1]
+        assert json.loads(written[0][1])["contract"] == "a"
+        assert lines(calls) == []
+
+
+class TestLines:
+    """lines returns the records that the calls of a recorder keep."""
+
+    def test_returns_no_line_for_a_call_that_still_runs_a_body(self) -> None:
+        """The call of a slot has a line once it writes its record."""
+        seat = Seat()
+        keep(own(seat))
+        slot = Slot.begin(seat)
+        add(own(seat), call("after"))
+        assert slot is not None
+        assert [(r["seq"], r["contract"]) for r in decoded(own(seat))] == [(2, "after")]
+
+
+class TestAdd:
+    """add puts a call among the calls of its seat."""
+
+    def test_drops_a_call_on_calls_that_are_off(self) -> None:
+        """Calls that are off drop a call."""
+        calls = Calls()
+        add(calls, call("a"))
+        assert (calls.next, lines(calls)) == (0, [])
+
+
+class TestRun:
+    """run makes calls the calls of one run of a body."""
+
+    def test_turns_off_the_body_of_a_call_that_is_not_recorded(self) -> None:
+        """The body of a call without a slot does not record."""
+        body = Calls()
+        run(body, None)
+        add(body, call("in the body"))
+        assert body.state == "off"
+        assert body.entries == []
+
+    def test_records_the_position_of_each_call_of_a_run(self) -> None:
+        """A run records the steps that its case walked at each call."""
+        body = Calls()
+        steps = iter([3, 5])
+        seat = Seat()
+        keep(own(seat))
+        run(body, Slot.begin(seat), lambda: next(steps))
+        add(body, call("at step 3"))
+        add(body, call("at step 5"))
+        assert [entry.steps for entry in body.entries] == [3, 5]
+
+    def test_records_position_0_without_a_position(self) -> None:
+        """A run without a position records its calls at step 0."""
+        body = Calls()
+        seat = Seat()
+        keep(own(seat))
+        run(body, Slot.begin(seat))
+        add(body, call("a"))
+        assert [entry.steps for entry in body.entries] == [0]
+
+
+class TestCut:
+    """cut keeps the calls of a run before the step at which its case stops."""
+
+    def test_drops_the_calls_at_the_step_or_after_it(self) -> None:
+        """A run on one worker does not make those calls."""
+        body = Calls()
+        steps = iter([3, 4, 5])
+        seat = Seat()
+        keep(own(seat))
+        run(body, Slot.begin(seat), lambda: next(steps))
+        add(body, call("at step 3"))
+        add(body, call("at step 4"))
+        add(body, call("at step 5"))
+        cut(body, 4)
+        assert [entry.steps for entry in body.entries] == [3]
+
+
+class TestSlotBegin:
+    """Slot.begin starts the record of a call that runs a body."""
+
+    def test_returns_no_slot_for_a_call_that_is_not_recorded(self) -> None:
+        """A seat that does not record does not have a slot."""
+        assert Slot.begin(Seat()) is None
+
+    def test_numbers_the_call_before_the_calls_after_it(self) -> None:
+        """The call takes its number when it begins."""
+        seat = Seat()
+        keep(own(seat))
+        slot = Slot.begin(seat)
+        add(own(seat), call("after"))
+        assert slot is not None
+        slot.write(call("outer"))
+        assert [(r["seq"], r["contract"]) for r in decoded(own(seat))] == [
+            (1, "outer"),
+            (2, "after"),
+        ]
+
+
+class TestSlotTake:
+    """Slot.take takes the next run of the body of a slot."""
+
+    def test_numbers_the_calls_of_a_body_after_the_call_that_ran_it(self) -> None:
+        """The record of each call of a run has its parent, its run and its phase."""
+        seat = Seat()
+        keep(own(seat))
+        slot = Slot.begin(seat)
+        assert slot is not None
+        body = Calls()
+        run(body, slot)
+        add(body, call("first run"))
+        slot.take(body)
+        add(body, call("second run"))
+        slot.take(body, "shrink")
+        slot.write(Call("eventually", "outer", "pass", True))
+        stated = [
+            (r["seq"], r.get("parent"), r.get("run"), r.get("phase"), r["contract"])
+            for r in decoded(own(seat))
+        ]
+        assert stated == [
+            (1, None, None, None, "outer"),
+            (2, 1, 1, None, "first run"),
+            (3, 1, 2, "shrink", "second run"),
+        ]
+
+    def test_keeps_the_parent_of_a_call_of_a_body_inside_a_run(self) -> None:
+        """A call of an inner body keeps the call that ran the inner body."""
+        seat = Seat()
+        keep(own(seat))
+        outer = Slot.begin(seat)
+        assert outer is not None
+        outer_seat = Seat()
+        run(own(outer_seat), outer)
+        inner = Slot.begin(outer_seat)
+        assert inner is not None
+        inner_seat = Seat()
+        run(own(inner_seat), inner)
+        add(own(inner_seat), call("in the inner body"))
+        inner.take(own(inner_seat))
+        inner.write(Call("eventually", "inner", "pass", True))
+        outer.take(own(outer_seat))
+        outer.write(Call("rejects", "outer", "pass", True))
+        stated = [
+            (r["seq"], r.get("parent"), r["contract"]) for r in decoded(own(seat))
+        ]
+        assert stated == [
+            (1, None, "outer"),
+            (2, 1, "inner"),
+            (3, 2, "in the inner body"),
+        ]
+
+
+class TestSlotWrite:
+    """Slot.write ends the call of a slot with its record."""
+
+    def test_writes_a_record_of_a_test_through_the_sink(self) -> None:
+        """A slot of a test writes its record when it ends."""
+        written: list[int] = []
+        seat = Seat()
+        write(own(seat), lambda seq, _line: written.append(seq))
+        slot = Slot.begin(seat)
+        assert slot is not None
+        slot.write(call("outer"))
+        assert written == [1]
