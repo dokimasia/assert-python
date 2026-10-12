@@ -1,45 +1,46 @@
-"""Assertions about the order of a sequence."""
+"""The assertion about the relation of neighbouring items.
+
+One assertion checks sorted, unique and strictly increasing, because each of
+them is a relation between every two adjacent items and nothing more.
+"""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from typing import Any
 
-from dokimi_assert._matcher.seat import Mode, Seat, report
+from dokimi_assert._matcher.seat import Mode, Seat
+from dokimi_assert._matcher.verdict import fail, pass_
+
+__all__ = ["pairwise"]
 
 
 def pairwise(
     seat: Seat,
     mode: Mode,
     items: Sequence[Any],
-    predicate: Callable[[Any, Any], bool],
+    predicate: Callable[[Any, Any], object],
     msg: str,
 ) -> None:
-    """Report when an adjacent pair fails the predicate.
+    """Report when an adjacent pair of items does not satisfy the predicate.
 
-    The predicate receives them in sequence order as (earlier, later).
-    It states an ordering without naming one: pass a less-than for
-    ascending, or any relation neighbours must satisfy.
-
-    Nought or one item passes, having no pair to break. The failure
-    names the index and both values of the first break.
+    The detail of the failure has the position of the first item of the
+    pair as index, and the two items as first and second. An empty sequence
+    and a sequence of one item pass, because neither has a pair.
 
     Args:
-        seat: Where the failure is reported.
-        mode: Whether a failure stops the test or is recorded.
-        items: The sequence to walk.
-        predicate: The relation that must hold.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure.
+        mode: FATAL to stop the test at a failure, or SOFT to record it.
+        items: The sequence.
+        predicate: Receives an item and the item after it.
+        msg: The contract under test.
     """
     __tracebackhide__ = True
     seat.helper()
     for index in range(1, len(items)):
-        earlier, later = items[index - 1], items[index]
-        if not predicate(earlier, later):
-            report(
-                seat,
-                mode,
-                f"{msg}: pair {index - 1} and {index} are out of order: "
-                f"{earlier!r} then {later!r}",
-            )
+        first, second = items[index - 1], items[index]
+        if not predicate(first, second):
+            detail = {"index": index - 1, "first": first, "second": second}
+            fail(seat, mode, "pairwise", msg, detail)
             return
+    pass_(seat, mode, "pairwise", msg)

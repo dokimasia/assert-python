@@ -1,62 +1,66 @@
-"""Assertions about a callable raising."""
+"""The assertions about a callable that raises.
+
+Both take a callable and not a value, because the exception has to be
+raised inside the assertion for the assertion to catch it.
+"""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Any
 
-from dokimi_assert._matcher.seat import Mode, Seat, report_failure
+from dokimi_assert._matcher.loop import close_awaitable
+from dokimi_assert._matcher.seat import Mode, Seat
+from dokimi_assert._matcher.verdict import fail, pass_
+
+__all__ = ["does_not_raise", "raises"]
 
 
-def raises(
-    seat: Seat, mode: Mode, fn: Callable[[], Any], msg: str
-) -> BaseException | None:
-    """Run fn and report when it returns without raising.
+def raises(seat: Seat, mode: Mode, fn: Callable[[], Any], msg: str) -> Exception | None:
+    """Report when fn returns without raising an exception.
 
-    Returns what fn raised, so a caller can assert on the reason as
-    well as the fact. Returns None when fn returned.
-
-    KeyboardInterrupt and SystemExit are not caught: those say
-    the run is ending, and reporting one as the raise a test asked for
-    would swallow it.
+    The assertion does not catch KeyboardInterrupt or SystemExit, because
+    they end the run. A call of a coroutine function returns a coroutine and
+    does not raise. The assertion closes the coroutine and fails.
 
     Args:
-        seat: Where the failure is reported.
-        mode: Whether a failure stops the test or is recorded.
+        seat: The seat that receives the failure.
+        mode: FATAL to stop the test at a failure, or SOFT to record it.
         fn: The callable under test.
-        msg: The contract under test. It is the first line of the failure.
+        msg: The contract under test.
 
     Returns:
-        What fn raised, or None when it returned.
+        The exception that fn raised, or None when fn returned.
     """
     __tracebackhide__ = True
     seat.helper()
     try:
-        fn()
-    except Exception as caught:
-        return caught
-    report_failure(seat, mode, "throws", msg)
+        result = fn()
+    except Exception as error:
+        pass_(seat, mode, "throws", msg)
+        return error
+    close_awaitable(result)
+    fail(seat, mode, "throws", msg)
     return None
 
 
 def does_not_raise(seat: Seat, mode: Mode, fn: Callable[[], Any], msg: str) -> None:
-    """Run fn and report when it raises, naming what it raised.
+    """Report when fn raises an exception.
 
-    The exception is caught rather than allowed to propagate, so one
-    misbehaving subject fails its test instead of ending the run.
-
-    This is the assertion for a call that may legitimately fail:
-    returning an error is fine, crashing is not.
+    The failure has the exception as got.
 
     Args:
-        seat: Where the failure is reported.
-        mode: Whether a failure stops the test or is recorded.
+        seat: The seat that receives the failure.
+        mode: FATAL to stop the test at a failure, or SOFT to record it.
         fn: The callable under test.
-        msg: The contract under test. It is the first line of the failure.
+        msg: The contract under test.
     """
     __tracebackhide__ = True
     seat.helper()
     try:
-        fn()
-    except Exception as caught:
-        report_failure(seat, mode, "not-throws", msg, {"got": caught})
+        result = fn()
+    except Exception as error:
+        fail(seat, mode, "not-throws", msg, {"got": error})
+        return
+    close_awaitable(result)
+    pass_(seat, mode, "not-throws", msg)

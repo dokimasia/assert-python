@@ -1,61 +1,39 @@
-"""Assertions about how a subject behaves, rather than what it returns.
+"""The assertions about the behaviour of a subject, not about its result.
 
-Python has no single cancellation convention the way Go has
-context.Context in every signature. Its real one is asyncio, whose
-CancelledError and timeouts are the true analogue, so the
-cancellation assertions drive a coroutine function.
+Python does not have a cancellation handle in every signature, as Go has
+context.Context. asyncio cancels a coroutine through its task, so the
+cancellation assertions drive a coroutine function and do not hand it a
+handle.
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Coroutine
-from typing import Any, TypeVar
+import threading
+import time
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from dokimi_assert._matcher.compare import equal as _equal
+from dokimi_assert._matcher.fault import FaultError
+from dokimi_assert._matcher.loop import Loop
 from dokimi_assert._matcher.option import Option, settings
-from dokimi_assert._matcher.seat import Mode, Seat, clock_of, report_failure
+from dokimi_assert._matcher.seat import Mode, Seat, clock_of
+from dokimi_assert._matcher.verdict import Running
+from dokimi_assert.failure import call_site
 
-_S = TypeVar("_S")
+__all__ = [
+    "NOTICE_TIMEOUT",
+    "completes_within",
+    "honours_cancellation",
+    "honours_deadline",
+    "is_pure",
+    "none_handle_safe",
+]
 
-#: How long a cancellation assertion waits for a subject to notice
-#: before calling it unresponsive.
+#: The seconds that a cancellation assertion waits for a cancelled subject to
+#: stop.
 NOTICE_TIMEOUT = 1.0
-
-
-def _on_its_own_loop(
-    assertion: str, drive: Callable[[], Coroutine[Any, Any, Any]]
-) -> Any:
-    """Run drive on an event loop belonging to this assertion.
-
-    These assertions own the loop so a test using one stays a plain def.
-    That works only where no loop is running yet. A test that is already
-    async is told so here, naming the assertion, rather than meeting
-    asyncio's own error raised from somewhere inside this library.
-
-    Args:
-        assertion: The canonical id, so the message names what failed.
-        drive: Builds the coroutine to run. Called only once the loop is
-            known to be free, so nothing is left unawaited.
-
-    Returns:
-        Whatever drive's coroutine returned.
-
-    Raises:
-        RuntimeError: When a loop is already running.
-    """
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(drive())
-
-    msg = (
-        f"{assertion} runs the event loop itself, so it cannot be called "
-        f"from a test that is already running one. Write the test as a "
-        f"plain def and let the assertion drive the subject, or drive the "
-        f"subject yourself and assert on what it raised."
-    )
-    raise RuntimeError(msg)
 
 
 def honours_cancellation(
@@ -63,77 +41,102 @@ def honours_cancellation(
 ) -> None:
     """Report when a cancelled subject does not raise CancelledError.
 
-    The subject is started and cancelled at once, so this asks whether
-    it yields to cancellation at all rather than how fast it notices.
-    A subject that swallows the cancellation and returns fails here.
+    The assertion starts the subject and cancels it at its first await. The
+    field got of a failure describes what the subject did instead.
+
+    - got is None when the subject returns before it awaits.
+    - got is the error when the subject raises another error.
+    - got is a text when the subject returns after the cancellation, or when
+      it does not stop within NOTICE_TIMEOUT.
 
     Args:
-        seat: Where the failure is reported.
-        mode: Whether a failure stops the test or is recorded.
-        fn: The callable under test.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure.
+        mode: FATAL to stop the test at a failure, or SOFT to record it.
+        fn: The coroutine function under test.
+        msg: The contract under test.
     """
     __tracebackhide__ = True
     seat.helper()
+    call = Running.of(seat, call_site())
 
-    async def drive() -> str | None:
+    async def drive() -> tuple[bool, object]:
         task = asyncio.ensure_future(fn())
         await asyncio.sleep(0)
+        if task.done():
+            error = None if task.cancelled() else task.exception()
+            return False, error
         task.cancel()
         try:
             await asyncio.wait_for(task, NOTICE_TIMEOUT)
         except asyncio.CancelledError:
-            return None
+            return True, None
         except TimeoutError:
-            return (
-                f"the subject did not stop within {NOTICE_TIMEOUT}s of being cancelled"
-            )
-        except Exception as caught:
-            return f"cancellation produced {caught!r}, want CancelledError"
-        return "a cancelled subject returned normally"
+            return False, f"the subject did not stop within {NOTICE_TIMEOUT}s"
+        except Exception as error:
+            return False, error
+        return False, "the cancelled subject returned"
 
-    problem = _on_its_own_loop("honours-cancellation", drive)
-    if problem is not None:
-        report_failure(seat, mode, "honours-cancellation", msg, {"got": problem})
+    _honours(call, mode, "honours-cancellation", msg, drive)
 
 
 def honours_deadline(
     seat: Seat, mode: Mode, fn: Callable[[], Awaitable[Any]], msg: str
 ) -> None:
-    """Report when a subject given no time does not time out.
+    """Report when a subject with an expired deadline does not time out.
 
-    The deadline has already passed when the subject starts, so a
-    subject that yields at all is cut short. One that never yields
-    fails, and so does one that catches the cancellation and returns
-    anyway. Those are the cases worth catching.
+    The deadline has passed when the subject starts, so the timeout cancels
+    the subject at its first await. The field got of a failure describes
+    what the subject did instead.
 
-    This uses asyncio.timeout rather than
-    asyncio.wait_for. wait_for with a timeout of zero never
-    starts the coroutine at all, which CPython documents in the source
-    of that function, so every subject would time out and pass.
+    - got is None when the subject returns before it awaits.
+    - got is the error when the subject raises another error.
+
+    The assertion uses asyncio.timeout and not asyncio.wait_for. wait_for
+    with a timeout of 0 does not start the coroutine, so every subject would
+    time out.
 
     Args:
-        seat: Where the failure is reported.
-        mode: Whether a failure stops the test or is recorded.
-        fn: The callable under test.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure.
+        mode: FATAL to stop the test at a failure, or SOFT to record it.
+        fn: The coroutine function under test.
+        msg: The contract under test.
     """
     __tracebackhide__ = True
     seat.helper()
+    call = Running.of(seat, call_site())
 
-    async def drive() -> str | None:
+    async def drive() -> tuple[bool, object]:
         try:
             async with asyncio.timeout(0):
                 await fn()
-        except (TimeoutError, asyncio.CancelledError):
-            return None
-        except Exception as caught:
-            return f"an expired deadline produced {caught!r}, want a timeout"
-        return "a subject given no time returned normally"
+        except TimeoutError:
+            return True, None
+        except Exception as error:
+            return False, error
+        return False, None
 
-    problem = _on_its_own_loop("honours-deadline", drive)
-    if problem is not None:
-        report_failure(seat, mode, "honours-deadline", msg, {"got": problem})
+    _honours(call, mode, "honours-deadline", msg, drive)
+
+
+def _honours(
+    call: Running,
+    mode: Mode,
+    assertion: str,
+    msg: str,
+    drive: Callable[[], Awaitable[tuple[bool, object]]],
+) -> None:
+    """Run drive on the loop of the call, and report its verdict."""
+    __tracebackhide__ = True
+    with Loop(assertion) as loop:
+        try:
+            honoured, got = loop.resolve(drive())
+        except FaultError as error:
+            call.faulted(mode, assertion, msg, error)
+            return
+    if not honoured:
+        call.failed(mode, assertion, msg, {"got": got})
+        return
+    call.passed(mode, assertion, msg)
 
 
 def completes_within(
@@ -141,91 +144,120 @@ def completes_within(
 ) -> None:
     """Report when fn takes longer than within seconds.
 
-    The subject is measured, not interrupted: this says whether it
-    finished in time, and a subject that runs long runs to completion
-    first. Spends real time, up to however long fn takes.
+    The assertion calls fn on a daemon thread and waits for it on the
+    platform clock. When fn has not returned at the end of the duration, the
+    call fails at once, and got is the number of seconds that it waited. The
+    thread of fn continues after the test.
+
+    When fn returns in time, the assertion also measures fn on the clock of
+    the seat. A test can control that clock. The assertion treats an
+    exception of fn as a return, so a subject that raises in time passes.
 
     Args:
-        seat: Where the failure is reported.
-        mode: Whether a failure stops the test or is recorded.
-        within: The ceiling, in seconds.
-        fn: The callable under test.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure.
+        mode: FATAL to stop the test at a failure, or SOFT to record it.
+        within: The most seconds that fn can take.
+        fn: The callable under test. A coroutine function runs on an event
+            loop of the thread.
+        msg: The contract under test.
     """
     __tracebackhide__ = True
     seat.helper()
-
+    call = Running.of(seat, call_site())
     clock = clock_of(seat)
     started = clock.now()
-    fn()
-    elapsed = clock.now() - started
+    waited = time.monotonic()
+    done = threading.Event()
 
+    def subject() -> None:
+        try:
+            with Loop("completes-within") as loop:
+                loop.resolve(fn())
+        except Exception:
+            pass
+        finally:
+            done.set()
+
+    threading.Thread(target=subject, name="completes-within", daemon=True).start()
+    if not done.wait(max(within, 0.0)):
+        got = round(time.monotonic() - waited, 3)
+        call.failed(mode, "completes-within", msg, {"want": within, "got": got})
+        return
+    elapsed = clock.now() - started
     if elapsed > within:
-        report_failure(
-            seat,
-            mode,
-            "completes-within",
-            msg,
-            # Milliseconds is the granularity this assertion is about,
-            # and sixteen digits of a duration is false precision.
-            {"want": within, "got": round(elapsed, 3)},
-        )
+        got = round(elapsed, 3)
+        call.failed(mode, "completes-within", msg, {"want": within, "got": got})
+        return
+    call.passed(mode, "completes-within", msg)
 
 
 def is_pure(
     seat: Seat,
     mode: Mode,
-    observe: Callable[[], _S],
+    observe: Callable[[], Any],
     fn: Callable[[], Any],
     msg: str,
     *options: Option,
 ) -> None:
-    """Report when observed state changes across a call.
+    """Report when fn changes what observe returns.
 
-    The projection observe returns defines what changing nothing means:
-    whatever it leaves out, fn is free to change. Return a copy. A
-    projection sharing memory with the subject reads the same object
-    twice and passes whatever fn did.
+    fn can change any state that observe does not return. observe must
+    return a copy. When observe returns state that the subject shares, the
+    assertion compares one object with itself.
 
     Args:
-        seat: Where the failure is reported.
-        mode: Whether a failure stops the test or is recorded.
-        observe: Called before and after fn; returns a projection of state.
-        fn: The callable under test.
-        msg: The contract under test. It is the first line of the failure.
-        *options: Relaxations for this call alone.
+        seat: The seat that receives the failure.
+        mode: FATAL to stop the test at a failure, or SOFT to record it.
+        observe: Returns a copy of the state. It runs before and after fn.
+        fn: The call that must not change what observe returns.
+        msg: The contract under test.
+        *options: The relaxations of the call.
     """
     __tracebackhide__ = True
     seat.helper()
-
-    before = observe()
-    fn()
-    after = observe()
-
+    call = Running.of(seat, call_site())
+    with Loop("pure") as loop:
+        try:
+            before = loop.resolve(observe())
+            loop.resolve(fn())
+            after = loop.resolve(observe())
+        except FaultError as error:
+            call.faulted(mode, "pure", msg, error)
+            return
     if not _equal(after, before, settings(options)):
-        report_failure(seat, mode, "pure", msg, {"want": before, "got": after})
+        call.failed(mode, "pure", msg, {"want": before, "got": after})
+        return
+    call.passed(mode, "pure", msg)
 
 
 def none_handle_safe(
     seat: Seat, mode: Mode, fn: Callable[[Any], Any], msg: str
 ) -> None:
-    """Report when a subject given None where a handle goes crashes.
+    """Report when a subject with None in place of a handle crashes.
 
-    An exception that is not an AttributeError or TypeError is
-    fine: refusing the call is a decision. Those two are what a missing
-    None check produces, and they are what this catches.
+    The assertion fails a subject that raises AttributeError or TypeError. A
+    subject raises one of the two when it uses None without a check. The
+    assertion passes a subject that raises any other exception, because a
+    refusal of the call is a decision.
 
     Args:
-        seat: Where the failure is reported.
-        mode: Whether a failure stops the test or is recorded.
-        fn: The callable under test.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure.
+        mode: FATAL to stop the test at a failure, or SOFT to record it.
+        fn: The callable under test. It receives None.
+        msg: The contract under test.
     """
     __tracebackhide__ = True
     seat.helper()
-    try:
-        fn(None)
-    except (AttributeError, TypeError) as caught:
-        report_failure(seat, mode, "nil-context-safe", msg, {"got": caught})
-    except Exception:
-        pass
+    call = Running.of(seat, call_site())
+    with Loop("nil-context-safe") as loop:
+        try:
+            loop.resolve(fn(None))
+        except FaultError as error:
+            call.faulted(mode, "nil-context-safe", msg, error)
+            return
+        except (AttributeError, TypeError) as error:
+            call.failed(mode, "nil-context-safe", msg, {"got": error})
+            return
+        except Exception:
+            pass
+    call.passed(mode, "nil-context-safe", msg)

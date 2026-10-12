@@ -1,69 +1,86 @@
-"""Where a matcher sends a failure.
+"""The interface through which every assertion reports a failure.
 
-A matcher never raises directly and never calls a test framework. It
-reports through a seat, so one comparison serves a real test, a
-recorder and a harness that collects failures for a report.
+An assertion does not call a test runner, and it does not raise on its own.
+It reports to the seat that the caller passes to it. One comparison then
+works in a pytest test, in a recorder, and in a harness that collects failures
+for a report.
 """
 
 from __future__ import annotations
 
+import weakref
+from collections.abc import Callable, Sequence
 from enum import Enum
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, TypeGuard, runtime_checkable
 
 from dokimi_assert.clock import Clock, System
-from dokimi_assert.failure import Failure, call_site, render
+from dokimi_assert.failure import Failure
+
+__all__ = [
+    "Mode",
+    "Reporter",
+    "Seat",
+    "clock_of",
+    "name_test",
+    "named_test",
+    "report",
+    "takes_records",
+]
 
 
 @runtime_checkable
 class Seat(Protocol):
-    """The failure surface a matcher reports through."""
+    """The object through which an assertion reports a failure.
+
+    A seat can also have two more methods. report(failure, aborting)
+    receives the failure record in place of its sentence. clock() returns
+    the clock that assertions read.
+    """
 
     def helper(self) -> None:
-        """Mark the calling frame as a helper.
+        """Mark the calling frame as a helper of the test.
 
-        A failure is then attributed to the caller's line rather than
-        to the matcher. Under pytest this hides the frame from the
-        traceback.
+        The failure then has the line of the caller and not the line of the
+        assertion. Under pytest, the traceback hides the frame.
         """
 
     def fail(self, message: str) -> None:
         """Record a failure and stop the test.
 
-        This may not return.
+        The method might not return.
 
         Args:
-            message: The failure text, already formatted.
+            message: The text of the failure.
         """
 
     def record(self, message: str) -> None:
-        """Record a failure and return, so the test carries on.
+        """Record a failure and return, so that the test continues.
 
         Args:
-            message: The failure text, already formatted.
+            message: The text of the failure.
         """
 
 
 class Mode(Enum):
-    """Which of a seat's two failure methods a matcher uses."""
+    """The failure method of a seat that an assertion uses."""
 
     FATAL = "fatal"
-    """Report through fail, stopping the test at the first failure."""
+    """The assertion reports through fail. fail stops the test."""
 
     SOFT = "soft"
-    """Report through record, so the test runs on."""
+    """The assertion reports through record, and the test continues."""
 
 
 def report(seat: Seat, mode: Mode, message: str) -> None:
-    """Mark the calling frame and send one failure to seat.
+    """Send one sentence to seat under mode.
 
-    This does not decide whether anything failed. A matcher calls it
-    only once its own comparison has failed, so every call produces
-    exactly one reported failure. Under FATAL it may not return.
+    Under Mode.SOFT it sends the sentence through record. Under Mode.FATAL it
+    sends the sentence through fail, and it might not return.
 
     Args:
-        seat: Where the failure is reported.
-        mode: Whether a failure stops the test or is recorded.
-        message: The failure text, already formatted.
+        seat: The seat that receives the failure.
+        mode: FATAL to stop the test at the failure, or SOFT to record it.
+        message: The text of the failure.
     """
     __tracebackhide__ = True
     seat.helper()
@@ -73,60 +90,79 @@ def report(seat: Seat, mode: Mode, message: str) -> None:
     seat.fail(message)
 
 
-def report_failure(
-    seat: Seat,
-    mode: Mode,
-    assertion: str,
-    contract: str,
-    detail: dict[str, Any] | None = None,
-) -> None:
-    """Send one record to seat.
+class Reporter(Protocol):
+    """A seat that takes the failure record in place of its sentence."""
 
-    A seat carrying report receives the record; any other seat
-    receives the sentence rendered from it. The call site is read here,
-    so a matcher does not have to count frames.
+    def report(self, failure: Failure, aborting: bool) -> None:
+        """Receive one failure record.
 
-    This does not decide whether anything failed. A matcher calls it
-    only once its own comparison has failed. Under FATAL it may not
-    return.
-
-    Args:
-        seat: Where the failure is reported.
-        mode: Whether a failure stops the test or is recorded.
-        assertion: The canonical id the definition names.
-        contract: The caller's message, unchanged.
-        detail: The values this assertion declares, or None for an
-            assertion whose failure carries the contract alone.
-    """
-    __tracebackhide__ = True
-    seat.helper()
-    failure = Failure(
-        assertion=assertion,
-        contract=contract,
-        detail=detail or {},
-        where=call_site(),
-    )
-
-    take = getattr(seat, "report", None)
-    if callable(take):
-        take(failure, mode is not Mode.SOFT)
-        return
-    report(seat, mode, render(failure))
+        Args:
+            failure: The record of the failing call.
+            aborting: When True, the failure comes from the aborting surface.
+                When False, it comes from the recording surface.
+        """
 
 
-def clock_of(seat: Seat) -> Clock:
-    """Answer the clock seat carries, or the platform clock.
+def takes_records(seat: object) -> TypeGuard[Reporter]:
+    """Report whether seat takes failure records.
 
     Args:
-        seat: Where the failure is reported, which is also where a
-            test supplies time.
+        seat: The seat of a call.
 
     Returns:
-        What the seat carries, or System when it carries nothing.
+        True when the seat has a callable member report.
     """
-    held = getattr(seat, "clock", None)
-    if callable(held):
-        supplied = held()
+    return callable(getattr(seat, "report", None))
+
+
+def clock_of(seat: object) -> Clock:
+    """Return the clock of seat, or the platform clock.
+
+    Args:
+        seat: The seat of a call. A test supplies time through it.
+
+    Returns:
+        What clock() of the seat returns, or System when the seat does not
+        have a clock.
+    """
+    member: Callable[[], object] | None = getattr(seat, "clock", None)
+    if callable(member):
+        supplied = member()
         if isinstance(supplied, Clock):
             return supplied
     return System()
+
+
+#: The path of the test that each seat runs.
+_TESTS: weakref.WeakKeyDictionary[object, tuple[str, ...]] = weakref.WeakKeyDictionary()
+
+
+def name_test(seat: object, path: Sequence[str]) -> None:
+    """Name the test that seat runs.
+
+    The first segments of the path are the parts of the module path of the
+    test. The module path is relative to the root directory of pytest. The
+    last segment is the name of the item with its class and its parameters.
+    A property keeps its store under that path.
+
+    Args:
+        seat: The seat of the test.
+        path: The segments.
+    """
+    _TESTS[seat] = tuple(path)
+
+
+def named_test(seat: object) -> tuple[str, ...] | None:
+    """Return the path of the test that seat runs.
+
+    Args:
+        seat: The seat.
+
+    Returns:
+        The segments of the path, or None for a seat that does not run a
+        named test.
+    """
+    try:
+        return _TESTS.get(seat)
+    except TypeError:
+        return None

@@ -1,31 +1,47 @@
-"""Assertions about failures.
+"""The assertions about an error value.
 
-The standard models two failure shapes: a value returned and an
-exception raised. Python raises, so an exc argument here is the
-exception a caller already caught, or None when nothing was raised.
+A failure of a call is a value that the call returns or an exception that
+it raises. A Python call raises, so an error here is an exception that the
+caller caught, or None when the call did not raise.
 """
 
 from __future__ import annotations
 
 from typing import TypeVar
 
-from dokimi_assert._matcher.seat import Mode, Seat, report_failure
+from dokimi_assert._matcher.seat import Mode, Seat
+from dokimi_assert._matcher.verdict import fail, pass_
+
+__all__ = [
+    "chain",
+    "error_as",
+    "error_is",
+    "error_is_not",
+    "has_error",
+    "matches_target",
+    "no_error",
+]
 
 _E = TypeVar("_E", bound=BaseException)
 
 
-def _chain(exc: BaseException | None) -> list[BaseException]:
-    """Return exc and every cause beneath it, outermost first.
+def chain(error: BaseException | None) -> list[BaseException]:
+    """Return error and every exception that it wraps.
 
-    Both ``__cause__`` and ``__context__`` are walked: the first is an
-    explicit ``raise ... from``, the second is what Python records when
-    one exception is raised while handling another. A cycle stops the
-    walk rather than looping.
+    The list starts with error. The walk follows __cause__ first, and then
+    __context__. A raise with from sets __cause__. Python sets __context__
+    for an exception that is raised while another one is handled. The walk
+    stops at a cycle.
+
+    Args:
+        error: The error, or None.
+
+    Returns:
+        The chain, or an empty list for None.
     """
     out: list[BaseException] = []
     seen: set[int] = set()
-
-    current = exc
+    current = error
     while current is not None and id(current) not in seen:
         seen.add(id(current))
         out.append(current)
@@ -33,98 +49,123 @@ def _chain(exc: BaseException | None) -> list[BaseException]:
     return out
 
 
-def no_error(seat: Seat, mode: Mode, exc: BaseException | None, msg: str) -> None:
-    """Report when an exception was raised.
+def matches_target(error: BaseException | None, target: object) -> bool:
+    """Report whether target matches error or an exception that it wraps.
+
+    An exception matches the same object, and a class matches each of its
+    instances.
 
     Args:
-        seat: Where the failure is reported.
-        mode: Whether a failure stops the test or is recorded.
-        exc: The error to inspect, or None when there was none.
-        msg: The contract under test. It is the first line of the failure.
+        error: The error, or None.
+        target: An exception or a class of exceptions.
+
+    Returns:
+        True when an exception of the chain matches target.
+    """
+    for link in chain(error):
+        if link is target:
+            return True
+        if isinstance(target, type) and isinstance(link, target):
+            return True
+    return False
+
+
+def no_error(seat: Seat, mode: Mode, error: BaseException | None, msg: str) -> None:
+    """Report when an error is present.
+
+    Args:
+        seat: The seat that receives the failure.
+        mode: FATAL to stop the test at a failure, or SOFT to record it.
+        error: The error, or None when there was none.
+        msg: The contract under test.
     """
     __tracebackhide__ = True
     seat.helper()
-    if exc is not None:
-        report_failure(seat, mode, "err-absent", msg, {"got": exc})
+    if error is not None:
+        fail(seat, mode, "err-absent", msg, {"got": error})
+        return
+    pass_(seat, mode, "err-absent", msg)
 
 
-def has_error(seat: Seat, mode: Mode, exc: BaseException | None, msg: str) -> None:
-    """Report when nothing was raised.
+def has_error(seat: Seat, mode: Mode, error: BaseException | None, msg: str) -> None:
+    """Report when an error is not present.
 
     Args:
-        seat: Where the failure is reported.
-        mode: Whether a failure stops the test or is recorded.
-        exc: The error to inspect, or None when there was none.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure.
+        mode: FATAL to stop the test at a failure, or SOFT to record it.
+        error: The error, or None when there was none.
+        msg: The contract under test.
     """
     __tracebackhide__ = True
     seat.helper()
-    if exc is None:
-        report_failure(seat, mode, "err-present", msg)
+    if error is None:
+        fail(seat, mode, "err-present", msg)
+        return
+    pass_(seat, mode, "err-present", msg)
 
 
 def error_is(
-    seat: Seat, mode: Mode, exc: BaseException | None, target: BaseException, msg: str
+    seat: Seat, mode: Mode, error: BaseException | None, target: object, msg: str
 ) -> None:
-    """Report when target is not exc or one of its causes.
-
-    Identity, not equality: a sentinel matches however deeply it was
-    wrapped on the way up.
+    """Report when target matches neither error nor an exception that it wraps.
 
     Args:
-        seat: Where the failure is reported.
-        mode: Whether a failure stops the test or is recorded.
-        exc: The error to inspect, or None when there was none.
-        target: The sentinel exception or class to match against.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure.
+        mode: FATAL to stop the test at a failure, or SOFT to record it.
+        error: The error, or None.
+        target: The sentinel exception, or a class of exceptions.
+        msg: The contract under test.
     """
     __tracebackhide__ = True
     seat.helper()
-    if not any(item is target for item in _chain(exc)):
-        report_failure(seat, mode, "err-is", msg, {"want": target, "got": exc})
+    if not matches_target(error, target):
+        fail(seat, mode, "err-is", msg, {"want": target, "got": error})
+        return
+    pass_(seat, mode, "err-is", msg)
 
 
 def error_is_not(
-    seat: Seat, mode: Mode, exc: BaseException | None, target: BaseException, msg: str
+    seat: Seat, mode: Mode, error: BaseException | None, target: object, msg: str
 ) -> None:
-    """Report when target is exc or one of its causes.
+    """Report when target matches error or an exception that it wraps.
 
     Args:
-        seat: Where the failure is reported.
-        mode: Whether a failure stops the test or is recorded.
-        exc: The error to inspect, or None when there was none.
-        target: The sentinel exception or class to match against.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure.
+        mode: FATAL to stop the test at a failure, or SOFT to record it.
+        error: The error, or None.
+        target: The sentinel exception, or a class of exceptions.
+        msg: The contract under test.
     """
     __tracebackhide__ = True
     seat.helper()
-    if any(item is target for item in _chain(exc)):
-        report_failure(seat, mode, "err-is-not", msg, {"got": exc})
+    if matches_target(error, target):
+        fail(seat, mode, "err-is-not", msg, {"got": error})
+        return
+    pass_(seat, mode, "err-is-not", msg)
 
 
 def error_as(
-    seat: Seat, mode: Mode, exc: BaseException | None, want: type[_E], msg: str
+    seat: Seat, mode: Mode, error: BaseException | None, want: type[_E], msg: str
 ) -> _E | None:
-    """Return the first exception of type want in the chain.
-
-    Reports and returns None when the chain holds none, so a recording
-    seat carries on with a value a caller can test rather than an
-    attribute error.
+    """Return the first exception of the class want in the chain of error.
 
     Args:
-        seat: Where the failure is reported.
-        mode: Whether a failure stops the test or is recorded.
-        exc: The error to inspect, or None when there was none.
-        want: The value it is supposed to produce.
-        msg: The contract under test. It is the first line of the failure.
+        seat: The seat that receives the failure.
+        mode: FATAL to stop the test at a failure, or SOFT to record it.
+        error: The error, or None.
+        want: The class of exceptions.
+        msg: The contract under test.
 
     Returns:
-        The matching exception, or None when nothing matched.
+        The exception, or None when the chain does not have one. The
+        assertion then fails, and a test on the recording surface continues
+        with None.
     """
     __tracebackhide__ = True
     seat.helper()
-    for item in _chain(exc):
-        if type(item) is want:
-            return item
-    report_failure(seat, mode, "err-as", msg, {"want": want, "got": exc})
+    for link in chain(error):
+        if isinstance(link, want):
+            pass_(seat, mode, "err-as", msg)
+            return link
+    fail(seat, mode, "err-as", msg, {"want": want, "got": error})
     return None
