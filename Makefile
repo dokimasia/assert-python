@@ -35,15 +35,15 @@ types: ## Type-check with mypy and with the editor's language server
 test: ## Run the tests
 	uv run pytest
 
-# -p no:dokimi_assert turns this package's own pytest plugin off for
-# the outer run. A plugin is imported during plugin registration,
-# which happens before pytest-cov starts measuring, so leaving it on
-# reports every module it pulls in as barely covered. The plugin is
-# still exercised: tests/test_pytest_plugin.py runs pytest inside
-# pytest, and those runs load it normally.
-coverage: ## Run the tests and enforce the floor
-	uv run pytest -p no:dokimi_assert \
-		--cov=dokimi_assert --cov-report=term-missing --cov-fail-under=95
+# coverage run starts measuring before Python imports anything, so the
+# plugin, which pytest imports while it registers plugins, is measured
+# too. Each process writes a data file of its own, and combine merges
+# them before the report enforces 100% of statements and branches.
+coverage: ## Run the tests and enforce 100% coverage
+	uv run coverage erase
+	uv run coverage run -m pytest
+	uv run coverage combine
+	uv run coverage report
 
 check: lint lint-md types coverage ## The full pre-merge gate
 
