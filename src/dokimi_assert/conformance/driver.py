@@ -1,103 +1,159 @@
-"""Driving a corpus case that names a behaviour rather than a value.
+"""The driver of a corpus case with a behaviour in place of values.
 
-An assertion taking a callable has a shape of its own: one takes a body,
-one takes a body and a projection, one takes a timeout and an interval.
-This holds the shape for each, so the corpus runner does not.
+The assertions that take a callable differ in their arguments. One takes a
+coroutine function, another takes a callable without arguments, and a third
+takes a projection and a body. Each entry of DRIVERS calls one assertion with
+a built behaviour, so the corpus runner does not need to know the arguments.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from types import ModuleType
 from typing import Any
 
-from dokimi_assert.conformance.subject import drive
+from dokimi_assert import check, expect
+from dokimi_assert._matcher.option import Option
+from dokimi_assert.conformance.subject import SUBJECTS, Subject
+from dokimi_assert.seat import Recorder
 
-__all__ = ["SUBJECT_DRIVERS", "run_subject"]
+__all__ = ["DRIVERS", "run_subject"]
 
+#: The timeout in seconds of a retrying assertion on the controlled clock of
+#: the corpus.
+_RETRY_TIMEOUT = 3600.0
 
-def _body(invoke: Callable[..., None]) -> Callable[..., None]:
-    """An assertion taking a seat, a body and a message."""
+#: The seconds between the attempts of a retrying assertion on that clock.
+_RETRY_INTERVAL = 60.0
 
-    def run(seat: Any, subject: Any, msg: str) -> None:
-        invoke(seat, subject, msg)
-
-    return run
-
-
-def _projected(invoke: Callable[..., None]) -> Callable[..., None]:
-    """An assertion taking a seat, a projection, a body and a message."""
-
-    def run(seat: Any, subject: Any, msg: str) -> None:
-        invoke(seat, subject.observe, subject, msg)
-
-    return run
+#: The call of one assertion with a built behaviour. It receives the surface,
+#: the seat, the behaviour, the contract and the options.
+Driver = Callable[[ModuleType, Recorder, Subject, str, list[Option]], Any]
 
 
-def _retried(invoke: Callable[..., None]) -> Callable[..., None]:
-    """An assertion taking a seat, a timeout, an interval, a body and a message.
+def _flips(subject: Subject) -> Callable[[], bool]:
+    """Return a predicate that runs the seated body of subject on a new recorder."""
 
-    The seat's clock is what makes this cost nothing: an assertion that
-    retries advances it rather than waiting.
-    """
+    def predicate() -> bool:
+        trial = Recorder()
+        assert subject.seated is not None
+        subject.seated(trial)
+        return not trial.failed
 
-    def run(seat: Any, subject: Any, msg: str) -> None:
-        invoke(seat, 3600.0, 60.0, subject, msg)
-
-    return run
-
-
-def _predicate(invoke: Callable[..., None]) -> Callable[..., None]:
-    """An assertion taking a seat, a timeout, a predicate and a message."""
-
-    def run(seat: Any, subject: Any, msg: str) -> None:
-        from dokimi_assert.seat import Recorder
-
-        attempts = 0
-
-        def flips() -> bool:
-            nonlocal attempts
-            attempts += 1
-            trial = Recorder()
-            subject(trial)
-            return not trial.failed
-
-        invoke(seat, 3600.0, flips, msg)
-
-    return run
+    return predicate
 
 
-#: How each subject-taking assertion is called, by canonical id.
-SUBJECT_DRIVERS: dict[str, Callable[[Callable[..., None]], Callable[..., None]]] = {
-    "throws": _body,
-    "not-throws": _body,
-    "honours-cancellation": _body,
-    "honours-deadline": _body,
-    "nil-context-safe": _body,
-    "pure": _projected,
-    "eventually": _retried,
-    "eventually-true": _predicate,
+def _with_input(subject: Subject) -> Callable[[], Any]:
+    """Return a call of the operation of subject with its input."""
+
+    def call() -> Any:
+        assert subject.call is not None
+        return subject.call(subject.input)
+
+    return call
+
+
+def _operands(subject: Subject) -> tuple[Any, Any, Any]:
+    """Return the operands of the operation of subject."""
+    assert subject.operands is not None
+    return subject.operands
+
+
+#: The driver of each assertion that takes a callable, by canonical id.
+DRIVERS: dict[str, Driver] = {
+    "throws": lambda s, seat, subject, msg, _: s.raises(seat, subject.bare, msg),
+    "not-throws": lambda s, seat, subject, msg, _: s.does_not_raise(
+        seat, subject.bare, msg
+    ),
+    "honours-cancellation": lambda s, seat, subject, msg, _: s.honours_cancellation(
+        seat, subject.handled, msg
+    ),
+    "honours-deadline": lambda s, seat, subject, msg, _: s.honours_deadline(
+        seat, subject.handled, msg
+    ),
+    "nil-context-safe": lambda s, seat, subject, msg, _: s.none_handle_safe(
+        seat, subject.handled, msg
+    ),
+    "pure": lambda s, seat, subject, msg, options: s.is_pure(
+        seat, subject.observe, _with_input(subject), msg, *options
+    ),
+    "not-pure": lambda s, seat, subject, msg, options: s.is_not_pure(
+        seat, subject.observe, _with_input(subject), msg, *options
+    ),
+    "eventually": lambda s, seat, subject, msg, _: s.eventually(
+        seat, _RETRY_TIMEOUT, _RETRY_INTERVAL, subject.seated, msg
+    ),
+    "eventually-true": lambda s, seat, subject, msg, _: s.eventually_true(
+        seat, _RETRY_TIMEOUT, _flips(subject), msg
+    ),
+    "idempotent": lambda s, seat, subject, msg, options: s.is_idempotent(
+        seat, subject.call, subject.input, subject.observe, msg, *options
+    ),
+    "accumulates": lambda s, seat, subject, msg, _: s.accumulates(
+        seat, subject.call, subject.input, subject.observe, msg
+    ),
+    "deterministic": lambda s, seat, subject, msg, options: s.is_deterministic(
+        seat, subject.compute, subject.input, msg, *options
+    ),
+    "commutative": lambda s, seat, subject, msg, options: s.is_commutative(
+        seat, subject.combine, *_operands(subject)[:2], msg, *options
+    ),
+    "associative": lambda s, seat, subject, msg, options: s.is_associative(
+        seat, subject.combine, *_operands(subject), msg, *options
+    ),
+    "round-trip": lambda s, seat, subject, msg, options: s.round_trip(
+        seat, subject.render, int, subject.input, msg, *options
+    ),
+    "stable-order": lambda s, seat, subject, msg, options: s.has_stable_order(
+        seat, subject.iterate, msg, *options
+    ),
+    "no-duplicates": lambda s, seat, subject, msg, options: s.no_duplicates(
+        seat, subject.iterate, msg, *options
+    ),
+    "monotonic": lambda s, seat, subject, msg, _: s.is_monotonic(
+        seat, subject.observe, subject.advance, subject.steps, msg
+    ),
+    "total": lambda s, seat, subject, msg, _: s.is_total(
+        seat, subject.call, subject.domain, msg
+    ),
+    "after-close": lambda s, seat, subject, msg, _: s.fails_after_close(
+        seat, subject.close, subject.use, subject.sentinel, msg
+    ),
+    "poisoned": lambda s, seat, subject, msg, _: s.is_poisoned(
+        seat, subject.induce, subject.read, msg
+    ),
 }
+
+#: The two surfaces that a subject case runs on.
+_SURFACES: dict[str, ModuleType] = {"check": check, "expect": expect}
 
 
 def run_subject(
-    invoke: Callable[..., None], assertion: str, kind: str, seat: Any, msg: str
+    surface: str,
+    assertion: str,
+    kind: str,
+    seat: Recorder,
+    msg: str,
+    options: list[Option] | None = None,
 ) -> bool:
-    """Drive one subject case, answering whether this language could.
+    """Drive one subject case, and report whether this language can drive it.
 
     Args:
-        invoke: The assertion under test, on the surface being driven.
-        assertion: Its canonical id.
-        kind: The subject kind the case names.
-        seat: Where the assertion reports.
+        surface: The name of the surface: check or expect.
+        assertion: The canonical id of the assertion under test.
+        kind: The kind of the behaviour of the case.
+        seat: The seat that receives the report of the assertion.
         msg: The contract under test.
+        options: The relaxations of the case.
 
     Returns:
-        True when the case ran, False when this language builds no such
-        subject and the case was skipped.
+        True when the case ran, or False when this language does not know the
+        behaviour, the assertion or the surface.
     """
-    shape = SUBJECT_DRIVERS.get(assertion)
-    subject = drive(kind)
-    if shape is None or subject is None:
+    build = SUBJECTS.get(kind)
+    drive = DRIVERS.get(assertion)
+    module = _SURFACES.get(surface)
+    if build is None or drive is None or module is None:
         return False
-    shape(invoke)(seat, subject, msg)
+    drive(module, seat, build(), msg, list(options or []))
     return True

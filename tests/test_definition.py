@@ -1,19 +1,31 @@
-"""This library's surface, held to the definition.
+"""This spec checks the surface of this library against the definition.
 
-The completeness gate: every assertion the standard states must be
-present under the name the naming table gives it. A name qualified with
-a dot names a member of the module the assertion table gives it, so the
-golden and benchmark assertions are looked for where they live.
+The completeness gate checks that every assertion of the definition has the
+name that the naming table gives it. A name with a dot refers to a member of
+the module that the assertion table gives, so the gate finds the golden and
+benchmark assertions in their modules.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import importlib
-from typing import Any
+import inspect
+from typing import Any, Protocol
 
 import pytest
 
-from dokimi_assert import bench, check, expect, golden, option
+from dokimi_assert import (
+    bench,
+    check,
+    expect,
+    files,
+    golden,
+    history,
+    option,
+    prop,
+    stateful,
+)
 from dokimi_assert import seat as seat_module
 from dokimi_assert.conformance import definition
 from dokimi_assert.seat import Standard
@@ -23,21 +35,22 @@ OUTER = Standard()
 ASSERTIONS = definition.assertions()
 NAMES = definition.names()
 
-#: The modules a qualified name may name.
-MODULES: dict[str, Any] = {"golden": golden, "bench": bench}
-
-#: Members the recording surface is not expected to carry, with the
-#: reason. Each is checked in both directions below.
-CHECK_ONLY = {
-    "rejects": "drives a check to failure, which needs a seat that stops",
+#: The modules that a qualified name can start with.
+MODULES: dict[str, Any] = {
+    "golden": golden,
+    "bench": bench,
+    "prop": prop,
+    "files": files,
+    "history": history,
+    "stateful": stateful,
 }
 
 
 def _present(name: str, module: Any) -> bool:
-    """Whether module carries name, following a dotted name to its member.
+    """Return True when module has name. A dotted name refers to a member of a class.
 
-    Stopping at the class would report every member of it present, which
-    reports a declined assertion as implemented.
+    A check that stops at the class reports every member of the class as
+    present, and so reports a declined assertion as implemented.
     """
     owner, _, rest = name.partition(".")
     if not rest:
@@ -47,7 +60,7 @@ def _present(name: str, module: Any) -> bool:
 
 
 def _surface_for(assertion: str, name: str) -> tuple[Any, str]:
-    """Return the module holding an assertion, and the name in it."""
+    """Return the module of an assertion and the name of the assertion in it."""
     package = ASSERTIONS[assertion].get("package", "")
     if package:
         return MODULES[package], name.split(".", 1)[1]
@@ -55,23 +68,23 @@ def _surface_for(assertion: str, name: str) -> tuple[Any, str]:
 
 
 def test_the_definition_is_not_empty() -> None:
-    """A definition that read nothing would check nothing."""
-    check.is_not_empty(OUTER, ASSERTIONS, "the vendored definition states assertions")
+    """A definition without assertions does not check anything."""
+    check.is_not_empty(OUTER, ASSERTIONS, "the vendored definition has assertions")
 
 
 def test_every_assertion_has_a_python_name() -> None:
-    """The naming table must cover every assertion the standard states."""
+    """The naming table has a Python name for every assertion of the definition."""
     missing = sorted(set(ASSERTIONS) - set(NAMES))
     check.is_empty(OUTER, missing, f"every assertion has a python name: {missing}")
 
 
 @pytest.mark.parametrize("assertion", sorted(ASSERTIONS))
 def test_assertion_is_implemented(assertion: str) -> None:
-    """Every assertion the standard states is present unless declined.
+    """Every assertion of the definition is present unless the overlay declines it.
 
-    An overlay declining one is checked in both directions. A library
-    that ships the member anyway is claiming a gap it does not have,
-    which the standard fails the build for.
+    The test checks a declined assertion in both directions. The definition
+    fails the build of a library that exports a member that its overlay
+    declines.
     """
     module, name = _surface_for(assertion, NAMES[assertion])
     if definition.diverges(assertion):
@@ -95,50 +108,47 @@ def test_assertion_is_implemented(assertion: str) -> None:
 def test_unqualified_assertion_is_on_both_surfaces(assertion: str) -> None:
     """An assertion in the root namespace is on both surfaces.
 
-    One the overlay declines is on neither, for the reason the
-    completeness check above gives.
+    An assertion that the overlay declines is on neither surface.
     """
     name = NAMES[assertion]
     if definition.diverges(assertion):
         declined = f"{name} is declined by the overlay"
         check.not_contains(
-            OUTER, check.__all__, name, f"{declined}, so off the aborting surface"
+            OUTER,
+            check.__all__,
+            name,
+            f"{declined}, so it is not on the aborting surface",
         )
-        check.not_contains(
-            OUTER, expect.__all__, name, f"{declined}, so off the recording surface"
-        )
-        return
-    if name in CHECK_ONLY:
         check.not_contains(
             OUTER,
             expect.__all__,
             name,
-            f"{name} is off the recording surface: {CHECK_ONLY[name]}",
+            f"{declined}, so it is not on the recording surface",
         )
         return
     check.contains(OUTER, check.__all__, name, f"{name} is on the aborting surface")
     check.contains(OUTER, expect.__all__, name, f"{name} is on the recording surface")
 
 
-def test_the_surfaces_carry_the_same_members() -> None:
-    """Neither surface may carry a member the other does not, bar excuses."""
+def test_the_surfaces_have_the_same_members() -> None:
+    """The aborting surface and the recording surface have the same members."""
     check.equal(
         OUTER,
         sorted(expect.__all__),
-        sorted(set(check.__all__) - set(CHECK_ONLY)),
-        "the two surfaces carry the same members",
+        sorted(check.__all__),
+        "the two surfaces have the same members",
     )
 
 
-def test_every_module_named_by_the_definition_exists() -> None:
-    """A package the assertion table names must be importable."""
+def test_every_module_of_the_definition_exists() -> None:
+    """Every package of the assertion table is importable."""
     named = {a.get("package") for a in ASSERTIONS.values()} - {"", None}
     for package in sorted(named):
         importlib.import_module(f"dokimi_assert.{package}")
 
 
 def test_the_overlay_extends_the_vendored_version() -> None:
-    """An overlay pinned to a version that moved on is stale."""
+    """An overlay of an older version of the definition is stale."""
     check.equal(
         OUTER,
         definition.overlay()["extends"],
@@ -148,83 +158,77 @@ def test_the_overlay_extends_the_vendored_version() -> None:
 
 
 def test_the_overlay_is_this_language() -> None:
-    """Vendoring another language's overlay would excuse the wrong gaps."""
+    """The overlay of another language would decline the wrong assertions."""
     check.equal(
         OUTER,
         definition.overlay()["language"],
         definition.LANGUAGE,
-        "the vendored overlay is this language's",
+        "the vendored overlay is the overlay of Python",
     )
 
 
-def test_every_divergence_names_an_assertion_the_standard_states() -> None:
-    """An overlay excusing a name nobody states excuses nothing."""
+def test_every_divergence_has_an_assertion_of_the_definition() -> None:
+    """A divergence of an unknown assertion does not decline anything."""
     stated = set(ASSERTIONS)
     for entry in definition.overlay()["diverge"]:
         check.contains(
             OUTER,
             stated,
             entry["id"],
-            f"{entry['id']} is an assertion the standard states",
+            f"{entry['id']} is an assertion of the definition",
         )
 
 
-def test_every_divergence_says_what_it_is_and_why() -> None:
-    """A gap nobody could close and a gap nobody got to look alike.
+def test_every_divergence_has_an_id_a_stance_and_a_reason() -> None:
+    """A divergence has an id, a stance and a reason.
 
-    Only the reason tells them apart, so the standard requires one.
+    The reason separates a gap that the language cannot close from a gap that
+    the library has not closed, so the definition requires it.
     """
     for entry in definition.overlay()["diverge"]:
         for field in ("id", "stance", "why"):
             check.is_not_empty(
                 OUTER,
                 entry.get(field, ""),
-                f"the divergence for {entry.get('id', '?')} states {field}",
+                f"the divergence of {entry.get('id', '?')} has {field}",
             )
 
 
 RELAXATIONS = definition.relaxation_names()
 
 
-def test_the_definition_states_relaxations() -> None:
-    """A definition with none would mean the vendored copy is stale."""
-    assert RELAXATIONS, "the definition states relaxations"
+def test_the_definition_has_relaxations() -> None:
+    """A definition without relaxations is a stale vendored copy."""
+    assert RELAXATIONS, "the definition has relaxations"
 
 
 @pytest.mark.parametrize("relaxation", sorted(RELAXATIONS))
 def test_relaxation_is_offered_or_declined(relaxation: str) -> None:
-    """An implementing language answers every relaxation, one way.
+    """The library either names or declines every relaxation.
 
-    Named and declined is a contradiction; neither is a silent gap. A
-    named relaxation has to be importable from the option module under
-    exactly that name.
+    A relaxation with a name and a decline is a contradiction, and a
+    relaxation with neither is a silent gap. A named relaxation is importable
+    from the option module under that name.
     """
     name = RELAXATIONS[relaxation]
     declined = definition.declines_relaxation(relaxation)
 
     assert not (name and declined), (
-        f"{relaxation}: named {name!r} and declined, which is a contradiction"
+        f"{relaxation}: the relaxation has the name {name!r} and a decline"
     )
     assert name or declined, (
-        f"{relaxation}: the table gives no Python name and the overlay "
+        f"{relaxation}: the table does not have a Python name, and the overlay "
         "does not decline it"
     )
     if name:
-        assert hasattr(option, name), (
-            f"{relaxation}: {name} is named and not importable"
-        )
+        assert hasattr(option, name), f"{relaxation}: {name} is not importable"
         assert callable(getattr(option, name)), f"{relaxation}: {name} is not callable"
 
 
 SURFACE = definition.surface_names()
 
-#: Where each surface id resolves. A type or member row lands on the
-#: seat module's classes; a qualified name reaches through OWNERS the
-#: way the assertions do.
-SEAT_TYPES = {"seat", "standard-seat", "recorder-seat", "collector-seat"}
 
-
-#: Where a row lives when its own module owns it rather than the seat.
+#: The module of each surface row that is not in the seat module.
 SURFACE_MODULES = {
     "clock": "clock",
     "system-clock": "clock",
@@ -243,14 +247,14 @@ SURFACE_MODULES = {
 
 
 def _surface_target(sid: str, name: str) -> tuple[Any, str]:
-    """Answer what to look on, and for what, for one surface row."""
+    """Return the object that has a surface row, and the name of the row in it."""
     if sid in SURFACE_MODULES:
         module = importlib.import_module(f"dokimi_assert.{SURFACE_MODULES[sid]}")
         if "." not in sid:
             return module, name
         owner_id = sid.split(".", 1)[0]
-        # A member of the seat is answered by the seats that carry it,
-        # not by the protocol, which states only what a seat may have.
+        # The seats have the members of a seat. The protocol does not have the
+        # optional members.
         if owner_id == "seat":
             return module.Recorder, name
         return getattr(module, SURFACE[owner_id]), name
@@ -258,29 +262,51 @@ def _surface_target(sid: str, name: str) -> tuple[Any, str]:
     if sid in {"clock", "system-clock", "failure", "where"}:
         return importlib.import_module("dokimi_assert.clock"), name
     if "." in name:
+        # A name that ends in () is the constructor of its class.
         owner_name, member = name.split(".", 1)
-        return importlib.import_module(f"dokimi_assert.{owner_name}"), member
+        module = importlib.import_module(f"dokimi_assert.{owner_name}")
+        return module, member.removesuffix("()")
     if "." in sid:
         owner_id = sid.split(".", 1)[0]
-        owner = getattr(seat_module, SURFACE[owner_id])
-        return owner, name
+        owner_name, _, member = SURFACE[owner_id].rpartition(".")
+        module = importlib.import_module(f"dokimi_assert.{owner_name or 'seat'}")
+        if name.endswith("()"):
+            return module, name.removesuffix("()")
+        return getattr(module, member), name
     return seat_module, name
 
 
-def test_the_surface_table_states_something() -> None:
-    """A table with nothing would mean the vendored copy is stale."""
-    assert SURFACE, "the surface table states ids"
+def _offered(owner: Any, member: str) -> bool:
+    """Report whether owner has member.
+
+    A field of a dataclass without a default is not an attribute of its
+    class. A protocol documents an optional member in its docstring, because
+    a protocol cannot declare one, as Spec documents equal(a, b).
+    """
+    if hasattr(owner, member):
+        return True
+    if dataclasses.is_dataclass(owner):
+        return member in {f.name for f in dataclasses.fields(owner)}
+    if Protocol in getattr(owner, "__mro__", ()):
+        return f"{member}(" in (inspect.getdoc(owner) or "")
+    return False
+
+
+def test_the_surface_table_has_ids() -> None:
+    """An empty table is a stale vendored copy."""
+    assert SURFACE, "the surface table has ids"
 
 
 @pytest.mark.parametrize("sid", sorted(SURFACE))
 def test_surface_id_is_offered_or_declined(sid: str) -> None:
-    """An implementing language answers every surface id, one way."""
+    """The library either names or declines every surface id."""
     name = SURFACE[sid]
     declined = definition.declines_surface(sid)
 
-    assert not (name and declined), f"{sid}: named {name!r} and declined"
+    assert not (name and declined), f"{sid}: the id has the name {name!r} and a decline"
     assert name or declined, (
-        f"{sid}: the table gives no Python name and the overlay does not decline it"
+        f"{sid}: the table does not have a Python name, and the overlay does not "
+        "decline it"
     )
     if not name:
         return
@@ -289,8 +315,8 @@ def test_surface_id_is_offered_or_declined(sid: str) -> None:
         owner: Any = importlib.import_module("dokimi_assert.bench").Contract
         member = name.split(".")[-1]
         found = owner if sid == "contract" else getattr(owner, member, None)
-        assert found is not None, f"{sid}: {name} is named and not implemented"
+        assert found is not None, f"{sid}: {name} is not implemented"
         return
 
     owner, member = _surface_target(sid, name)
-    assert hasattr(owner, member), f"{sid}: {name} is named and not implemented"
+    assert _offered(owner, member), f"{sid}: {name} is not implemented"

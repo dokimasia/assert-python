@@ -1,143 +1,166 @@
-"""Reading the definition this library is held to."""
+"""The reader of the vendored definition that this library implements.
+
+The files are vendored, so a build is reproducible and a test run does not
+need the network. make spec-sync refreshes them.
+"""
 
 from __future__ import annotations
 
 import json
 from importlib import resources
+from importlib.resources.abc import Traversable
 from typing import Any
 
-#: This language's column in the naming table.
+__all__ = [
+    "LANGUAGE",
+    "assertions",
+    "declines_relaxation",
+    "declines_surface",
+    "detail_fields",
+    "diverges",
+    "names",
+    "overlay",
+    "relaxation_names",
+    "spec_dir",
+    "surface_names",
+    "version",
+]
+
+#: The column of this language in the naming table.
 LANGUAGE = "python"
 
 
+def spec_dir() -> Traversable:
+    """Return the directory of the vendored definition.
+
+    Returns:
+        The directory as a traversable of importlib.resources.
+    """
+    return resources.files("dokimi_assert.conformance") / "spec"
+
+
 def _read(name: str) -> Any:
-    """Read one file from the vendored definition."""
-    spec = resources.files("dokimi_assert.conformance") / "spec"
-    return json.loads((spec / name).read_text())
+    """Return the JSON of one file of the vendored definition."""
+    return json.loads((spec_dir() / name).read_text(encoding="utf-8"))
 
 
 def assertions() -> dict[str, Any]:
-    """Return the assertion table: what the standard states must exist.
+    """Return the assertion table of the definition.
 
     Returns:
-        The assertion table: what the standard states must exist.
+        Every assertion of the definition, by canonical id.
     """
     return dict(_read("assertions.json")["assertions"])
 
 
 def names() -> dict[str, str]:
-    """Return each assertion mapped to the name this language uses.
+    """Return the Python name of each assertion of the naming table.
 
     Returns:
-        Each assertion mapped to the name this language uses.
+        The canonical id of each assertion that has a Python name, with that
+        name.
     """
     table = _read("naming.json")["names"]
-    return {
-        assertion: entry[LANGUAGE]
-        for assertion, entry in table.items()
-        if LANGUAGE in entry
-    }
+    return {aid: row[LANGUAGE] for aid, row in table.items() if LANGUAGE in row}
 
 
 def version() -> str:
-    """Return the definition version this library implements.
+    """Return the version of the vendored definition.
 
     Returns:
-        The definition version this library implements.
+        The content of the file VERSION.
     """
-    spec = resources.files("dokimi_assert.conformance") / "spec"
-    return (spec / "VERSION").read_text().strip()
+    return (spec_dir() / "VERSION").read_text(encoding="utf-8").strip()
 
 
 def overlay() -> dict[str, Any]:
-    """Return this language's declared divergences from the standard.
+    """Return the overlay of this language.
 
-    Every assertion the standard states is required. A library that
-    cannot supply one says so here, with the reason, so a gap nobody
-    could close and a gap nobody got to are told apart. An empty
-    diverge is a claim of full compliance, not an absence of one.
+    The overlay lists each assertion that this language does not supply, and
+    the reason for each.
 
     Returns:
-        This language's declared divergences from the standard.
+        The vendored overlay.
     """
     return dict(_read("overlay.json"))
 
 
 def relaxation_names() -> dict[str, str]:
-    """Each relaxation the definition states, with this language's name.
-
-    A relaxation the naming table gives Python no name for maps to the
-    empty string, which is what an overlay declining it looks like.
+    """Return the Python name of each relaxation of the definition.
 
     Returns:
-        Relaxation id to the name a caller types.
+        The id of each relaxation with its Python name. The name is the empty
+        string when the naming table does not give a Python name.
     """
-    stated = _read("assertions.json").get("relaxations", {})
+    declared = _read("assertions.json").get("relaxations", {})
     named = _read("naming.json").get("relaxations", {})
-    return {rid: named.get(rid, {}).get("python", "") for rid in stated}
+    return {rid: named.get(rid, {}).get(LANGUAGE, "") for rid in declared}
 
 
-def detail_fields() -> dict[str, set[str]]:
-    """What each assertion's failure carries, by canonical id.
+def detail_fields() -> dict[str, list[str]]:
+    """Return the detail fields that each assertion declares.
 
     Returns:
-        Assertion id to the field names its record holds.
+        The canonical id of each assertion, with the fields of its failure
+        record.
     """
-    stated = _read("assertions.json")["assertions"]
-    return {aid: set(body.get("detail_fields") or []) for aid, body in stated.items()}
+    table = _read("assertions.json")["assertions"]
+    return {aid: list(body.get("detail_fields") or []) for aid, body in table.items()}
 
 
 def surface_names() -> dict[str, str]:
-    """Every surface id, with this language's name for it.
-
-    An id the table gives Python no name for maps to the empty string,
-    which is what an overlay declining it looks like.
+    """Return the Python name of each surface id of the naming table.
 
     Returns:
-        Surface id to the name a caller types, across the types,
-        members and helpers sections.
+        The id of each type, member and helper with its Python name. The name
+        is the empty string when the table does not give a Python name.
     """
     table = _read("naming.json").get("surface", {})
     out: dict[str, str] = {}
     for section in ("types", "members", "helpers"):
-        for sid, per_language in table.get(section, {}).items():
-            out[sid] = per_language.get("python", "")
+        for sid, row in table.get(section, {}).items():
+            out[sid] = row.get(LANGUAGE, "")
     return out
 
 
+def _lists(section: str, ident: str) -> bool:
+    """Report whether a list section of the overlay has an entry of ident."""
+    return any(entry.get("id") == ident for entry in overlay().get(section, []))
+
+
 def declines_surface(surface_id: str) -> bool:
-    """Whether the overlay declines this surface id.
+    """Report whether the overlay declines a surface id.
 
     Args:
-        surface_id: The id, as the surface table states it.
+        surface_id: The id in the surface table.
 
     Returns:
-        True when the overlay declares it not offered.
+        True when the overlay lists the id as one that the library does not
+        offer.
     """
-    entries = overlay().get("surface", [])
-    return any(entry.get("id") == surface_id for entry in entries)
+    return _lists("surface", surface_id)
 
 
 def declines_relaxation(relaxation: str) -> bool:
-    """Whether the overlay declines this relaxation.
+    """Report whether the overlay declines a relaxation.
 
     Args:
-        relaxation: The canonical relaxation id.
+        relaxation: The canonical id of the relaxation.
 
     Returns:
-        True when the overlay declares it not offered.
+        True when the overlay lists the relaxation as one that the library
+        does not offer.
     """
-    entries = overlay().get("relaxations", [])
-    return any(entry.get("id") == relaxation for entry in entries)
+    return _lists("relaxations", relaxation)
 
 
 def diverges(assertion: str) -> bool:
-    """Whether the overlay excuses assertion from being implemented.
+    """Report whether the overlay lists a divergence from an assertion.
 
     Args:
         assertion: The canonical id of the assertion.
 
     Returns:
-        Whether the overlay excuses the assertion from being implemented.
+        True when the overlay lists a divergence for the assertion.
     """
-    return any(entry.get("id") == assertion for entry in overlay()["diverge"])
+    return _lists("diverge", assertion)

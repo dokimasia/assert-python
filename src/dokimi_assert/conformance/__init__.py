@@ -1,12 +1,13 @@
-"""This library held to the standard.
+"""The check of this library against the definition.
 
-The standard is language-neutral and lives in its own repository. Every
-language repository carries its own copy of this check, because it
-reads the library under test and nothing can do that across a language
+The definition is language-neutral and has a repository of its own. Each
+language repository has its own copy of this check, because the check
+imports the library under test, and an import does not cross a language
 boundary.
 
-Two things are checked. The corpus states what an assertion must report
-and is shared with every other implementation, so it catches this
-library meaning something different by the same name. The definition
-states which assertions exist, so it catches one missing or misnamed.
+The check runs two parts of the definition against this library. Every
+implementation runs the same cases of the corpus, so a case fails when this
+library gives a name a different meaning. The naming table lists the
+assertions that exist, so the check also finds an assertion that is missing
+or misnamed.
 """
