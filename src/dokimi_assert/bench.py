@@ -15,7 +15,8 @@ not keep a running count of allocations. Each of its primitives returns the
 memory that is live at one moment. A body that allocates ten blocks and
 frees them then measures the same as a body that does not allocate. The
 overlay of the definition for Python marks the allocation ceilings as
-blocked for this reason.
+blocked for this reason. allocs_checked returns False with this reason, so
+a test can report that its run does not check an allocation ceiling.
 
 max_bytes measures with tracemalloc. Tracing slows the body, so set the
 ceiling from a run that traced.
@@ -31,11 +32,14 @@ from typing import TypeVar
 from dokimi_assert._matcher.seat import Mode, Seat
 from dokimi_assert._matcher.verdict import fail, pass_
 
-__all__ = ["Contract"]
+__all__ = ["Contract", "allocs_checked"]
 
 #: The quantile that max_latency bounds. A caller waits for the tail, and a
 #: mean hides the tail.
 P99 = 0.99
+
+#: Why no run of this library checks an allocation ceiling.
+_UNCOUNTED = "CPython does not count allocations"
 
 #: The contract of each ceiling. The keys are the ids of the assertions.
 _CONTRACTS = {
@@ -46,6 +50,20 @@ _CONTRACTS = {
 
 #: The type of the value that the setup of excluding returns.
 _T = TypeVar("_T")
+
+
+def allocs_checked() -> tuple[bool, str]:
+    """Return whether a run checks allocation ceilings, and the reason when not.
+
+    No run of this library checks an allocation ceiling, so the result is
+    False with the same reason in every run.
+
+        checked, reason = bench.allocs_checked()
+
+    Returns:
+        False, and the reason.
+    """
+    return False, _UNCOUNTED
 
 
 class Contract:

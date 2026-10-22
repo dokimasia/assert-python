@@ -454,3 +454,16 @@ class TestContractCheck:
             "both ceilings fail without aborting",
         )
         check.length(seat, recorder.messages, 2, "two failures are recorded")
+
+
+class TestAllocsChecked:
+    """allocs_checked reports whether a run checks allocation ceilings."""
+
+    def test_returns_false_with_the_reason(self, seat: Collector) -> None:
+        """CPython does not count allocations, so no run checks a ceiling."""
+        check.equal(
+            seat,
+            bench.allocs_checked(),
+            (False, "CPython does not count allocations"),
+            "a run does not check allocation ceilings",
+        )
