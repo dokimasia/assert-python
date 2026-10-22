@@ -2,18 +2,33 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, ClassVar
 
 import pytest
 
 from dokimi_assert import check, prop
 from dokimi_assert._prop.registry import Generators, scope
+from dokimi_assert.option import equate_empty
 from dokimi_assert.seat import Collector
 
 
 def refuse(_: int) -> int:
     """Raise the error of a conversion that refuses every value."""
     raise LookupError("the conversion refuses the value")
+
+
+@dataclass(frozen=True)
+class Order:
+    """An order of a shop: its status and its number of lines."""
+
+    status: int
+    lines: int
+
+
+def within(orders: list[Order], low: int, high: int) -> bool:
+    """Report whether every int of orders is in [low, high]."""
+    return all(low <= o.status <= high and low <= o.lines <= high for o in orders)
 
 
 class TestValues:
@@ -70,6 +85,58 @@ class TestValues:
             inside,
             prop.values(prop.of(int), 42, 3),
             "values decodes the ints of the test process",
+        )
+
+    def test_decodes_a_draw_of_of_with_the_generator_that_using_states(
+        self, seat: Collector
+    ) -> None:
+        """The option gives int the generator of 7."""
+        check.equal(
+            seat,
+            prop.values(prop.of(int), 42, 3, prop.using(int, prop.just(7))),
+            [7, 7, 7],
+            "every value is 7",
+        )
+
+    def test_generates_each_value_of_a_stated_type_inside_a_derived_value(
+        self, seat: Collector
+    ) -> None:
+        """Both ints of each order are from 1 to 3, and they are not without it."""
+        stated = prop.values(
+            prop.of(Order), 42, 20, prop.using(int, prop.integer(1, 3))
+        )
+        check.is_true(seat, within(stated, 1, 3), "every int of an order is 1 to 3")
+        check.is_false(
+            seat,
+            within(prop.values(prop.of(Order), 42, 20), 1, 3),
+            "the ints of the test process are wider",
+        )
+
+    def test_decodes_a_draw_of_its_type_inside_the_stated_generator_without_it(
+        self, seat: Collector
+    ) -> None:
+        """The stated generator of int adds 100 to the int of the test process."""
+        above = prop.of(int).map(lambda x: x + 100)
+        check.equal(
+            seat,
+            prop.values(prop.of(int), 42, 3, prop.using(int, above)),
+            [x + 100 for x in prop.values(prop.of(int), 42, 3)],
+            "each value is 100 above the int of the test process",
+        )
+
+    def test_takes_the_later_option_of_one_type(self, seat: Collector) -> None:
+        """The second option of int replaces the first."""
+        check.equal(
+            seat,
+            prop.values(
+                prop.of(int),
+                42,
+                2,
+                prop.using(int, prop.just(1)),
+                prop.using(int, prop.just(2)),
+            ),
+            [2, 2],
+            "the later option applies",
         )
 
     def test_returns_no_value_for_a_count_of_0(self, seat: Collector) -> None:
@@ -165,4 +232,44 @@ class TestValues:
             (type(error), str(error)),
             (ValueError, want),
             "the error names the call",
+        )
+
+    refused: ClassVar[list[tuple[str, Any, str]]] = [
+        (
+            "raises value error for an option of another setting",
+            prop.cases(5),
+            "cases",
+        ),
+        ("raises value error for an example of a form", prop.example(1), "example"),
+        (
+            "raises value error for an option of a comparison",
+            equate_empty(),
+            "equate-empty",
+        ),
+        ("raises value error for a value that is not an option", "using", "str"),
+    ]
+
+    @pytest.mark.parametrize(
+        ("give_option", "want_kind"),
+        [t[1:] for t in refused],
+        ids=[t[0] for t in refused],
+    )
+    def test_raises_value_error_for_an_option_that_it_refuses(
+        self, seat: Collector, give_option: Any, want_kind: str
+    ) -> None:
+        """The error has the call and the kind of the option."""
+        error = check.raises(
+            seat,
+            lambda: prop.values(prop.integer(0, 9), 42, 3, give_option),
+            "values raises",
+        )
+        check.equal(
+            seat,
+            (type(error), str(error)),
+            (
+                ValueError,
+                "prop: values(generator, 42, 3) takes the options of using alone, "
+                f"not {want_kind}",
+            ),
+            "the error names the option",
         )
