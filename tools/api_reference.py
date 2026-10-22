@@ -20,7 +20,7 @@ from typing import Any
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 
-from dokimi_assert import bench, check, golden  # noqa: E402
+from dokimi_assert import bench, check, golden
 
 #: Where the generated block starts and ends in README.md.
 START = "<!-- api-reference:start -->"
@@ -29,42 +29,62 @@ END = "<!-- api-reference:end -->"
 #: The families, in the order a reader meets them, and what each one
 #: states. A name in no family is a bug this script reports.
 FAMILIES: list[tuple[str, str, list[str]]] = [
-    ("Equality", "Structural, and strict about types.", ["equal", "not_equal"]),
+    (
+        "Equality",
+        "The comparison is structural and strict about types.",
+        ["equal", "not_equal"],
+    ),
     (
         "Truth and absence",
-        "The two-value cases.",
+        "Python has one null value, None.",
         ["is_true", "is_false", "is_none", "is_not_none"],
     ),
-    ("Size", "Anything with a length.", ["length", "is_empty", "is_not_empty"]),
+    (
+        "Size",
+        "Each takes anything with a length. None has no length and fails all three.",
+        ["length", "is_empty", "is_not_empty"],
+    ),
     (
         "Containment",
-        "What holding means follows the haystack.",
-        ["contains", "not_contains", "contains_in_order"],
+        "A str contains a substring, a mapping contains a key, and a "
+        "sequence or a set contains an element by the rules of equal. "
+        "is_permutation compares two sequences in any order.",
+        ["contains", "not_contains", "contains_in_order", "is_permutation"],
     ),
-    ("Text", "str and bytes.", ["has_prefix", "has_suffix", "matches"]),
+    (
+        "Text",
+        "Each takes a str and fails on any other value.",
+        ["has_prefix", "has_suffix", "matches"],
+    ),
     (
         "Numbers",
-        "Where exact equality is the wrong question.",
+        "Exact equality is the wrong check for a float.",
         ["close_to", "in_range"],
     ),
     (
         "Ordering",
-        "Sorted, unique, and anything else that holds between neighbours.",
+        "pairwise covers sorted, unique and strictly increasing, because "
+        "each of those is a relation between neighbours.",
         ["pairwise"],
     ),
     (
         "Errors",
-        "For code that hands an error back rather than raising it.",
+        "These suit code that returns an error instead of raising it.",
         ["no_error", "has_error", "error_is", "error_is_not", "error_as"],
     ),
-    ("Raising", "For code that raises.", ["raises", "does_not_raise"]),
+    (
+        "Raising",
+        "raises returns the exception of fn, so a test can assert on its "
+        "class or its message.",
+        ["raises", "does_not_raise"],
+    ),
     (
         "Cancellation",
-        "asyncio is Python's cancellation model. These run the "
-        "loop themselves, so your test stays a plain def. That is "
-        "also the limit: the two that drive a coroutine cannot be "
-        "called from a test already running a loop, and say so "
-        "naming the assertion when they are.",
+        "Python cancels work through asyncio. honours_cancellation and "
+        "honours_deadline take a coroutine function and run the event "
+        "loop themselves, so the test is a plain def. completes_within "
+        "calls fn on a daemon thread and fails at the deadline without "
+        "waiting for it.",
         [
             "honours_cancellation",
             "honours_deadline",
@@ -74,15 +94,48 @@ FAMILIES: list[tuple[str, str, list[str]]] = [
     ),
     (
         "Retrying",
-        "For a condition something outside the test makes true. Both spend real time.",
+        "These suit a condition that something outside the test makes "
+        "true. On the platform clock they spend real time. On a "
+        "Controlled clock they advance the clock between attempts.",
         ["eventually", "eventually_true"],
     ),
-    ("Concurrency", "Call what it returns where the scope ends.", ["no_task_leaks"]),
-    ("Purity", "What observe returns defines what nothing means.", ["is_pure"]),
+    (
+        "Concurrency",
+        "Call what it returns where the scope ends. A thread or an "
+        "asyncio task that the scope started and that still runs then "
+        "is a leak.",
+        ["no_task_leaks"],
+    ),
+    (
+        "Purity",
+        "observe must return a copy, because a reading that shares state "
+        "with the subject compares one object with itself.",
+        ["is_pure", "is_not_pure"],
+    ),
+    (
+        "Relations",
+        "Each calls the subject with the values that the test passes. A "
+        "relation that compares two results compares them by the rules "
+        "of equal.",
+        [
+            "is_idempotent",
+            "accumulates",
+            "is_deterministic",
+            "is_commutative",
+            "is_associative",
+            "round_trip",
+            "has_stable_order",
+            "no_duplicates",
+            "is_monotonic",
+            "is_total",
+            "fails_after_close",
+            "is_poisoned",
+        ],
+    ),
     (
         "Testing an assertion",
-        "On check only: expect cannot drive a check to "
-        "failure, because it does not stop.",
+        "rejects takes the message before its body. It returns the "
+        "failure records of the body, and fails when the body passes.",
         ["rejects"],
     ),
 ]
@@ -112,7 +165,8 @@ def signature(owner: Any, name: str, prefix: str) -> str:
         parts.append(f"{stars}{p.name}: {ann}")
 
     ret = _clean(inspect.formatannotation(sig.return_annotation))
-    tail = "" if ret == "None" else f" -> {ret}"
+    constructor = inspect.isclass(getattr(owner, name))
+    tail = "" if ret == "None" or constructor else f" -> {ret}"
     return f"{prefix}{name}({', '.join(parts)}){tail}"
 
 
@@ -124,25 +178,26 @@ def render() -> str:
     if missing:
         raise SystemExit(f"api_reference: no family for {missing}")
 
-    out.append("Every assertion takes the seat first and the message last.")
-    out.append("`check` and `expect` carry the same names and the same")
-    out.append("signatures; only what happens on a failure differs.")
+    out.append("Each assertion takes the seat first and the message last.")
+    out.append("`check` and `expect` have the same names and the same")
+    out.append("signatures. Only what happens on a failure differs.")
     out.append("")
 
     for title, blurb, names in FAMILIES:
-        out.append(f"**{title}** — {blurb}")
+        out.append(f"**{title}.** {blurb}")
         out.append("")
         out.append("```python")
         out += [signature(check, n, "check.") for n in names]
         out.append("```")
         out.append("")
 
-    out.append("**Golden files** — recorded output, compared and rewritable.")
+    out.append("**Golden files.** Each comparison reads recorded output and takes")
+    out.append("no message. A failure stops the test.")
     out.append("")
     out.append("```python")
     out += [
         signature(golden, n, "golden.")
-        for n in ("match", "match_at", "match_json_field")
+        for n in ("match", "match_at", "match_json_field", "match_tree")
     ]
     out += [
         signature(golden, n, "golden.")
@@ -157,19 +212,28 @@ def render() -> str:
     out.append("```")
     out.append("")
 
-    out.append("**Benchmark ceilings** — chained onto one contract.")
+    out.append("**Benchmark ceilings.** The ceilings chain onto one contract, and")
+    out.append("`check` reports a verdict for each of them.")
     out.append("")
     out.append("```python")
-    out.append(signature(bench.Contract, "loop", "Contract."))
+    out.append(signature(bench, "Contract", "bench."))
     out += [
         signature(bench.Contract, n, "Contract.")
-        for n in ("max_latency", "max_mean", "max_bytes", "excluding")
+        for n in (
+            "warmup",
+            "max_latency",
+            "max_mean",
+            "max_bytes",
+            "loop",
+            "excluding",
+            "check",
+        )
     ]
     out.append("```")
     out.append("")
-    out.append("Each one carries a full docstring: what it states, what every")
-    out.append("argument means, the edge cases it decides, and a worked call.")
-    out.append("Read them with `help(check.close_to)` or in your editor.")
+    out.append("Read the docstring of an assertion for its rules and the")
+    out.append("meaning of each argument, with `help(check.close_to)` or in")
+    out.append("your editor.")
     return "\n".join(out)
 
 
