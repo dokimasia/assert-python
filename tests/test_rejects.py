@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from typing import Any
 
 from dokimi_assert import check, expect
 from dokimi_assert._matcher.seat import Mode
 from dokimi_assert.failure import Failure
 from dokimi_assert.rejects import rejects
-from dokimi_assert.seat import Collector, Recorder, Seat, Standard
+from dokimi_assert.seat import Collector, Recorder, Seat, Standard, fault
 from helpers import records
 
 
@@ -172,6 +173,65 @@ class TestRejects:
         check.has_prefix(
             seat, recorder.message, "rejects runs a coroutine", "the fault"
         )
+
+    def test_ends_with_the_fault_that_ends_a_call_of_the_check(
+        self, seat: Collector
+    ) -> None:
+        """A check that ends with a fault rejects nothing."""
+        recorder = Recorder()
+        refused = ValueError("the check calls restart without restartable")
+        reached: list[str] = []
+
+        def body(inner: Seat) -> None:
+            fault(inner, refused)
+            reached.append("after")
+
+        failures = rejects(recorder, Mode.SOFT, "a check that faults", body)
+        check.is_empty(seat, reached, "the fault ended the check")
+        check.is_empty(seat, failures, "the fault has no record")
+        check.equal(seat, recorder.faults, [refused], "the seat receives the fault")
+        check.equal(
+            seat,
+            [(r["assertion"], r["verdict"], r.get("error")) for r in records(recorder)],
+            [("rejects", "error", "the check calls restart without restartable")],
+            "the call of rejects ends with the fault",
+        )
+
+    def test_ends_with_the_first_fault_of_a_check_that_runs_on_past_it(
+        self, seat: Collector
+    ) -> None:
+        """A check that suppresses the end of its first fault still ends with it."""
+        recorder = Recorder()
+        first = ValueError("the first fault")
+
+        def body(inner: Seat) -> None:
+            with contextlib.suppress(BaseException):
+                fault(inner, first)
+            fault(inner, ValueError("the second fault"))
+
+        rejects(recorder, Mode.SOFT, "a check with two faults", body)
+        check.equal(seat, recorder.faults, [first], "the seat receives the first")
+
+    def test_passes_a_noted_fault_of_the_check_to_its_seat(
+        self, seat: Collector
+    ) -> None:
+        """The check runs on past a noted fault."""
+        recorder = Recorder()
+        noted = OSError("the store skips a file")
+
+        def body(inner: Any) -> None:
+            inner.report_fault(noted, False)
+            check.is_none(inner, 1, "it fails after the note")
+
+        failures = rejects(recorder, Mode.FATAL, "a check with a note", body)
+        check.equal(
+            seat,
+            [f.contract for f in failures],
+            ["it fails after the note"],
+            "the check ran on",
+        )
+        check.equal(seat, recorder.faults, [noted], "the seat receives the note")
+        check.is_false(seat, recorder.failed, "rejects passes")
 
     def test_lets_an_exception_of_the_check_leave_the_call(
         self, seat: Collector

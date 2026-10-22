@@ -28,13 +28,15 @@ class _Check(Body):
 
     It keeps each failure record of the check in call order, and whether the
     check failed at all. A failure that stops ends the check in the same way
-    as it ends a test.
+    as it ends a test. A fault that ends its call ends the check, and the
+    seat keeps the fault.
     """
 
-    def __init__(self, slot: Slot | None) -> None:
-        """Return the seat of the check of the call that slot started."""
-        super().__init__(slot)
+    def __init__(self, slot: Slot | None, parent: Seat) -> None:
+        """Return the seat of the check of the call that slot started on parent."""
+        super().__init__(slot, parent)
         self.records: list[Failure] = []
+        self.fault: BaseException | None = None
 
     def report(self, failure: Failure, aborting: bool) -> None:
         """Keep failure, and end the check when it came from the aborting surface.
@@ -51,6 +53,25 @@ class _Check(Body):
         if aborting:
             raise Ended
 
+    def report_fault(self, fault: BaseException, ending: bool) -> None:
+        """Keep a fault that ends its call, and end the check.
+
+        A noted fault passes to the seat of rejects, and the check continues.
+
+        Args:
+            fault: The fault.
+            ending: When True, the fault ends its call.
+
+        Raises:
+            Ended: The fault ends its call.
+        """
+        if not ending:
+            super().report_fault(fault, ending)
+            return
+        if self.fault is None:
+            self.fault = fault
+        raise Ended
+
 
 def rejects(
     seat: Seat, mode: Mode, msg: str, body: Callable[[Any], object]
@@ -64,6 +85,12 @@ def rejects(
     record. An exception of the body propagates out of the call, because it
     is a defect of the check or of the subject and not a rejection. The calls
     of the check are recorded under the call of rejects.
+
+    A fault that ends a call of the check ends the call of rejects with the
+    same fault, because a check that ends with a fault rejects nothing. The
+    record of rejects states the verdict error, the seat receives the fault
+    as seat.fault passes it, and rejects returns an empty list. A fault that
+    the check notes passes to the seat as a noted fault.
 
     Args:
         seat: The seat that receives the failure.
@@ -82,12 +109,15 @@ def rejects(
     call = Running.begin(seat, call_site())
     with Loop("rejects") as loop:
         try:
-            check = run_on(_Check(call.slot), body, loop)
+            check = run_on(_Check(call.slot, seat), body, loop)
         except FaultError as error:
             call.faulted(mode, "rejects", msg, error)
             return []
     if call.slot is not None:
         call.slot.take(own(check))
+    if check.fault is not None:
+        call.faulted(mode, "rejects", msg, check.fault)
+        return []
     if not check.failed:
         call.failed(mode, "rejects", msg, {})
         return []
