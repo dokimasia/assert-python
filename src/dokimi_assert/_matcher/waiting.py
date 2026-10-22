@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The assertions that retry, and the assertion that checks a scope for leaks.
 
 The retrying assertions wait on the clock of the seat. On the platform clock
@@ -11,8 +14,7 @@ from __future__ import annotations
 import asyncio
 import threading
 import time
-from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dokimi_assert._matcher.body import Body, run_on
 from dokimi_assert._matcher.fault import FaultError
@@ -22,6 +24,9 @@ from dokimi_assert._matcher.verdict import Running, fail, pass_
 from dokimi_assert._record.calls import own
 from dokimi_assert.clock import Clock, wait
 from dokimi_assert.failure import call_site
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 __all__ = ["LEAK_GRACE", "eventually", "eventually_true", "no_task_leaks"]
 
@@ -147,9 +152,11 @@ def eventually_true(
             backoff = min(2 * backoff, cap)
 
 
-def _running() -> set[object]:
+def _running() -> set[threading.Thread | asyncio.Task[Any]]:
     """Return the threads and the asyncio tasks of the event loop that run now."""
-    alive: set[object] = {t for t in threading.enumerate() if t.is_alive()}
+    alive: set[threading.Thread | asyncio.Task[Any]] = {
+        t for t in threading.enumerate() if t.is_alive()
+    }
     try:
         asyncio.get_running_loop()
     except RuntimeError:
@@ -157,11 +164,10 @@ def _running() -> set[object]:
     return alive | {t for t in asyncio.all_tasks() if not t.done()}
 
 
-def _name_of(work: object) -> str:
+def _name_of(work: threading.Thread | asyncio.Task[Any]) -> str:
     """Return the name of a thread or a task."""
     if isinstance(work, threading.Thread):
         return f"thread {work.name}"
-    assert isinstance(work, asyncio.Task)
     return f"task {work.get_name()}"
 
 

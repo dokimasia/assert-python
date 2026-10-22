@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The assertions about the behaviour of a subject, not about its result.
 
 Python does not have a cancellation handle in every signature, as Go has
@@ -9,10 +12,10 @@ handle.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import threading
 import time
-from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dokimi_assert._matcher.compare import equal as _equal
 from dokimi_assert._matcher.fault import FaultError
@@ -21,6 +24,9 @@ from dokimi_assert._matcher.option import Option, settings
 from dokimi_assert._matcher.seat import Mode, Seat, clock_of
 from dokimi_assert._matcher.verdict import Running
 from dokimi_assert.failure import call_site
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 __all__ = [
     "NOTICE_TIMEOUT",
@@ -170,11 +176,10 @@ def completes_within(
     done = threading.Event()
 
     def subject() -> None:
+        # The assertion measures the time of fn and not its outcome.
         try:
-            with Loop("completes-within") as loop:
+            with contextlib.suppress(Exception), Loop("completes-within") as loop:
                 loop.resolve(fn())
-        except Exception:
-            pass
         finally:
             done.set()
 
@@ -258,6 +263,7 @@ def none_handle_safe(
         except (AttributeError, TypeError) as error:
             call.failed(mode, "nil-context-safe", msg, {"got": error})
             return
-        except Exception:
+        # Any other exception is a refusal of the call, and the subject passes.
+        except Exception:  # noqa: S110
             pass
     call.passed(mode, "nil-context-safe", msg)

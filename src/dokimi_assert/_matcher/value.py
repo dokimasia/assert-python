@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The assertions about the equality, truth, size, text and number of a value.
 
 Each takes a seat and a mode, so both surfaces share one implementation. A
@@ -8,16 +11,19 @@ ends with a failure record and not with an exception.
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence, Set, Sized
-from typing import Any
+from collections.abc import Mapping, Sequence, Sized
+from collections.abc import Set as AbstractSet
+from typing import TYPE_CHECKING, Any
 
 from dokimi_assert._matcher.compare import contains_element
 from dokimi_assert._matcher.compare import equal as _equal
 from dokimi_assert._matcher.option import Option, settings
-from dokimi_assert._matcher.seat import Mode, Seat
 from dokimi_assert._matcher.verdict import fail, pass_
 from dokimi_assert._pattern.match import compile_pattern
 from dokimi_assert._pattern.parse import PatternError
+
+if TYPE_CHECKING:
+    from dokimi_assert._matcher.seat import Mode, Seat
 
 __all__ = [
     "close_to",
@@ -273,7 +279,7 @@ def _contained(haystack: Any, needle: Any, options: tuple[Option, ...]) -> bool 
         return None
     if isinstance(haystack, Mapping):
         return contains_element(haystack.keys(), needle, settings(options))
-    if isinstance(haystack, (Sequence, Set)):
+    if isinstance(haystack, (Sequence, AbstractSet)):
         return contains_element(haystack, needle, settings(options))
     return None
 

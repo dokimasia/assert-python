@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The assertions about properties of a subject across calls.
 
 Each callable can be a coroutine function, and the relation runs the
@@ -10,17 +13,20 @@ ended, and None in the field of a step that did not run.
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Iterable, Sequence
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from dokimi_assert._matcher.compare import equal as _equal
 from dokimi_assert._matcher.errors import matches_target
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert._matcher.loop import Loop
 from dokimi_assert._matcher.option import Option, Relaxations, settings
-from dokimi_assert._matcher.seat import Mode, Seat
 from dokimi_assert._matcher.verdict import Running, fail, pass_
 from dokimi_assert.failure import call_site
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable, Sequence
+
+    from dokimi_assert._matcher.seat import Mode, Seat
 
 __all__ = [
     "REPETITIONS",

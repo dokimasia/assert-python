@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _matcher/fault.py tests the faults of the library."""
 
 from __future__ import annotations

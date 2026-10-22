@@ -1,13 +1,20 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _matcher/body.py tests the seat that an assertion makes for a body."""
 
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import pytest
 
 from dokimi_assert._matcher.body import Body, Ended, run_on
 from dokimi_assert._matcher.loop import Loop
-from dokimi_assert._matcher.seat import Seat
 from dokimi_assert.seat import Recorder
+
+if TYPE_CHECKING:
+    from dokimi_assert._matcher.seat import Seat
 
 
 class TestBody:
@@ -107,7 +114,8 @@ class TestRunOn:
         """An exception of the body is not a failure of the body."""
 
         def body(_: Seat) -> None:
-            raise KeyError("defect")
+            msg = "defect"
+            raise KeyError(msg)
 
         with Loop("x") as loop, pytest.raises(KeyError):
             run_on(Body(None, Recorder()), body, loop)

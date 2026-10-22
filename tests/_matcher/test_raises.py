@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _matcher/raises.py tests the assertions about a callable that raises."""
 
 from __future__ import annotations
@@ -11,7 +14,8 @@ from dokimi_assert.seat import Recorder
 
 def boom() -> None:
     """Raise an error."""
-    raise ValueError("boom")
+    msg = "boom"
+    raise ValueError(msg)
 
 
 async def coroutine() -> None:

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The verdict of every assertion call. A call passes, fails or ends with a fault.
 
 Each verdict function writes the record of the call when the seat records
@@ -11,8 +14,7 @@ the exception it is, and any other seat ends the call with the exception.
 from __future__ import annotations
 
 import warnings
-from collections.abc import Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from dokimi_assert._matcher.seat import (
     Mode,
@@ -26,6 +28,11 @@ from dokimi_assert._record.calls import Slot, add, calls_of
 from dokimi_assert._record.literal import detail as literal_of
 from dokimi_assert._record.switch import reading
 from dokimi_assert.failure import Failure, Where, call_site, render
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from dokimi_assert._record.calls import Calls
 
 __all__ = [
     "Running",
@@ -358,8 +365,7 @@ class Running:
         if self._slot is not None:
             self._slot.write(record)
             return
-        assert calls is not None
-        add(calls, record)
+        add(cast("Calls", calls), record)
 
 
 def pass_(seat: Seat, mode: Mode, assertion: str, contract: str) -> None:

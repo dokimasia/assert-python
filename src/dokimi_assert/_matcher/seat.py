@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The interface through which every assertion reports a failure.
 
 An assertion does not call a test runner, and it does not raise on its own.
@@ -9,12 +12,15 @@ for a report.
 from __future__ import annotations
 
 import weakref
-from collections.abc import Callable, Sequence
 from enum import Enum
-from typing import Protocol, TypeGuard, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
 
 from dokimi_assert.clock import Clock, System
-from dokimi_assert.failure import Failure
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
+    from dokimi_assert.failure import Failure
 
 __all__ = [
     "FaultReporter",

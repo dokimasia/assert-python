@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The structural equality of the definition.
 
 The == of Python has other rules. bool is a subclass of int, so 0 == False
@@ -13,9 +16,10 @@ from __future__ import annotations
 import dataclasses
 import math
 from collections.abc import Iterable, Mapping, Sized
-from typing import Any, TypeGuard
+from typing import TYPE_CHECKING, Any, TypeGuard
 
-from dokimi_assert._matcher.option import Relaxations
+if TYPE_CHECKING:
+    from dokimi_assert._matcher.option import Relaxations
 
 __all__ = ["contains_element", "equal", "is_collection", "is_reference"]
 
@@ -116,14 +120,8 @@ class _Walk:
             return a is b
         if type(a) is not type(b):
             return False
-        if a is None:
-            return True
-        if isinstance(a, float):
-            if math.isnan(a) and math.isnan(b):
-                return relax.equate_nans
-            return bool(a == b)
-        if isinstance(a, (bool, int, str, bytes)):
-            return bool(a == b)
+        if a is None or isinstance(a, (bool, int, float, str, bytes)):
+            return self._scalars(a, b)
         pair = (id(a), id(b))
         if pair in self._seen:
             return True
@@ -132,6 +130,17 @@ class _Walk:
             return self._deep(a, b)
         finally:
             self._seen.discard(pair)
+
+    def _scalars(self, a: Any, b: Any) -> bool:
+        """Report whether two scalars of one type are equal.
+
+        None equals None. A NaN equals another NaN only under equate-nans.
+        """
+        if a is None:
+            return True
+        if isinstance(a, float) and math.isnan(a) and math.isnan(b):
+            return self._relax.equate_nans
+        return bool(a == b)
 
     def _absent_against_empty(self, a: object, b: object) -> bool:
         """Report whether one side is None and the other an empty collection."""

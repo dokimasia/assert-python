@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _matcher/relation.py tests the relations of a subject across calls.
 
 The corpus has one passing and one failing case of each relation. This spec
@@ -9,13 +12,15 @@ from __future__ import annotations
 
 import asyncio
 import math
-from collections.abc import AsyncIterator, Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dokimi_assert._matcher import relation
 from dokimi_assert._matcher.option import Relaxations, equate_empty
 from dokimi_assert._matcher.seat import Mode
 from dokimi_assert.seat import Recorder
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Callable
 
 
 class BoomError(Exception):
@@ -24,7 +29,8 @@ class BoomError(Exception):
 
 def boom(*_: Any) -> Any:
     """Raise BoomError."""
-    raise BoomError("boom")
+    msg = "boom"
+    raise BoomError(msg)
 
 
 async def doubled(x: int) -> int:
@@ -81,7 +87,8 @@ class TestIsIdempotent:
         def second_fails(_: Any) -> None:
             calls[0] += 1
             if calls[0] == 2:
-                raise BoomError("second")
+                msg = "second"
+                raise BoomError(msg)
 
         seat = run(
             lambda s: relation.is_idempotent(
@@ -132,7 +139,8 @@ class TestAccumulates:
         def call(_: Any) -> None:
             count[0] += 1
             if count[0] == 2:
-                raise BoomError("second")
+                msg = "second"
+                raise BoomError(msg)
 
         seat = run(
             lambda s: relation.accumulates(s, Mode.SOFT, call, 1, lambda: count[0], "c")
@@ -157,7 +165,8 @@ class TestIsDeterministic:
         def flaky(_: Any) -> int:
             calls[0] += 1
             if calls[0] == 5:
-                raise BoomError("fifth")
+                msg = "fifth"
+                raise BoomError(msg)
             return 1
 
         seat = run(lambda s: relation.is_deterministic(s, Mode.FATAL, flaky, 1, "c"))
@@ -382,7 +391,8 @@ class TestFailsAfterClose:
         """
 
         def other() -> None:
-            raise KeyError("other")
+            msg = "other"
+            raise KeyError(msg)
 
         seat = run(
             lambda s: relation.fails_after_close(

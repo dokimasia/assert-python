@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The assertion about the relation of neighbouring items.
 
 One assertion checks sorted, unique and strictly increasing, because each of
@@ -6,11 +9,14 @@ them is a relation between every two adjacent items and nothing more.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from dokimi_assert._matcher.seat import Mode, Seat
 from dokimi_assert._matcher.verdict import fail, pass_
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
+    from dokimi_assert._matcher.seat import Mode, Seat
 
 __all__ = ["pairwise"]
 

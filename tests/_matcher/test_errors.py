@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _matcher/errors.py tests the assertions about an error value."""
 
 from __future__ import annotations
@@ -13,13 +16,9 @@ class ClosedError(Exception):
 
 def wrapped() -> BaseException:
     """Return a RuntimeError whose __cause__ is a ClosedError."""
-    try:
-        try:
-            raise ClosedError("closed")
-        except ClosedError as cause:
-            raise RuntimeError("the store failed") from cause
-    except RuntimeError as error:
-        return error
+    error = RuntimeError("the store failed")
+    error.__cause__ = ClosedError("closed")
+    return error
 
 
 def contextual() -> BaseException:

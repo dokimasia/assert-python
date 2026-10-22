@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _matcher/compare.py tests the structural equality of the definition.
 
 The verdict of every assertion that compares values comes from this
@@ -21,6 +24,7 @@ from dokimi_assert._matcher.compare import (
     is_reference,
 )
 from dokimi_assert._matcher.option import Relaxations
+from dokimi_assert._override import override
 from dokimi_assert.conformance.literal import RefInt
 
 NONE = Relaxations()
@@ -40,10 +44,12 @@ class Point:
 class Always:
     """An object whose == returns a value that is not a bool."""
 
+    @override
     def __eq__(self, other: object) -> Any:
         """Return a list with one item. The list is true."""
         return [1]
 
+    @override
     def __hash__(self) -> int:
         """Return the hash of the identity of the object."""
         return id(self)

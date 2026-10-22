@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _matcher/option.py tests the relaxations of one comparison."""
 
 from __future__ import annotations

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The faults of this library.
 
 A fault is an error of the library. An input that a call cannot take is a

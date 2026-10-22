@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The private package of the comparisons that both public surfaces run.
 
 Each assertion takes a seat and a mode. The surface that stops the test and

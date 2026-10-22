@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _matcher/value.py tests the assertions about a value.
 
 The corpus has the cases of each assertion. This spec adds values that the

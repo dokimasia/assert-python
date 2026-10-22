@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The event loop of one assertion call.
 
 A body, a callable or an action can be a coroutine function. The assertion
@@ -12,11 +15,13 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Awaitable, Coroutine
-from types import TracebackType
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, Self, TypeVar
 
 from dokimi_assert._matcher.fault import FaultError
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Coroutine
+    from types import TracebackType
 
 __all__ = ["Loop", "close_awaitable"]
 
@@ -58,7 +63,7 @@ class Loop:
         self._assertion: str = assertion
         self._runner: asyncio.Runner | None = None
 
-    def __enter__(self) -> Loop:
+    def __enter__(self) -> Self:
         """Return the loop."""
         return self
 
@@ -93,8 +98,9 @@ class Loop:
                 self._runner = asyncio.Runner()
             else:
                 close_awaitable(value)
+                at = ""
                 raise FaultError(
-                    "",
+                    at,
                     f"{self._assertion} runs a coroutine on an event loop of its "
                     "own, and an event loop already runs in this thread",
                 ) from None

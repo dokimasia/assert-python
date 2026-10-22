@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _matcher/waiting.py tests the assertions that wait."""
 
 from __future__ import annotations

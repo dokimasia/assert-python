@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _matcher/loop.py tests the event loop of one assertion call."""
 
 from __future__ import annotations
@@ -5,12 +8,15 @@ from __future__ import annotations
 import asyncio
 import inspect
 import warnings
-from collections.abc import Generator
+from typing import TYPE_CHECKING
 
 import pytest
 
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert._matcher.loop import Loop, close_awaitable
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 
 class Ready:
@@ -75,8 +81,10 @@ class TestLoopResolve:
 
         asyncio.run(test())
         assert raised == [
-            "the-assertion runs a coroutine on an event loop of its own, "
-            "and an event loop already runs in this thread"
+            (
+                "the-assertion runs a coroutine on an event loop of its own, "
+                "and an event loop already runs in this thread"
+            )
         ]
 
 

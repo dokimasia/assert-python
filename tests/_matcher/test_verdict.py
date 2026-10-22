@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _matcher/verdict.py tests the pass, the failure and the fault of a call.
 
 Every assertion reports through this module, so this spec checks its
@@ -60,7 +63,7 @@ class TestEnd:
     def test_raises_the_fault_on_a_seat_without_report_fault(self) -> None:
         """A standard seat ends the call with the exception itself."""
         refused = ValueError("refused")
-        with pytest.raises(ValueError) as raised:
+        with pytest.raises(ValueError, match="refused") as raised:
             end(Standard(), refused)
         assert raised.value is refused
 

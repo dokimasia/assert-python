@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _matcher/seat.py tests the interface through which assertions report."""
 
 from __future__ import annotations

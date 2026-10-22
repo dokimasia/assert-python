@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The assertions about an error value.
 
 A failure of a call is a value that the call returns or an exception that
@@ -7,10 +10,12 @@ caller caught, or None when the call did not raise.
 
 from __future__ import annotations
 
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
-from dokimi_assert._matcher.seat import Mode, Seat
 from dokimi_assert._matcher.verdict import fail, pass_
+
+if TYPE_CHECKING:
+    from dokimi_assert._matcher.seat import Mode, Seat
 
 __all__ = [
     "chain",

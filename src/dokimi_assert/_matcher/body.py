@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The seat that an assertion makes for a body.
 
 eventually makes one for each attempt, and rejects makes one for its check.
@@ -10,13 +13,16 @@ and a fault that a call notes passes to the seat of the assertion.
 from __future__ import annotations
 
 import contextlib
-from collections.abc import Callable
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
-from dokimi_assert._matcher.loop import Loop
-from dokimi_assert._matcher.seat import Seat
 from dokimi_assert._matcher.verdict import fault_text, note_fault
 from dokimi_assert._record.calls import Slot, own, run
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from dokimi_assert._matcher.loop import Loop
+    from dokimi_assert._matcher.seat import Seat
 
 __all__ = ["Body", "Ended", "run_on"]
 

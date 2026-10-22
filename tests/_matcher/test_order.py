@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _matcher/order.py tests the assertion about neighbouring items."""
 
 from __future__ import annotations
@@ -19,8 +22,8 @@ class TestPairwise:
     def test_passes_a_sequence_without_a_pair(self) -> None:
         """An empty sequence and a sequence of one item do not have a pair."""
         seat = Recorder()
-        order.pairwise(seat, Mode.FATAL, [], lambda a, b: False, "none")
-        order.pairwise(seat, Mode.FATAL, [1], lambda a, b: False, "one")
+        order.pairwise(seat, Mode.FATAL, [], lambda *_: False, "none")
+        order.pairwise(seat, Mode.FATAL, [1], lambda *_: False, "one")
         assert not seat.failed
 
     def test_fails_at_the_first_pair_that_does_not_satisfy_the_predicate(self) -> None:

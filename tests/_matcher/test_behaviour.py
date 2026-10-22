@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _matcher/behaviour.py tests the assertions about how a subject behaves.
 
 The module computes the verdicts, so this spec checks its verdicts with the
@@ -9,13 +12,15 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import time
-from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dokimi_assert._matcher import behaviour
 from dokimi_assert._matcher.seat import Mode
 from dokimi_assert.clock import Controlled
 from dokimi_assert.seat import Recorder
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def drive(run: Callable[[Recorder], None], seat: Recorder | None = None) -> Recorder:
@@ -38,7 +43,8 @@ async def returns() -> str:
 
 async def raises() -> str:
     """Raise an error of its own before any await."""
-    raise ValueError("its own reason")
+    msg = "its own reason"
+    raise ValueError(msg)
 
 
 async def raises_when_cancelled() -> str:
@@ -46,7 +52,8 @@ async def raises_when_cancelled() -> str:
     try:
         await asyncio.sleep(1)
     except asyncio.CancelledError:
-        raise ValueError("cancelled badly") from None
+        msg = "cancelled badly"
+        raise ValueError(msg) from None
     return "done"
 
 
@@ -181,7 +188,8 @@ class TestCompletesWithin:
         """
 
         def fails() -> None:
-            raise ValueError("quick")
+            msg = "quick"
+            raise ValueError(msg)
 
         seat = drive(
             lambda s: behaviour.completes_within(s, Mode.FATAL, 5.0, fails, "c")
@@ -283,7 +291,8 @@ class TestNoneHandleSafe:
         """A subject that raises an error of its own passes."""
 
         def refuses(_: Any) -> None:
-            raise ValueError("no handle")
+            msg = "no handle"
+            raise ValueError(msg)
 
         seat = drive(lambda s: behaviour.none_handle_safe(s, Mode.FATAL, refuses, "c"))
         assert not seat.failed

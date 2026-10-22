@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The assertions about a callable that raises.
 
 Both take a callable and not a value, because the exception has to be
@@ -6,12 +9,15 @@ raised inside the assertion for the assertion to catch it.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dokimi_assert._matcher.loop import close_awaitable
-from dokimi_assert._matcher.seat import Mode, Seat
 from dokimi_assert._matcher.verdict import fail, pass_
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from dokimi_assert._matcher.seat import Mode, Seat
 
 __all__ = ["does_not_raise", "raises"]
 
