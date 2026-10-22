@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _record/call.py tests the line of JSON of one call record."""
 
 from __future__ import annotations

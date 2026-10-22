@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The call records of one test, one recorder or one run of a body.
 
 Each seat of this library has calls, and calls_of finds them. The calls do
@@ -20,7 +23,7 @@ import threading
 import weakref
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, cast
 
 from dokimi_assert._record.call import Call, Phase, Place, encode_call
 
@@ -126,7 +129,6 @@ class Calls:
             entry: The entry.
         """
         with self.lock:
-            assert entry.call is not None
             parent = entry.parent
             place = (
                 Place(seq=entry.seq)
@@ -135,10 +137,9 @@ class Calls:
                     seq=entry.seq, parent=parent.seq, run=entry.run, phase=entry.phase
                 )
             )
-            line = encode_call(entry.call, place)
+            line = encode_call(cast("Call", entry.call), place)
             if self.state == "writing":
-                assert self.sink is not None
-                self.sink(entry.seq, line)
+                cast("Sink", self.sink)(entry.seq, line)
                 return
             while len(self.kept) < entry.seq:
                 self.kept.append("")
@@ -345,8 +346,7 @@ class Slot:
         with body.lock:
             entries, body.entries = body.entries, []
         self._runs += 1
-        home = self._entry.home
-        assert home is not None
+        home = cast("Calls", self._entry.home)
         for entry in entries:
             if entry.parent is None:
                 entry.parent = self._entry
@@ -364,7 +364,6 @@ class Slot:
             call: The record of the call.
         """
         self._entry.call = call
-        home = self._entry.home
-        assert home is not None
+        home = cast("Calls", self._entry.home)
         if self._entry.seq != 0:
             home.emit(self._entry)

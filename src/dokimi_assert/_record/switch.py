@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The switch that turns call records on.
 
 DOKIMI_ASSERT_RECORD=1 makes the seat of a test write the call record of

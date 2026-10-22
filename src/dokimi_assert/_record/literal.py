@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The typed literal of a value in a call record.
 
 A call record contains each value of the detail of a failure as a typed
@@ -63,6 +66,19 @@ def _float_of(value: float) -> _Written:
     return _scalar("float", value)
 
 
+def _plain_of(value: bool | enum.Enum | float | None) -> _Written:
+    """Return the literal of None, a bool, a member of an Enum, an int or a float."""
+    if value is None:
+        return _Written(form={"type": "null"})
+    if isinstance(value, bool):
+        return _scalar("bool", value)
+    if isinstance(value, enum.Enum):
+        return _Written(form={"type": "variant", "name": value.name})
+    if isinstance(value, int):
+        return _scalar("int", value if -_SAFE <= value <= _SAFE else str(value))
+    return _float_of(value)
+
+
 def _common_scalar(items: Sequence[_Written]) -> str | None:
     """Return the scalar type of every one of items, or None."""
     if not items:
@@ -117,22 +133,20 @@ class _Walk:
         """
         if not self._spend(1) or self._level > VALUE_DEPTH:
             return None
-        if value is None:
-            return _Written(form={"type": "null"})
-        if isinstance(value, bool):
-            return _scalar("bool", value)
-        if isinstance(value, enum.Enum):
-            return _Written(form={"type": "variant", "name": value.name})
-        if isinstance(value, int):
-            return _scalar("int", value if -_SAFE <= value <= _SAFE else str(value))
-        if isinstance(value, float):
-            return _float_of(value)
+        if value is None or isinstance(value, (bool, enum.Enum, int, float)):
+            return _plain_of(value)
         if isinstance(value, str):
             return self._text(value)
         if isinstance(value, (bytes, bytearray)):
-            if not self._spend(len(value)):
-                return None
-            return _Written(form={"type": "bytes", "value": bytes(value).hex()})
+            return self._bytes_of(value)
+        return self._composite_of(value)
+
+    def _composite_of(self, value: Any) -> _Written | None:
+        """Return the literal of a dataclass, a NamedTuple, a collection or a Mapping.
+
+        A collection is a list, a tuple, a set or a frozenset. Any other value
+        does not have a literal.
+        """
         if dataclasses.is_dataclass(value) and not isinstance(value, type):
             names = [f.name for f in dataclasses.fields(value)]
             return self._record_of([(name, getattr(value, name)) for name in names])
@@ -157,6 +171,12 @@ class _Walk:
         if not self._spend(len(encoded)):
             return None
         return _scalar("string", value)
+
+    def _bytes_of(self, value: bytes | bytearray) -> _Written | None:
+        """Return the literal of bytes or a bytearray, and None past the bound."""
+        if not self._spend(len(value)):
+            return None
+        return _Written(form={"type": "bytes", "value": bytes(value).hex()})
 
     def _items(self, elements: Sequence[Any]) -> list[_Written] | None:
         """Return the literal of each element two levels deeper."""
@@ -314,6 +334,11 @@ def json(value: Any) -> str:
     )
 
 
+#: The first and the last code point of the surrogates of UTF-16.
+_FIRST_SURROGATE = 0xD800
+_LAST_SURROGATE = 0xDFFF
+
+
 def quoted(text: str) -> str:
     """Return the JSON text of a str for a message that quotes it.
 
@@ -329,5 +354,6 @@ def quoted(text: str) -> str:
     """
     stated = _json.dumps(text, ensure_ascii=False)
     return "".join(
-        f"\\u{ord(c):04x}" if 0xD800 <= ord(c) <= 0xDFFF else c for c in stated
+        f"\\u{ord(c):04x}" if _FIRST_SURROGATE <= ord(c) <= _LAST_SURROGATE else c
+        for c in stated
     )

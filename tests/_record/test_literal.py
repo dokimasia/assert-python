@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _record/literal.py tests the typed literal of a value in a call record.
 
 A call record is a verdict of the conformance runner, so this spec checks its

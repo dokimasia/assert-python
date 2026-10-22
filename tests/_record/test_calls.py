@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _record/calls.py tests the numbering of call records.
 
 The records are the verdicts of the conformance runner, so this spec checks

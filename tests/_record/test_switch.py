@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _record/switch.py tests the switch that turns call records on.
 
 The process reads the switch once, so each case reads it in a child process

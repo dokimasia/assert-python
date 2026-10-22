@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The call record of one assertion call.
 
 A record has the number of the call in its test, the assertion, the
@@ -8,7 +11,7 @@ order of the definition.
 
 from __future__ import annotations
 
-import os
+import pathlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -109,7 +112,7 @@ def encode_call(call: Call, place: Place) -> str:
     record["aborting"] = call.aborting
     if call.where is not None:
         file, line = call.where
-        record["where"] = {"file": os.path.basename(file), "line": line}
+        record["where"] = {"file": pathlib.Path(file).name, "line": line}
     if call.detail is not None:
         record["detail"] = dict(call.detail)
     if call.error is not None:
