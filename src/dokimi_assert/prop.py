@@ -24,7 +24,9 @@ generator of a shape file.
 A failing run writes its minimal case to the store of the test under
 testdata/prop. Later runs replay it first. around runs each run of the
 body inside a wrapper, such as a frozen clock, so that each run gets an
-environment of its own.
+environment of its own. values returns the values of a generator for a
+seed outside a property, so a benchmark measures the same inputs on every
+run.
 """
 
 from __future__ import annotations
@@ -133,6 +135,7 @@ from dokimi_assert._prop.registry import (
     register_variants,
     shape_of,
 )
+from dokimi_assert._prop.values import values
 
 __all__ = [
     "AllowInfinity",
@@ -227,6 +230,7 @@ __all__ = [
     "string",
     "string_matching",
     "using",
+    "values",
     "workers",
 ]
 
