@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """Render the API reference of the README from the code itself.
 
 A signature list written by hand goes stale the first time a parameter
@@ -771,20 +774,27 @@ def _gaps() -> list[str]:
     gaps: list[str] = []
     for module, names in placed.items():
         exported = set(module.__all__)
-        for name in sorted(exported - names):
-            gaps.append(f"no entry for {_short(module)}.{name}")
-        for name in sorted(names - exported):
-            gaps.append(f"an entry for {_short(module)}.{name}, which __all__ lacks")
+        gaps.extend(
+            f"no entry for {_short(module)}.{name}" for name in sorted(exported - names)
+        )
+        gaps.extend(
+            f"an entry for {_short(module)}.{name}, which __all__ lacks"
+            for name in sorted(names - exported)
+        )
     rendered = {_short(module) for module in placed}
     public = {
         info.name
         for info in pkgutil.iter_modules(dokimi_assert.__path__)
         if not info.name.startswith("_")
     }
-    for name in sorted(public - rendered - set(UNRENDERED)):
-        gaps.append(f"no block or reason for the module {name}")
-    for name in sorted(set(UNRENDERED) - public):
-        gaps.append(f"a reason for {name}, which is no public module")
+    gaps.extend(
+        f"no block or reason for the module {name}"
+        for name in sorted(public - rendered - set(UNRENDERED))
+    )
+    gaps.extend(
+        f"a reason for {name}, which is no public module"
+        for name in sorted(set(UNRENDERED) - public)
+    )
     return gaps
 
 
@@ -829,7 +839,8 @@ def main() -> int:
     for name, section in blocks.items():
         start, end = _start(name), _end(name)
         if start not in text or end not in text:
-            raise SystemExit(f"api_reference: README.md has no {start} block")
+            msg = f"api_reference: README.md has no {start} block"
+            raise SystemExit(msg)
         head, rest = text.split(start, 1)
         _, tail = rest.split(end, 1)
         text = f"{head}{start}\n\n{section}\n\n{end}{tail}"
