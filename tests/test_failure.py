@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of failure.py: the failure record, its sentence and its call site.
 
 The record is the verdict of every other spec, so this spec states its
@@ -8,10 +11,10 @@ from __future__ import annotations
 
 import _thread
 import inspect
-import os
+import pathlib
 import threading
 import weakref
-from typing import Any
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -23,6 +26,13 @@ from dokimi_assert.failure import (
     render,
     site_in,
 )
+
+if TYPE_CHECKING:
+    from types import TracebackType
+
+#: The path of a module of the library that does not exist. A function whose
+#: code has this path runs as code of the library.
+PROBE = str(pathlib.Path(call_site.__code__.co_filename).absolute().parent / "probe.py")
 
 
 class TestFailure:
@@ -136,25 +146,26 @@ class TestCallSite:
         """A stack whose every frame is inside the library has no call site.
 
         A thread that _thread starts has no frame of its own below its
-        target, so a target compiled under a path of the library is the
+        target, so a target whose code has a path of the library is the
         whole stack.
         """
-        library = os.path.dirname(os.path.abspath(call_site.__code__.co_filename))
-        space: dict[str, Any] = {"call_site": call_site}
-        source = (
-            "def probe(found, done):\n    found.append(call_site())\n    done.set()\n"
-        )
-        exec(compile(source, os.path.join(library, "probe.py"), "exec"), space)
+
+        def probe(found: list[Where | None], done: threading.Event) -> None:
+            found.append(call_site())
+            done.set()
+
+        probe.__code__ = probe.__code__.replace(co_filename=PROBE)
         found: list[Where | None] = []
         done = threading.Event()
-        _thread.start_new_thread(space["probe"], (found, done))
+        _thread.start_new_thread(probe, (found, done))
         assert done.wait(5)
         assert found == [None]
 
 
 def _raises() -> None:
     """Raise ValueError, as the code under test of a body does."""
-    raise ValueError("the code broke")
+    msg = "the code broke"
+    raise ValueError(msg)
 
 
 class TestSiteIn:
@@ -162,10 +173,10 @@ class TestSiteIn:
 
     def test_returns_the_line_of_the_innermost_frame_of_the_caller(self) -> None:
         """The frame that raised is the innermost frame of this file."""
-        with pytest.raises(ValueError) as caught:
+        with pytest.raises(ValueError, match="the code broke") as caught:
             _raises()
         assert site_in(caught.value.__traceback__) == Where(
-            __file__, _raises.__code__.co_firstlineno + 2
+            __file__, _raises.__code__.co_firstlineno + 3
         )
 
     def test_returns_the_caller_of_a_library_function_that_raised(self) -> None:
@@ -179,17 +190,16 @@ class TestSiteIn:
 
     def test_returns_none_when_every_frame_is_the_library_s(self) -> None:
         """A traceback of library code alone has no frame of the caller."""
-        library = os.path.dirname(os.path.abspath(call_site.__code__.co_filename))
-        space: dict[str, Any] = {}
-        source = (
-            "def probe():\n"
-            "    try:\n"
-            "        raise ValueError('inside')\n"
-            "    except ValueError as error:\n"
-            "        return error.__traceback__\n"
-        )
-        exec(compile(source, os.path.join(library, "probe.py"), "exec"), space)
-        assert site_in(space["probe"]()) is None
+
+        def probe() -> TracebackType | None:
+            try:
+                int("inside")
+            except ValueError as error:
+                return error.__traceback__
+            return None
+
+        probe.__code__ = probe.__code__.replace(co_filename=PROBE)
+        assert site_in(probe()) is None
 
     def test_returns_none_for_no_traceback(self) -> None:
         """An exception that was never raised has no traceback."""

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """Every public callable documents itself.
 
 An assertion library is read through its docstrings more than through
@@ -12,9 +15,13 @@ import ast
 import inspect
 import pathlib
 import re
+import subprocess
+import sys
 from typing import Any
 
 import pytest
+
+from dokimi_assert import check, expect
 
 SOURCE = pathlib.Path(__file__).resolve().parent.parent / "src" / "dokimi_assert"
 
@@ -64,13 +71,15 @@ IDS = [f"{where}::{name}" for where, name, _ in FUNCTIONS]
 def _documented_args(docstring: str) -> set[str]:
     """Answer the parameter names an Args section names."""
     match = re.search(
-        r"\n\s*Args:\n(.*?)(?:\n\s*\n\s*[A-Z][a-z]+:|\Z)", docstring, re.S
+        r"\n\s*Args:\n(.*?)(?:\n\s*\n\s*[A-Z][a-z]+:|\Z)", docstring, re.DOTALL
     )
     if match is None:
         return set()
     return {
         m.group(1)
-        for m in re.finditer(r"^\s{4}(\*{0,2}[a-z_][a-z0-9_]*):", match.group(1), re.M)
+        for m in re.finditer(
+            r"^\s{4}(\*{0,2}[a-z_][a-z0-9_]*):", match.group(1), re.MULTILINE
+        )
     }
 
 
@@ -205,8 +214,6 @@ def test_no_module_carries_markup(path: pathlib.Path) -> None:
 
 def test_the_two_surfaces_document_the_same_assertions() -> None:
     """A name documented on one surface and not the other is a gap."""
-    from dokimi_assert import check, expect
-
     for name in sorted(set(check.__all__) & set(expect.__all__)):
         assert inspect.getdoc(getattr(check, name)), f"check.{name}"
         assert inspect.getdoc(getattr(expect, name)), f"expect.{name}"
@@ -215,7 +222,7 @@ def test_the_two_surfaces_document_the_same_assertions() -> None:
 #: One block of the reference with its name, between its two markers.
 BLOCK = re.compile(
     r"<!-- api-reference:([a-z]+):start -->\n(.*?)\n<!-- api-reference:\1:end -->",
-    re.S,
+    re.DOTALL,
 )
 
 
@@ -231,12 +238,10 @@ def test_the_readme_api_reference_matches_the_code() -> None:
     describes a module. Run make api-docs after changing a signature, and
     commit what it produces.
     """
-    import subprocess
-    import sys
-
     root = pathlib.Path(__file__).resolve().parent.parent
+    # The child runs the interpreter of the specs on the tool of the repository.
     generated = _blocks(
-        subprocess.run(
+        subprocess.run(  # noqa: S603
             [sys.executable, str(root / "tools" / "api_reference.py")],
             capture_output=True,
             text=True,

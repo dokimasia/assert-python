@@ -1,14 +1,19 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of prop.py tests the names of the property engine and its sentences."""
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
 from dokimi_assert import check, prop
 from dokimi_assert.failure import Failure, render
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: The detail of a run that rejected every case.
 REJECTED: dict[str, Any] = {

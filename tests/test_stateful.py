@@ -1,13 +1,19 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of stateful.py tests the names and the sentence of the machines."""
 
 from __future__ import annotations
 
 import importlib
+from typing import TYPE_CHECKING
 
 from dokimi_assert import check, stateful
 from dokimi_assert._history.sentence import sentence
 from dokimi_assert.failure import Failure, register_sentence, render
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 class TestStateful:

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The relaxations that a caller applies to one comparison.
 
 An option applies to the call that it is passed to, and to no other call.

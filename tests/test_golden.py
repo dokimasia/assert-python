@@ -1,19 +1,23 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of golden.py tests the comparison of output with golden files and trees."""
 
 from __future__ import annotations
 
 import errno
 import json
-import os
 import pathlib
-from collections.abc import Iterator
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
 from dokimi_assert import check, files, golden
 from dokimi_assert.seat import Collector, Recorder
 from helpers import UNENFORCED, WINDOWS, records
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 #: The argument update of a call that can rewrite its golden file.
 UPDATING = True
@@ -23,14 +27,14 @@ CHECKING = False
 
 #: The contract of a comparison with the golden tree api.
 API_CONTRACT = (
-    f"the golden tree {os.path.join('testdata', 'golden', 'api')} matches the "
+    f"the golden tree {pathlib.Path('testdata', 'golden', 'api')} matches the "
     f"output, and {golden.UPDATE_ENV}=1 writes it"
 )
 
 
-def written(dir: pathlib.Path, content: str, name: str = "golden.txt") -> str:
+def written(directory: pathlib.Path, content: str, name: str = "golden.txt") -> str:
     """Write content into the golden file name in dir, and return its path."""
-    path = dir / name
+    path = directory / name
     path.write_text(content)
     return str(path)
 
@@ -48,20 +52,20 @@ def verdicts(recorder: Recorder) -> list[Any]:
 @pytest.fixture
 def locked(tmp_path: pathlib.Path) -> Iterator[pathlib.Path]:
     """Return a directory that its owner cannot write until the test ends."""
-    dir = tmp_path / "locked"
-    dir.mkdir()
-    dir.chmod(0o500)
-    yield dir
-    dir.chmod(0o755)
+    directory = tmp_path / "locked"
+    directory.mkdir()
+    directory.chmod(0o500)
+    yield directory
+    directory.chmod(0o755)
 
 
 @pytest.fixture
 def project(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> pathlib.Path:
     """Make a new directory the working directory until the test ends."""
-    dir = tmp_path / "project"
-    dir.mkdir()
-    monkeypatch.chdir(dir)
-    return dir
+    directory = tmp_path / "project"
+    directory.mkdir()
+    monkeypatch.chdir(directory)
+    return directory
 
 
 def golden_api(seat: Collector, project: pathlib.Path, tree: files.Tree) -> None:
@@ -88,7 +92,7 @@ class TestGoldenDir:
 
     def test_is_testdata_golden(self, seat: Collector) -> None:
         """The directory is relative to the working directory."""
-        want = os.path.join("testdata", "golden")
+        want = str(pathlib.Path("testdata", "golden"))
         check.equal(seat, golden.GOLDEN_DIR, want, "GOLDEN_DIR is testdata/golden")
 
 
@@ -212,8 +216,10 @@ class TestMatchAt:
             [
                 (
                     "golden-match-at",
-                    f"the golden file {path} matches the output, and "
-                    f"{golden.UPDATE_ENV}=1 writes it",
+                    (
+                        f"the golden file {path} matches the output, and "
+                        f"{golden.UPDATE_ENV}=1 writes it"
+                    ),
                     {"want": "recorded output", "got": "something else"},
                 )
             ],
@@ -357,15 +363,17 @@ class TestMatch:
         """The contract has the path of the file in testdata/golden."""
         recorder = Recorder()
         golden.match(recorder, "absent-on-purpose.txt", "content", CHECKING)
-        path = os.path.join("testdata", "golden", "absent-on-purpose.txt")
+        path = pathlib.Path("testdata", "golden", "absent-on-purpose.txt")
         check.equal(
             seat,
             [(assertion, contract) for assertion, contract, _ in reported(recorder)],
             [
                 (
                     "golden-match",
-                    f"the golden file {path} matches the output, and "
-                    f"{golden.UPDATE_ENV}=1 writes it",
+                    (
+                        f"the golden file {path} matches the output, and "
+                        f"{golden.UPDATE_ENV}=1 writes it"
+                    ),
                 )
             ],
             "the failure has the contract with the path",
@@ -408,8 +416,10 @@ class TestMatchJsonField:
             [
                 (
                     "golden-match-json-field",
-                    f'the field "items" of the golden file {path} matches the value, '
-                    f"and {golden.UPDATE_ENV}=1 writes it",
+                    (
+                        f'the field "items" of the golden file {path} matches the '
+                        f"value, and {golden.UPDATE_ENV}=1 writes it"
+                    ),
                     {"want": "[\n  1\n]", "got": "[\n  1,\n  2\n]", "field": "items"},
                 )
             ],

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The assertion that a check fails against a subject that it must reject.
 
 A check whose every statement is no_error passes against a subject whose
@@ -8,16 +11,20 @@ subject and returns the failure records of the check.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any, final
+from typing import TYPE_CHECKING, Any, final
 
 from dokimi_assert._matcher.body import Body, Ended, run_on
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert._matcher.loop import Loop
-from dokimi_assert._matcher.seat import Mode, Seat
 from dokimi_assert._matcher.verdict import Running
+from dokimi_assert._override import override
 from dokimi_assert._record.calls import Slot, own
 from dokimi_assert.failure import Failure, call_site
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from dokimi_assert._matcher.seat import Mode, Seat
 
 __all__ = ["rejects"]
 
@@ -53,6 +60,7 @@ class _Check(Body):
         if aborting:
             raise Ended
 
+    @override
     def report_fault(self, fault: BaseException, ending: bool) -> None:
         """Keep a fault that ends its call, and end the check.
 

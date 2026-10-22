@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of expect.py tests the surface that records a failure and continues.
 
 It uses pytest's assert alone, because the other specs assert with the

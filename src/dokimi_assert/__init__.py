@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """Test assertions defined by a language-neutral standard.
 
 Two surfaces carry the same assertions under the same names:

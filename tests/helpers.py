@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The helpers, the subjects and the tables that more than one spec uses."""
 
 from __future__ import annotations
@@ -12,11 +15,11 @@ from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from types import ModuleType
-from typing import Any, NoReturn
+from typing import TYPE_CHECKING, Any, NoReturn
 
 from dokimi_assert import check
 from dokimi_assert._history.history import Call, History
-from dokimi_assert._history.spec import Operation
+from dokimi_assert._override import override
 from dokimi_assert._prop.case import Case as BodyCase
 from dokimi_assert._prop.case import Location
 from dokimi_assert._prop.engine.case import Case, Provider, Replaying
@@ -24,6 +27,9 @@ from dokimi_assert._prop.engine.choice import Choice, Value
 from dokimi_assert._prop.engine.generator import Deferred, Generator
 from dokimi_assert.clock import Controlled
 from dokimi_assert.seat import Collector, Recorder
+
+if TYPE_CHECKING:
+    from dokimi_assert._history.spec import Operation
 
 #: The contract that every call of the table FAILING passes.
 MSG = "the stated contract"
@@ -76,7 +82,8 @@ def refusal(
 
 def no_draw(_: object) -> NoReturn:
     """Raise AssertionError, because the code under test never draws a value."""
-    raise AssertionError("the code under test drew a value from its source")
+    msg = "the code under test drew a value from its source"
+    raise AssertionError(msg)
 
 
 @dataclass(frozen=True)
@@ -107,6 +114,7 @@ class Picked(Deferred[Any]):
         self.generator: Generator[Any] = generator
         self.picks: int = 0
 
+    @override
     def picked(self) -> AbstractContextManager[Generator[Any]]:
         """Count the pick, and return the generator."""
         self.picks += 1
@@ -151,7 +159,8 @@ def run_python(code: str, **env: str) -> subprocess.CompletedProcess[str]:
     Returns:
         The completed process. Its output is text.
     """
-    return subprocess.run(
+    # The child runs the interpreter of the specs on a program of the specs.
+    return subprocess.run(  # noqa: S603
         [sys.executable, "-c", textwrap.dedent(code)],
         capture_output=True,
         text=True,
@@ -260,7 +269,8 @@ async def returns_at_once() -> None:
 
 def boom(*_: object) -> None:
     """Raise ValueError for any arguments."""
-    raise ValueError("boom")
+    msg = "boom"
+    raise ValueError(msg)
 
 
 def ascending(a: int, b: int) -> bool:

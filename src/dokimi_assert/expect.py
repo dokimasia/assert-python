@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The assertions that record a failure and let the test continue.
 
 The seat fixture raises every recorded failure when the test body ends, so
@@ -16,15 +19,18 @@ docstrings of check describe the rules of each assertion in full.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Iterable, Sequence
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from dokimi_assert import rejects as _rejects
 from dokimi_assert._matcher import behaviour, errors, order, relation, value, waiting
 from dokimi_assert._matcher import raises as _raises
-from dokimi_assert._matcher.option import Option
 from dokimi_assert._matcher.seat import Mode, Seat
-from dokimi_assert.failure import Failure
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable, Iterable, Sequence
+
+    from dokimi_assert._matcher.option import Option
+    from dokimi_assert.failure import Failure
 
 _E = TypeVar("_E", bound=BaseException)
 

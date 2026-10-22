@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The ceilings of a benchmark and the measurement of its iterations.
 
 A benchmark that prints numbers reports what happened. With a ceiling, the
@@ -26,11 +29,13 @@ from __future__ import annotations
 
 import time
 import tracemalloc
-from collections.abc import Callable, Iterator
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 from dokimi_assert._matcher.seat import Mode, Seat
 from dokimi_assert._matcher.verdict import fail, pass_
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
 
 __all__ = ["Contract", "allocs_checked"]
 
@@ -113,11 +118,11 @@ class Contract:
                 started.
         """
         if type(iterations) is not int or iterations < 0:
-            raise ValueError(
-                f"bench: warmup takes an int of 0 or more, not {iterations!r}"
-            )
+            msg = f"bench: warmup takes an int of 0 or more, not {iterations!r}"
+            raise ValueError(msg)
         if self._ran:
-            raise ValueError("bench: warmup cannot run after loop has started")
+            msg = "bench: warmup cannot run after loop has started"
+            raise ValueError(msg)
         self._warmup = iterations
         return self
 

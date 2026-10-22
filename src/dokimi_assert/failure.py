@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The record that a failing assertion reports, and the sentence of it.
 
 The record is the same in every implementation of the definition. The
@@ -9,10 +12,13 @@ from __future__ import annotations
 
 import inspect
 import os
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from types import CodeType, TracebackType
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from types import CodeType, TracebackType
 
 __all__ = ["Failure", "Where", "call_site", "register_sentence", "render", "site_in"]
 
@@ -169,13 +175,15 @@ def render(failure: Failure) -> str:
 
 
 #: The directory of this library's modules. A frame of a file below it is not
-#: the frame of the caller.
-_LIBRARY = os.path.dirname(os.path.abspath(__file__)) + os.sep
+#: the frame of the caller. os.path.abspath removes the .. names of a path
+#: without a system call. Path.absolute keeps them, and Path.resolve reads the
+#: links of the path.
+_LIBRARY = os.path.dirname(os.path.abspath(__file__)) + os.sep  # noqa: PTH100, PTH120
 
 
 def _outside(code: CodeType) -> bool:
     """Report whether the file of code is outside the directory of this library."""
-    return not os.path.abspath(code.co_filename).startswith(_LIBRARY)
+    return not os.path.abspath(code.co_filename).startswith(_LIBRARY)  # noqa: PTH100
 
 
 def call_site() -> Where | None:

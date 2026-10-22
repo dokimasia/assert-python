@@ -1,16 +1,21 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of bench.py tests the ceilings of a benchmark and their verdicts."""
 
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
 from dokimi_assert import bench, check
 from dokimi_assert.seat import Collector, Recorder
 from helpers import records
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 #: The iterations of a case. A p99 of 100 samples differs from the slowest
 #: sample, and 100 iterations run quickly.

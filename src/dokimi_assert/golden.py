@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """Comparison against recorded output.
 
 A golden file contains the output with which a test compares, so a change of
@@ -17,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import pathlib
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -53,7 +57,7 @@ UPDATE_ENV = "DOKIMI_ASSERT_UPDATE_GOLDEN"
 
 #: The directory in which match and match_tree resolve a name. It is relative
 #: to the working directory.
-GOLDEN_DIR = os.path.join("testdata", "golden")
+GOLDEN_DIR = str(pathlib.Path("testdata", "golden"))
 
 #: The indent of a golden JSON file. A diff of an indented file shows each
 #: changed line.
@@ -174,7 +178,7 @@ def _read(call: _Call) -> str | None:
         FaultError: The file cannot be read as UTF-8 text.
     """
     try:
-        with open(call.path, encoding="utf-8", newline="") as stream:
+        with pathlib.Path(call.path).open(encoding="utf-8", newline="") as stream:
             return stream.read()
     except FileNotFoundError:
         return None
@@ -189,10 +193,9 @@ def _write(call: _Call, content: str) -> None:
     """
     __tracebackhide__ = True
     try:
-        parent = os.path.dirname(call.path)
-        if parent:
-            os.makedirs(parent, exist_ok=True)
-        with open(call.path, "w", encoding="utf-8", newline="") as stream:
+        file = pathlib.Path(call.path)
+        file.parent.mkdir(parents=True, exist_ok=True)
+        with file.open("w", encoding="utf-8", newline="") as stream:
             stream.write(content)
     except (OSError, UnicodeError) as error:
         _faulted(
@@ -281,7 +284,7 @@ def match(seat: Seat, name: str, got: str, update: bool, *scrubbers: Scrubber) -
     """
     __tracebackhide__ = True
     seat.helper()
-    call = _file_call(seat, "golden-match", os.path.join(GOLDEN_DIR, name))
+    call = _file_call(seat, "golden-match", str(pathlib.Path(GOLDEN_DIR, name)))
     _match_file(call, got, update, scrubbers)
 
 
@@ -394,12 +397,12 @@ def _scrubbed(
 
 
 def _compare_tree(
-    name: str, golden: str, dir: str, update: bool, scrubbers: Sequence[Scrubber]
+    name: str, golden: str, directory: str, update: bool, scrubbers: Sequence[Scrubber]
 ) -> Comparison | None:
-    """Compare the tree in dir with the golden tree in golden.
+    """Compare the tree in directory with the golden tree in golden.
 
     When update is True and the two trees differ, the call makes the golden
-    tree equal to the tree in dir.
+    tree equal to the tree in directory.
 
     Returns:
         The record of the comparison, or None when the two trees are equal.
@@ -410,9 +413,12 @@ def _compare_tree(
     """
     refused = path_fault(name)
     if refused is not None:
-        raise FaultError("", refused)
-    output = _scrubbed(read_tree(dir, True), scrubbers)
-    absent = not os.path.exists(golden)
+        at = ""
+        raise FaultError(at, refused)
+    output = _scrubbed(read_tree(directory, True), scrubbers)
+    # Path.exists raises an error of the file system before Python 3.14, and
+    # os.path.exists returns False.
+    absent = not os.path.exists(golden)  # noqa: PTH110
     recorded = {} if absent else _scrubbed(read_tree(golden, False), scrubbers)
     paths = differing(recorded, output, False)
     if update and (absent or paths):
@@ -423,7 +429,7 @@ def _compare_tree(
 def match_tree(
     seat: Seat,
     name: str,
-    dir: str | os.PathLike[str],
+    dir: str | os.PathLike[str],  # noqa: A002
     update: bool,
     *scrubbers: Scrubber,
 ) -> None:
@@ -470,7 +476,7 @@ def match_tree(
     """
     __tracebackhide__ = True
     seat.helper()
-    golden = os.path.join(GOLDEN_DIR, *str(name).split("/"))
+    golden = str(pathlib.Path(GOLDEN_DIR, *str(name).split("/")))
     contract = (
         f"the golden tree {golden} matches the output, and {UPDATE_ENV}=1 writes it"
     )

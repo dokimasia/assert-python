@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 r"""Trees of files for a test, and the assertions about the files of the code.
 
 A Tree maps each path to an Entry. A path is relative to the root of the
@@ -91,11 +94,11 @@ _PREFIX = "dokimi-files-"
 _Detail = Callable[[Entry | None], dict[str, Any] | None]
 
 
-def _remove(dir: str) -> None:
+def _remove(directory: str) -> None:
     """Remove the directory of a workspace, also where a mode forbids it."""
-    unlock(dir)
+    unlock(directory)
     with contextlib.suppress(FileNotFoundError):
-        shutil.rmtree(dir)
+        shutil.rmtree(directory)
 
 
 def workspace(seat: Seat, tree: Tree) -> str:
@@ -147,17 +150,17 @@ def workspace(seat: Seat, tree: Tree) -> str:
         )
         end(seat, of_operation("files.workspace", refused))
         return ""
-    dir = ""
+    directory = ""
     try:
-        dir = tempfile.mkdtemp(prefix=_PREFIX)
-        cleanup(functools.partial(_remove, dir))
-        create(dir, tree)
+        directory = tempfile.mkdtemp(prefix=_PREFIX)
+        cleanup(functools.partial(_remove, directory))
+        create(directory, tree)
     except (OSError, FaultError) as error:
         end(seat, of_operation("files.workspace", error))
-    return dir
+    return directory
 
 
-def write(seat: Seat, dir: str | os.PathLike[str], tree: Tree) -> None:
+def write(seat: Seat, dir: str | os.PathLike[str], tree: Tree) -> None:  # noqa: A002
     r"""Write tree over the entries of the existing directory dir.
 
     When a path of the tree does not have an entry, the call creates the
@@ -225,10 +228,12 @@ def read(seat: Seat, path: str | os.PathLike[str]) -> str:
     native = os.fspath(path)
     try:
         e = read_path(native, True)
-        if e is None or kind_of(e) != "file":
-            raise FaultError("", f"the path {quoted(native)} does not have a file")
     except FaultError as error:
         end(seat, of_operation("files.read", error))
+        return ""
+    if e is None or kind_of(e) != "file":
+        refused = FaultError("", f"the path {quoted(native)} does not have a file")
+        end(seat, of_operation("files.read", refused))
         return ""
     return content_of(e).decode("utf-8", "replace")
 
@@ -237,19 +242,19 @@ def _compare_read(
     seat: Seat,
     op: str,
     assertion: str,
-    dir: str | os.PathLike[str],
+    directory: str | os.PathLike[str],
     want: Tree,
     msg: str,
     contains: bool,
 ) -> None:
-    """Compare the tree in dir with want, and report the verdict of the call."""
+    """Compare the tree in directory with want, and report the verdict of the call."""
     __tracebackhide__ = True
     seat.helper()
     where = call_site()
     call = Running.of(seat, where)
     try:
         check(want)
-        got = read_tree(os.fspath(dir), True)
+        got = read_tree(os.fspath(directory), True)
     except FaultError as error:
         call.faulted(Mode.FATAL, assertion, msg, of_operation(op, error))
         return
@@ -257,7 +262,7 @@ def _compare_read(
     report(call, assertion, msg, record, where)
 
 
-def equal(seat: Seat, dir: str | os.PathLike[str], want: Tree, msg: str) -> None:
+def equal(seat: Seat, dir: str | os.PathLike[str], want: Tree, msg: str) -> None:  # noqa: A002
     r"""Fail when the tree in dir differs from want.
 
     The comparison does not follow links. It compares a mode only where the
@@ -289,7 +294,7 @@ def equal(seat: Seat, dir: str | os.PathLike[str], want: Tree, msg: str) -> None
     _compare_read(seat, "files.equal", "tree-equal", dir, want, msg, False)
 
 
-def contains(seat: Seat, dir: str | os.PathLike[str], want: Tree, msg: str) -> None:
+def contains(seat: Seat, dir: str | os.PathLike[str], want: Tree, msg: str) -> None:  # noqa: A002
     r"""Fail when the tree in dir does not have an entry of want in its form.
 
     The tree can have more entries. The failure is a record of tree-contains.
@@ -311,11 +316,11 @@ def contains(seat: Seat, dir: str | os.PathLike[str], want: Tree, msg: str) -> N
     _compare_read(seat, "files.contains", "tree-contains", dir, want, msg, True)
 
 
-def _read_or_end(call: Running, dir: str, msg: str) -> dict[str, Entry] | None:
-    """Return the tree in dir, or None after the call ended with a fault."""
+def _read_or_end(call: Running, directory: str, msg: str) -> dict[str, Entry] | None:
+    """Return the tree in directory, or None after the call ended with a fault."""
     __tracebackhide__ = True
     try:
-        return read_tree(dir, True)
+        return read_tree(directory, True)
     except FaultError as error:
         call.faulted(
             Mode.FATAL, "tree-unchanged", msg, of_operation("files.unchanged", error)
@@ -324,7 +329,10 @@ def _read_or_end(call: Running, dir: str, msg: str) -> dict[str, Entry] | None:
 
 
 def unchanged(
-    seat: Seat, dir: str | os.PathLike[str], fn: Callable[[], object], msg: str
+    seat: Seat,
+    dir: str | os.PathLike[str],  # noqa: A002
+    fn: Callable[[], object],
+    msg: str,
 ) -> None:
     """Call fn, and fail when the tree in dir differs after the call.
 
@@ -387,9 +395,11 @@ def _check_at(
     __tracebackhide__ = True
     seat.helper()
     call = Running.of(seat, call_site())
+    if refused is not None:
+        fault = of_operation(op, FaultError("", refused))
+        call.faulted(Mode.FATAL, assertion, msg, fault)
+        return
     try:
-        if refused is not None:
-            raise FaultError("", refused)
         e = read_path(os.fspath(path), content)
     except FaultError as error:
         call.faulted(Mode.FATAL, assertion, msg, of_operation(op, error))

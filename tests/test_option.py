@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of option.py: the relaxations that a caller passes to one comparison."""
 
 from __future__ import annotations

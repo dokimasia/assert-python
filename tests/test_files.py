@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of files.py tests the trees of a test and the assertions about files."""
 
 from __future__ import annotations
@@ -5,12 +8,10 @@ from __future__ import annotations
 import asyncio
 import errno
 import json
-import os
 import pathlib
 import shutil
 import tempfile
-from collections.abc import Callable
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
@@ -18,6 +19,9 @@ from dokimi_assert import check, files
 from dokimi_assert._files.entry import Entry
 from dokimi_assert.seat import Collector, Recorder
 from helpers import LONG_NAMES_ABSENT, WINDOWS, records
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 #: The signature of a PNG file. Its bytes are not UTF-8 text.
 PNG = b"\x89PNG"
@@ -120,14 +124,14 @@ class TestWorkspace:
 
     def test_returns_a_directory_that_contains_the_tree(self, seat: Collector) -> None:
         """The directory is a temporary directory of the test."""
-        dir = files.workspace(seat, {"docs/a.md": files.text("# a\n")})
-        prefix = os.path.join(tempfile.gettempdir(), "dokimi-files-")
+        directory = files.workspace(seat, {"docs/a.md": files.text("# a\n")})
+        prefix = str(pathlib.Path(tempfile.gettempdir(), "dokimi-files-"))
         check.has_prefix(
-            seat, dir, prefix, "the directory is in the temporary directory"
+            seat, directory, prefix, "the directory is in the temporary directory"
         )
         check.equal(
             seat,
-            files.read(seat, os.path.join(dir, "docs", "a.md")),
+            files.read(seat, pathlib.Path(directory, "docs", "a.md")),
             "# a\n",
             "the directory contains the file",
         )
@@ -137,16 +141,18 @@ class TestWorkspace:
     ) -> None:
         """The cleanup removes the directory."""
         cleaning = Cleaning()
-        dir = files.workspace(cleaning, {"a.txt": files.text("a")})
+        directory = files.workspace(cleaning, {"a.txt": files.text("a")})
         cleaning.end()
-        check.is_false(seat, os.path.exists(dir), "the directory is removed")
+        check.is_false(
+            seat, pathlib.Path(directory).exists(), "the directory is removed"
+        )
 
     def test_removes_a_directory_whose_mode_forbids_the_owner_to_write_it(
         self, seat: Collector
     ) -> None:
         """The cleanup gives the owner the permission first."""
         cleaning = Cleaning()
-        dir = files.workspace(
+        directory = files.workspace(
             cleaning,
             {
                 "sealed": files.directory().with_mode(0o500),
@@ -154,13 +160,15 @@ class TestWorkspace:
             },
         )
         cleaning.end()
-        check.is_false(seat, os.path.exists(dir), "the directory is removed")
+        check.is_false(
+            seat, pathlib.Path(directory).exists(), "the directory is removed"
+        )
 
     def test_does_not_fail_for_a_directory_that_is_gone(self, seat: Collector) -> None:
         """A test can remove the workspace itself."""
         cleaning = Cleaning()
-        dir = files.workspace(cleaning, {})
-        shutil.rmtree(dir)
+        directory = files.workspace(cleaning, {})
+        shutil.rmtree(directory)
         check.does_not_raise(seat, cleaning.end, "the cleanup does not raise")
 
     def test_ends_the_call_with_a_fault_for_a_tree_that_breaks_a_rule(
@@ -168,14 +176,16 @@ class TestWorkspace:
     ) -> None:
         """The call does not write anything."""
         cleaning = Cleaning()
-        dir = files.workspace(cleaning, {"a.txt": files.text("a"), "b": Entry()})
+        directory = files.workspace(cleaning, {"a.txt": files.text("a"), "b": Entry()})
         try:
             check.equal(
                 seat,
-                [cleaning.message, os.listdir(dir)],
+                [cleaning.message, list(pathlib.Path(directory).iterdir())],
                 [
-                    "files.workspace: b: the entry is not a file, a directory or a "
-                    "link",
+                    (
+                        "files.workspace: b: the entry is not a file, a directory or a "
+                        "link"
+                    ),
                     [],
                 ],
                 "the call ends with a fault and does not write anything",
@@ -188,14 +198,16 @@ class TestWorkspace:
     ) -> None:
         """A seat that cannot remove the directory does not get one."""
         recorder = Recorder()
-        dir = files.workspace(recorder, {})
+        directory = files.workspace(recorder, {})
         check.equal(
             seat,
-            [dir, recorder.message],
+            [directory, recorder.message],
             [
                 "",
-                "files.workspace: the seat does not have a cleanup method to remove "
-                "the workspace",
+                (
+                    "files.workspace: the seat does not have a cleanup method to "
+                    "remove the workspace"
+                ),
             ],
             "the call returns an empty path and ends with a fault",
         )
@@ -206,8 +218,8 @@ class TestWorkspace:
         """The workspace cannot be created in a missing temporary directory."""
         monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / "missing"))
         cleaning = Cleaning()
-        dir = files.workspace(cleaning, {})
-        check.equal(seat, dir, "", "the call returns an empty path")
+        directory = files.workspace(cleaning, {})
+        check.equal(seat, directory, "", "the call returns an empty path")
         want = f"files.workspace: [Errno {errno.ENOENT}]"
         check.has_prefix(
             seat, cleaning.message, want, "the fault has the error of the file system"
@@ -221,14 +233,16 @@ class TestWrite:
         self, seat: Collector
     ) -> None:
         """The other files keep their content."""
-        dir = files.workspace(
+        directory = files.workspace(
             seat,
             {"api/store.gen.go": files.text("generated"), "kept.txt": files.text("k")},
         )
-        files.write(seat, pathlib.Path(dir), {"api/store.gen.go": files.text("edited")})
+        files.write(
+            seat, pathlib.Path(directory), {"api/store.gen.go": files.text("edited")}
+        )
         files.contains(
             seat,
-            dir,
+            directory,
             {"api/store.gen.go": files.text("edited"), "kept.txt": files.text("k")},
             "write edits one file and keeps the other",
         )
@@ -237,9 +251,9 @@ class TestWrite:
         self, seat: Collector
     ) -> None:
         """A file is not a directory."""
-        dir = files.workspace(seat, {"docs": files.text("a file")})
+        directory = files.workspace(seat, {"docs": files.text("a file")})
         recorder = Recorder()
-        files.write(recorder, dir, {"docs/a.md": files.text("a")})
+        files.write(recorder, directory, {"docs/a.md": files.text("a")})
         check.equal(
             seat,
             recorder.message,
@@ -253,8 +267,10 @@ class TestRead:
 
     def test_returns_the_content_of_the_file_at_the_path(self, seat: Collector) -> None:
         """A path can be a pathlib.Path."""
-        dir = files.workspace(seat, {"go.mod": files.text("module example.com/a\n")})
-        path = pathlib.Path(dir) / "go.mod"
+        directory = files.workspace(
+            seat, {"go.mod": files.text("module example.com/a\n")}
+        )
+        path = pathlib.Path(directory) / "go.mod"
         check.equal(
             seat,
             files.read(seat, path),
@@ -266,8 +282,8 @@ class TestRead:
         self, seat: Collector
     ) -> None:
         """The read loses content that is not text."""
-        dir = files.workspace(seat, {"logo.png": files.bytes(PNG)})
-        content = files.read(seat, os.path.join(dir, "logo.png"))
+        directory = files.workspace(seat, {"logo.png": files.bytes(PNG)})
+        content = files.read(seat, pathlib.Path(directory, "logo.png"))
         check.equal(
             seat,
             content,
@@ -280,7 +296,7 @@ class TestRead:
         self, seat: Collector, give: str
     ) -> None:
         """A missing entry, a directory and a link to a file are not files."""
-        dir = files.workspace(
+        directory = files.workspace(
             seat,
             {
                 "a.txt": files.text("a"),
@@ -288,7 +304,7 @@ class TestRead:
                 "current": files.link("a.txt"),
             },
         )
-        path = os.path.join(dir, give)
+        path = str(pathlib.Path(directory, give))
         recorder = Recorder()
         content = files.read(recorder, path)
         check.equal(
@@ -305,9 +321,9 @@ class TestRead:
         self, seat: Collector
     ) -> None:
         """A name past the limit of its length cannot be read."""
-        dir = files.workspace(seat, {})
+        directory = files.workspace(seat, {})
         recorder = Recorder()
-        files.read(recorder, os.path.join(dir, TOO_LONG))
+        files.read(recorder, pathlib.Path(directory, TOO_LONG))
         want = f"files.read: the entry cannot be read: [Errno {errno.ENAMETOOLONG}]"
         check.has_prefix(
             seat, recorder.message, want, "the fault has the error of the file system"
@@ -319,24 +335,24 @@ class TestEqual:
 
     def test_passes_the_tree_of_the_directory(self, seat: Collector) -> None:
         """The order of the wanted paths does not matter."""
-        dir = files.workspace(
+        directory = files.workspace(
             seat, {"a.txt": files.text("a"), "docs/b.md": files.text("b")}
         )
         recorder = Recorder()
         want = {"docs/b.md": files.text("b"), "a.txt": files.text("a")}
-        files.equal(recorder, dir, want, "the trees are equal")
+        files.equal(recorder, directory, want, "the trees are equal")
         check.equal(seat, verdicts(recorder), ["pass"], "the call passes")
 
     def test_reports_the_record_of_tree_equal_for_a_tree_that_differs(
         self, seat: Collector
     ) -> None:
         """The record has both sides of each path that differs."""
-        dir = files.workspace(
+        directory = files.workspace(
             seat, {"a.txt": files.text("a"), "c.txt": files.text("c")}
         )
         recorder = Recorder()
         want = {"a.txt": files.text("x"), "b.txt": files.text("b")}
-        files.equal(recorder, dir, want, "the trees are equal")
+        files.equal(recorder, directory, want, "the trees are equal")
         [failure] = recorder.failures
         check.equal(
             seat,
@@ -355,9 +371,11 @@ class TestEqual:
 
     def test_reports_the_call_site_of_the_test(self, seat: Collector) -> None:
         """The failure has the call site in this spec."""
-        dir = files.workspace(seat, {})
+        directory = files.workspace(seat, {})
         recorder = Recorder()
-        files.equal(recorder, dir, {"a.txt": files.text("a")}, "the trees are equal")
+        files.equal(
+            recorder, directory, {"a.txt": files.text("a")}, "the trees are equal"
+        )
         where = recorder.failures[0].where
         check.equal(
             seat,
@@ -401,20 +419,24 @@ class TestContains:
         self, seat: Collector
     ) -> None:
         """An extra entry is not a difference."""
-        dir = files.workspace(
+        directory = files.workspace(
             seat, {"a.txt": files.text("a"), "b.txt": files.text("b")}
         )
         recorder = Recorder()
-        files.contains(recorder, dir, {"b.txt": files.text("b")}, "the tree has b.txt")
+        files.contains(
+            recorder, directory, {"b.txt": files.text("b")}, "the tree has b.txt"
+        )
         check.equal(seat, verdicts(recorder), ["pass"], "the call passes")
 
     def test_reports_the_record_of_tree_contains_for_a_missing_entry(
         self, seat: Collector
     ) -> None:
         """A missing entry is only in want."""
-        dir = files.workspace(seat, {"a.txt": files.text("a")})
+        directory = files.workspace(seat, {"a.txt": files.text("a")})
         recorder = Recorder()
-        files.contains(recorder, dir, {"b.txt": files.text("b")}, "the tree has b.txt")
+        files.contains(
+            recorder, directory, {"b.txt": files.text("b")}, "the tree has b.txt"
+        )
         check.equal(
             seat,
             [recorder.failures[0].assertion, dict(recorder.failures[0].detail)],
@@ -444,20 +466,25 @@ class TestUnchanged:
 
     def test_passes_a_callable_that_does_not_write(self, seat: Collector) -> None:
         """The two trees are equal."""
-        dir = files.workspace(seat, {"a.txt": files.text("a")})
+        directory = files.workspace(seat, {"a.txt": files.text("a")})
         recorder = Recorder()
-        files.unchanged(recorder, dir, lambda: None, "the callable does not write")
+        files.unchanged(
+            recorder, directory, lambda: None, "the callable does not write"
+        )
         check.equal(seat, verdicts(recorder), ["pass"], "the call passes")
 
     def test_reports_the_record_of_tree_unchanged_for_a_callable_that_writes(
         self, seat: Collector
     ) -> None:
         """The tree before the call is the wanted tree."""
-        dir = files.workspace(seat, {"a.txt": files.text("a")})
+        directory = files.workspace(seat, {"a.txt": files.text("a")})
         recorder = Recorder()
-        path = pathlib.Path(dir) / "a.txt"
+        path = pathlib.Path(directory) / "a.txt"
         files.unchanged(
-            recorder, dir, lambda: path.write_text("b"), "the callable does not write"
+            recorder,
+            directory,
+            lambda: path.write_text("b"),
+            "the callable does not write",
         )
         check.equal(
             seat,
@@ -475,29 +502,30 @@ class TestUnchanged:
 
     def test_runs_a_coroutine_function(self, seat: Collector) -> None:
         """The call runs the coroutine to its end."""
-        dir = files.workspace(seat, {})
+        directory = files.workspace(seat, {})
         recorder = Recorder()
 
         async def late() -> None:
-            (pathlib.Path(dir) / "late.txt").write_text("late")
+            (pathlib.Path(directory) / "late.txt").write_text("late")
 
-        files.unchanged(recorder, dir, late, "the callable does not write")
+        files.unchanged(recorder, directory, late, "the callable does not write")
         check.equal(
             seat, verdicts(recorder), ["fail"], "the call fails on the late write"
         )
 
     def test_raises_the_exception_of_the_callable(self, seat: Collector) -> None:
         """The call does not have a verdict."""
-        dir = files.workspace(seat, {})
+        directory = files.workspace(seat, {})
         recorder = Recorder()
 
         def broken() -> None:
-            raise RuntimeError("the subject broke")
+            msg = "the subject broke"
+            raise RuntimeError(msg)
 
         raised = check.raises(
             seat,
             lambda: files.unchanged(
-                recorder, dir, broken, "the callable does not write"
+                recorder, directory, broken, "the callable does not write"
             ),
             "unchanged raises the error of the callable",
         )
@@ -508,14 +536,14 @@ class TestUnchanged:
         self, seat: Collector
     ) -> None:
         """The call ends with a fault when it cannot run a coroutine."""
-        dir = files.workspace(seat, {})
+        directory = files.workspace(seat, {})
         recorder = Recorder()
 
         async def subject() -> None:
             return None
 
         async def test() -> None:
-            files.unchanged(recorder, dir, subject, "the callable does not write")
+            files.unchanged(recorder, directory, subject, "the callable does not write")
 
         asyncio.run(test())
         check.has_prefix(
@@ -545,11 +573,14 @@ class TestUnchanged:
         self, seat: Collector, tmp_path: pathlib.Path
     ) -> None:
         """The callable removed the tree."""
-        dir = tmp_path / "tree"
-        dir.mkdir()
+        directory = tmp_path / "tree"
+        directory.mkdir()
         recorder = Recorder()
         files.unchanged(
-            recorder, dir, lambda: shutil.rmtree(dir), "the callable does not write"
+            recorder,
+            directory,
+            lambda: shutil.rmtree(directory),
+            "the callable does not write",
         )
         want = "files.unchanged: the tree cannot be read"
         check.has_prefix(seat, recorder.message, want, "the fault has the reason")
@@ -560,12 +591,12 @@ class TestAbsent:
 
     def test_passes_a_missing_path(self, seat: Collector, fixture: str) -> None:
         """The path does not have an entry."""
-        got = outcome(lambda r: files.absent(r, os.path.join(fixture, "b.txt"), "m"))
+        got = outcome(lambda r: files.absent(r, pathlib.Path(fixture, "b.txt"), "m"))
         check.equal(seat, got, ["pass"], "the call passes")
 
     def test_passes_a_path_below_a_file(self, seat: Collector, fixture: str) -> None:
         """A file does not have entries below it."""
-        path = os.path.join(fixture, "a.txt", "b")
+        path = pathlib.Path(fixture, "a.txt", "b")
         check.equal(
             seat,
             outcome(lambda r: files.absent(r, path, "m")),
@@ -577,7 +608,7 @@ class TestAbsent:
         self, seat: Collector, fixture: str
     ) -> None:
         """The path has a file."""
-        path = os.path.join(fixture, "a.txt")
+        path = pathlib.Path(fixture, "a.txt")
         got = outcome(lambda r: files.absent(r, path, "m"))
         check.equal(
             seat, got, ["fail", {"got": "file"}], "the failure has the kind file"
@@ -587,7 +618,7 @@ class TestAbsent:
         self, seat: Collector, fixture: str
     ) -> None:
         """The path has the link."""
-        path = os.path.join(fixture, "dangling")
+        path = pathlib.Path(fixture, "dangling")
         got = outcome(lambda r: files.absent(r, path, "m"))
         check.equal(
             seat, got, ["fail", {"got": "link"}], "the failure has the kind link"
@@ -600,7 +631,7 @@ class TestAbsent:
         self, seat: Collector, fixture: str
     ) -> None:
         """A name past the limit of its length cannot be read."""
-        path = os.path.join(fixture, TOO_LONG)
+        path = pathlib.Path(fixture, TOO_LONG)
         verdict, fault = outcome(lambda r: files.absent(r, path, "m"))
         want = f"files.absent: the entry cannot be read: [Errno {errno.ENAMETOOLONG}]"
         check.equal(seat, verdict, "error", "the call ends with a fault")
@@ -626,7 +657,7 @@ class TestIsFile:
         self, seat: Collector, fixture: str, give: str, want: list[Any]
     ) -> None:
         """The verdict depends on the kind of the entry."""
-        path = os.path.join(fixture, give)
+        path = pathlib.Path(fixture, give)
         check.equal(
             seat,
             outcome(lambda r: files.is_file(r, path, "m")),
@@ -661,7 +692,7 @@ class TestIsDir:
         self, seat: Collector, fixture: str, give: str, want: list[Any]
     ) -> None:
         """The verdict depends on the kind of the entry."""
-        path = os.path.join(fixture, give)
+        path = pathlib.Path(fixture, give)
         check.equal(
             seat,
             outcome(lambda r: files.is_dir(r, path, "m")),
@@ -676,7 +707,7 @@ class TestIsDir:
         self, seat: Collector, fixture: str
     ) -> None:
         """The fault starts with the operation."""
-        path = os.path.join(fixture, TOO_LONG)
+        path = pathlib.Path(fixture, TOO_LONG)
         _, fault = outcome(lambda r: files.is_dir(r, path, "m"))
         check.has_prefix(
             seat, fault, "files.is_dir: ", "the fault starts with files.is_dir"
@@ -722,7 +753,7 @@ class TestLinksTo:
         want: list[Any],
     ) -> None:
         """The target is compared as text."""
-        path = os.path.join(fixture, give)
+        path = pathlib.Path(fixture, give)
         got = outcome(lambda r: files.links_to(r, path, give_target, "m"))
         check.equal(seat, got, want, "links_to returns the outcome")
 
@@ -733,7 +764,7 @@ class TestLinksTo:
         self, seat: Collector, fixture: str
     ) -> None:
         """The fault starts with the operation."""
-        path = os.path.join(fixture, TOO_LONG)
+        path = pathlib.Path(fixture, TOO_LONG)
         _, fault = outcome(lambda r: files.links_to(r, path, "a", "m"))
         check.has_prefix(
             seat, fault, "files.links_to: ", "the fault starts with files.links_to"
@@ -787,7 +818,7 @@ class TestHasContent:
         want: list[Any],
     ) -> None:
         """Content is compared as bytes."""
-        path = os.path.join(fixture, give)
+        path = pathlib.Path(fixture, give)
         got = outcome(lambda r: files.has_content(r, path, give_content, "m"))
         check.equal(seat, got, want, "has_content returns the outcome")
 
@@ -795,14 +826,16 @@ class TestHasContent:
         self, seat: Collector, fixture: str
     ) -> None:
         """UTF-8 cannot encode the wanted text."""
-        path = os.path.join(fixture, "a.txt")
+        path = pathlib.Path(fixture, "a.txt")
         check.equal(
             seat,
             outcome(lambda r: files.has_content(r, path, "\ud800", "m")),
             [
                 "error",
-                "files.has_content: UTF-8 cannot encode the wanted text with a lone "
-                "surrogate",
+                (
+                    "files.has_content: UTF-8 cannot encode the wanted text with a "
+                    "lone surrogate"
+                ),
             ],
             "the call ends with a fault",
         )
@@ -844,7 +877,7 @@ class TestHasMode:
         self, seat: Collector, fixture: str, give: str, give_mode: int, want: list[Any]
     ) -> None:
         """The verdict depends on the nine bits."""
-        path = os.path.join(fixture, give)
+        path = pathlib.Path(fixture, give)
         got = outcome(lambda r: files.has_mode(r, path, give_mode, "m"))
         check.equal(seat, got, want, "has_mode returns the outcome")
 
@@ -852,7 +885,7 @@ class TestHasMode:
         self, seat: Collector, fixture: str
     ) -> None:
         """The mode is checked first."""
-        path = os.path.join(fixture, "a.txt")
+        path = pathlib.Path(fixture, "a.txt")
         check.equal(
             seat,
             outcome(lambda r: files.has_mode(r, path, 0o1000, "m")),
@@ -868,7 +901,7 @@ class TestHasMode:
         self, seat: Collector, fixture: str
     ) -> None:
         """Windows does not have a mode to read."""
-        path = os.path.join(fixture, "a.txt")
+        path = pathlib.Path(fixture, "a.txt")
         check.equal(
             seat,
             outcome(lambda r: files.has_mode(r, path, 0o644, "m")),

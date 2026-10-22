@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """Where an assertion reads time.
 
 An assertion that waits, retries or measures reads a clock the seat

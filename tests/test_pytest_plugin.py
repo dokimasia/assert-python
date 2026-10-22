@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of pytest_plugin.py drives the fixtures in the same way as a consumer suite.
 
 The cases run pytest inside pytest with the pytester fixture, because the
@@ -10,12 +13,14 @@ because the other specs assert on the seat that the plugin supplies.
 from __future__ import annotations
 
 import json
-import xml.etree.ElementTree as ElementTree
-
-import pytest
+from typing import TYPE_CHECKING
+from xml.etree import ElementTree as ET
 
 from dokimi_assert.pytest_plugin import RECORDS
 from dokimi_assert.seat import Collector, Recorder
+
+if TYPE_CHECKING:
+    import pytest
 
 pytest_plugins = ["pytester"]
 
@@ -133,7 +138,8 @@ class TestSeat:
             """
         )
         pytester.runpytest_subprocess("--junitxml=report.xml").assert_outcomes(passed=1)
-        report = ElementTree.parse(pytester.path / "report.xml")
+        # pytest wrote the report of the run of this spec.
+        report = ET.parse(pytester.path / "report.xml")  # noqa: S314
         assert report.findall(".//property") == []
 
     def test_writes_each_call_record_as_a_property_of_the_report(
@@ -152,7 +158,8 @@ class TestSeat:
         )
         result = pytester.runpytest_subprocess("--junitxml=report.xml")
         result.assert_outcomes(failed=1)
-        report = ElementTree.parse(pytester.path / "report.xml")
+        # pytest wrote the report of the run of this spec.
+        report = ET.parse(pytester.path / "report.xml")  # noqa: S314
         properties = report.findall(".//testcase/properties/property")
         stated = [(p.get("name"), json.loads(p.get("value", ""))) for p in properties]
         assert [

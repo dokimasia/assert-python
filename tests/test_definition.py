@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """This spec checks the surface of this library against the definition.
 
 The completeness gate checks that every assertion of the definition has the
@@ -248,21 +251,23 @@ SURFACE_MODULES = {
 }
 
 
+def _module_target(sid: str, name: str) -> tuple[Any, str]:
+    """Return the object of a surface row of SURFACE_MODULES, and the name in it."""
+    module = importlib.import_module(f"dokimi_assert.{SURFACE_MODULES[sid]}")
+    if "." not in sid:
+        return module, name
+    owner_id = sid.split(".", 1)[0]
+    # The seats have the members of a seat. The protocol does not have the
+    # optional members.
+    if owner_id == "seat":
+        return module.Recorder, name
+    return getattr(module, SURFACE[owner_id]), name
+
+
 def _surface_target(sid: str, name: str) -> tuple[Any, str]:
     """Return the object that has a surface row, and the name of the row in it."""
     if sid in SURFACE_MODULES:
-        module = importlib.import_module(f"dokimi_assert.{SURFACE_MODULES[sid]}")
-        if "." not in sid:
-            return module, name
-        owner_id = sid.split(".", 1)[0]
-        # The seats have the members of a seat. The protocol does not have the
-        # optional members.
-        if owner_id == "seat":
-            return module.Recorder, name
-        return getattr(module, SURFACE[owner_id]), name
-
-    if sid in {"clock", "system-clock", "failure", "where"}:
-        return importlib.import_module("dokimi_assert.clock"), name
+        return _module_target(sid, name)
     if "." in name:
         # A name that ends in () is the constructor of its class.
         owner_name, member = name.split(".", 1)

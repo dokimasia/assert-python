@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of check.py tests the surface that stops the test at the first failure.
 
 It uses pytest's assert alone, because the other specs assert with this

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The pytest fixtures, which pytest registers when the package is installed.
 
 The plugin supplies the fixture seat in every test, without a conftest and
@@ -16,8 +19,7 @@ a test as a property element of the test's testcase element.
 
 from __future__ import annotations
 
-from collections.abc import Generator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -25,6 +27,9 @@ from dokimi_assert._matcher.seat import name_test
 from dokimi_assert._record.calls import Sink, own, write
 from dokimi_assert._record.switch import reading
 from dokimi_assert.seat import Collector, Recorder, clean_up
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 __all__ = ["RECORDS", "SEATS", "pytest_runtest_call", "recorder", "seat"]
 

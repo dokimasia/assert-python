@@ -1,17 +1,22 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of rejects.py: the assertion that a check fails."""
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dokimi_assert import check, expect
 from dokimi_assert._matcher.seat import Mode
-from dokimi_assert.failure import Failure
 from dokimi_assert.rejects import rejects
 from dokimi_assert.seat import Collector, Recorder, Seat, Standard, fault
 from helpers import records
+
+if TYPE_CHECKING:
+    from dokimi_assert.failure import Failure
 
 
 class TestRejects:
@@ -77,9 +82,7 @@ class TestRejects:
         """A standard seat raises the failure of rejects."""
         raised = check.raises(
             seat,
-            lambda: rejects(
-                Standard(), Mode.FATAL, "it is refused", lambda inner: None
-            ),
+            lambda: rejects(Standard(), Mode.FATAL, "it is refused", lambda _: None),
             "rejects raises on a standard seat",
         )
         check.is_true(seat, isinstance(raised, AssertionError), "an AssertionError")

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The seats that an assertion reports through.
 
 The seat that a test passes decides what each surface does:
@@ -18,13 +21,16 @@ through fault.
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from dokimi_assert._matcher.seat import Seat
 from dokimi_assert._matcher.verdict import end, fault_text
 from dokimi_assert._record.calls import keep, lines, own
 from dokimi_assert.clock import Clock, System
 from dokimi_assert.failure import Failure, render
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 __all__ = ["Collector", "Recorder", "Seat", "Standard", "clean_up", "fault"]
 
@@ -51,7 +57,8 @@ def fault(seat: Seat, error: BaseException) -> None:
     """
     __tracebackhide__ = True
     if not isinstance(error, BaseException):  # pyright: ignore[reportUnnecessaryIsInstance]
-        raise TypeError(f"seat.fault({error!r}) needs an exception")  # pyright: ignore[reportUnreachable]
+        msg = f"seat.fault({error!r}) needs an exception"  # type: ignore[unreachable]
+        raise TypeError(msg)  # pyright: ignore[reportUnreachable]
     end(seat, error)
 
 
@@ -424,7 +431,8 @@ class Collector:
         if len(collected) == 1:
             raise AssertionError(collected[0])
         listed = "\n".join(f"  {n}. {m}" for n, m in enumerate(collected, 1))
-        raise AssertionError(f"{len(collected)} failures:\n{listed}")
+        msg = f"{len(collected)} failures:\n{listed}"
+        raise AssertionError(msg)
 
     def _take_cleanups(self) -> list[Callable[[], object]]:
         """Return the registered functions, the last first, and forget them."""
@@ -443,7 +451,7 @@ def clean_up(collector: Collector) -> None:
     Args:
         collector: The seat of the test that ended.
     """
-    for fn in collector._take_cleanups():  # pyright: ignore[reportPrivateUsage]
+    for fn in collector._take_cleanups():  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
         try:
             fn()
         except Exception as error:

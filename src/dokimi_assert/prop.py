@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """Assertions that pass for every case that a run generates.
 
 for_all runs a body against generated cases. The body takes its inputs from

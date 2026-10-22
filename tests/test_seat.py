@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of seat.py tests the seats that receive the failures of an assertion.
 
 It uses pytest's assert alone, because every other spec asserts on a seat.
@@ -37,7 +40,7 @@ class TestFault:
     def test_raises_the_fault_on_a_seat_without_report_fault(self) -> None:
         """A standard seat ends the call with the exception itself."""
         refused = ValueError("the check calls restart without restartable")
-        with pytest.raises(ValueError) as raised:
+        with pytest.raises(ValueError, match="without restartable") as raised:
             fault(Standard(), refused)
         assert raised.value is refused
 
@@ -46,7 +49,7 @@ class TestFault:
         with pytest.raises(
             TypeError, match=r"^seat\.fault\('refused'\) needs an exception$"
         ):
-            fault(Recorder(), cast(Any, "refused"))
+            fault(Recorder(), cast("Any", "refused"))
 
 
 class TestSeat:
@@ -482,7 +485,8 @@ class TestCleanUp:
         ran: list[bool] = []
 
         def busy() -> None:
-            raise OSError("the directory is busy")
+            msg = "the directory is busy"
+            raise OSError(msg)
 
         seat.cleanup(lambda: ran.append(True))
         seat.cleanup(busy)

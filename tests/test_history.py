@@ -1,11 +1,18 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of history.py tests the names and the sentences of the history checks."""
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from dokimi_assert import check, history
 from dokimi_assert._history.sentence import isolation_sentence, sentence
 from dokimi_assert.failure import Failure, render
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 class TestHistory:

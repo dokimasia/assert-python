@@ -1,13 +1,19 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of clock.py: the clocks that an assertion reads."""
 
 from __future__ import annotations
 
 import threading
 import time
+from typing import TYPE_CHECKING
 
 from dokimi_assert import check
 from dokimi_assert.clock import Controlled, System, wait
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 class TestSystemNow:

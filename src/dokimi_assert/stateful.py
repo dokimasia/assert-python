@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The steps of a machine inside the case of a property, and the task scheduler.
 
 A machine has the sequential specification of a subject and its actions. The

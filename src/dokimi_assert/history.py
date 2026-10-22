@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The history of the concurrent calls to one object, and the checks of a history.
 
 A test records each call in a History. The test calls History.invoke before
