@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The rules by which a tree read from a directory differs from a wanted tree.
 
 Two entries at one path differ in these cases:
@@ -15,7 +18,7 @@ both checks of bits.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from typing import TYPE_CHECKING
 
 from dokimi_assert._files.entry import (
     OWNER_EXECUTE,
@@ -27,6 +30,9 @@ from dokimi_assert._files.entry import (
 )
 from dokimi_assert._files.platform import HOST
 from dokimi_assert._files.tree import full, paths_of
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 __all__ = ["differing", "differs"]
 

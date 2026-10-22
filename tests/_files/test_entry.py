@@ -1,8 +1,11 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _files/entry.py tests the entries of a tree of files."""
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
@@ -26,7 +29,9 @@ from dokimi_assert._files.entry import (
     unstated,
     with_text,
 )
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: The signature of a PNG file. Its bytes are not UTF-8 text.
 PNG = b"\x89PNG"

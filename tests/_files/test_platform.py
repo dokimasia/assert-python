@@ -1,13 +1,20 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _files/platform.py tests the facts that the file systems record."""
 
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import pytest
 
 from dokimi_assert import check
 from dokimi_assert._files.platform import HOST, POSIX, WINDOWS, target_of, written
-from dokimi_assert.seat import Collector
 from helpers import WINDOWS as ON_WINDOWS
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 class TestHost:

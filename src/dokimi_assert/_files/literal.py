@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The tree literal of the definition.
 
 A tree literal is {"type": "tree", "entries": [...]} with its entries in path
@@ -13,8 +16,7 @@ import builtins
 import hashlib
 import json
 import re
-from collections.abc import Mapping
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from dokimi_assert._files.entry import (
     OWNER_EXECUTE,
@@ -30,6 +32,9 @@ from dokimi_assert._files.entry import (
 )
 from dokimi_assert._files.tree import check, order, paths_of
 from dokimi_assert._matcher.fault import FaultError
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 __all__ = ["CONTENT_LIMIT", "decode", "encode"]
 
@@ -107,7 +112,8 @@ def _string_at(raw: Mapping[str, Any], member: str, at: str) -> str:
     """Return the str of member, or raise a fault at it for any other value."""
     value = raw[member]
     if not isinstance(value, str):
-        raise FaultError(f"{at}.{member}", f"the {member} is not a string")
+        at = f"{at}.{member}"
+        raise FaultError(at, f"the {member} is not a string")
     return value
 
 
@@ -120,10 +126,12 @@ def _with_bits(e: Entry, raw: Mapping[str, Any], at: str) -> Entry:
             at, "the entry has a mode and executable, and a mode has the execute bit"
         )
     if execute is not None and not isinstance(execute, bool):
-        raise FaultError(f"{at}.executable", "executable is not a boolean")
+        at = f"{at}.executable"
+        raise FaultError(at, "executable is not a boolean")
     if mode is not None and not is_permissions(mode):
+        at = f"{at}.mode"
         raise FaultError(
-            f"{at}.mode",
+            at,
             f"the mode {json.dumps(mode)} is not an integer from 0 to 511",
         )
     if mode is not None:
@@ -134,21 +142,24 @@ def _with_bits(e: Entry, raw: Mapping[str, Any], at: str) -> Entry:
 def _entry_of(raw: Mapping[str, Any], kind: str, at: str) -> Entry:
     """Return the entry of the kind kind from the members of raw."""
     if kind == "digest":
+        at = f"{at}.digest"
         raise FaultError(
-            f"{at}.digest",
+            at,
             "a digest does not have content, and only a record has one",
         )
     if kind == "directory":
         if raw["directory"] is not True:
-            raise FaultError(f"{at}.directory", "directory is not true")
+            at = f"{at}.directory"
+            raise FaultError(at, "directory is not true")
         return _with_bits(directory(), raw, at)
     if kind == "link":
         return link(_string_at(raw, "link", at))
     if kind == "bytes":
         hexadecimal = _string_at(raw, "bytes", at)
         if not _HEX.fullmatch(hexadecimal):
+            at = f"{at}.bytes"
             raise FaultError(
-                f"{at}.bytes",
+                at,
                 f"{json.dumps(hexadecimal)} is not lowercase hexadecimal",
             )
         return _with_bits(bytes(builtins.bytes.fromhex(hexadecimal)), raw, at)
@@ -156,7 +167,8 @@ def _entry_of(raw: Mapping[str, Any], kind: str, at: str) -> Entry:
     try:
         file = text(content)
     except ValueError:
-        raise FaultError(f"{at}.text", "the text is not UTF-8 text") from None
+        at = f"{at}.text"
+        raise FaultError(at, "the text is not UTF-8 text") from None
     return _with_bits(file, raw, at)
 
 
@@ -174,7 +186,8 @@ def _decode_entry(raw: object, at: str) -> tuple[str, Entry]:
     kind = kinds[0]
     extra = next((m for m in sorted(raw) if m not in _TAKES[kind]), None)
     if extra is not None:
-        raise FaultError(f"{at}.{extra}", f"a {kind} entry does not take {extra}")
+        at = f"{at}.{extra}"
+        raise FaultError(at, f"a {kind} entry does not take {extra}")
     return _string_at(raw, "path", at), _entry_of(raw, kind, at)
 
 
@@ -196,15 +209,16 @@ def decode(literal: object) -> dict[str, Entry]:
             or at the path of the entry.
     """
     if not isinstance(literal, dict):
-        raise FaultError("", "the literal is not an object")
+        at = ""
+        raise FaultError(at, "the literal is not an object")
     document = cast("Mapping[str, Any]", literal)
     if document.get("type") != "tree":
-        raise FaultError(
-            "type", f"the type {json.dumps(document.get('type'))} is not tree"
-        )
+        at = "type"
+        raise FaultError(at, f"the type {json.dumps(document.get('type'))} is not tree")
     entries = document.get("entries")
     if not isinstance(entries, list):
-        raise FaultError("entries", "the literal does not have a list of entries")
+        at = "entries"
+        raise FaultError(at, "the literal does not have a list of entries")
     tree: dict[str, Entry] = {}
     last = ""
     for i, raw in enumerate(entries):

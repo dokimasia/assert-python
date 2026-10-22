@@ -1,12 +1,14 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _files/reader.py tests the reads of a tree and of one entry."""
 
 from __future__ import annotations
 
-import builtins
 import errno
 import os
 import pathlib
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -14,8 +16,13 @@ from dokimi_assert import check
 from dokimi_assert._files.entry import bytes, directory, executable, link, text
 from dokimi_assert._files.reader import kind_of_mode, read_path, read_tree
 from dokimi_assert._matcher.fault import FaultError
-from dokimi_assert.seat import Collector
 from helpers import LONG_NAMES_ABSENT, UNENFORCED, WINDOWS
+
+if TYPE_CHECKING:
+    import builtins
+    from collections.abc import Callable
+
+    from dokimi_assert.seat import Collector
 
 
 def write_file(
@@ -88,7 +95,7 @@ class TestKindOfMode:
         """A device is not an entry of a tree."""
         check.is_none(
             seat,
-            kind_of_mode(os.stat("/dev/null").st_mode),
+            kind_of_mode(pathlib.Path("/dev/null").stat().st_mode),
             "kind_of_mode returns None",
         )
 

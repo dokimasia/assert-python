@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _files/writer.py tests the writes of a tree into a directory."""
 
 from __future__ import annotations
@@ -5,8 +8,7 @@ from __future__ import annotations
 import errno
 import os
 import pathlib
-from collections.abc import Callable, Iterator
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import pytest
 
@@ -23,8 +25,12 @@ from dokimi_assert._files.writer import (
     update,
 )
 from dokimi_assert._matcher.fault import FaultError
-from dokimi_assert.seat import Collector
 from helpers import LONG_NAMES_ABSENT, UNENFORCED, WINDOWS
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+
+    from dokimi_assert.seat import Collector
 
 #: The umasks under which a test of the modes that a write sets runs.
 UMASKS = [0o022, 0o027, 0o077]
@@ -35,9 +41,9 @@ def mode_at(path: pathlib.Path) -> int:
     return os.lstat(path).st_mode & 0o777
 
 
-def names(dir: pathlib.Path) -> list[str]:
+def names(directory: pathlib.Path) -> list[str]:
     """Return the names in dir, sorted."""
-    return sorted(os.listdir(dir))
+    return sorted(child.name for child in directory.iterdir())
 
 
 def fault_of(write: Callable[[], object]) -> str:
@@ -115,14 +121,15 @@ class TestCreate:
                 "current": link("docs/a.md"),
             },
         )
+        # Path.readlink drops a ./ and a final / of the target.
         check.equal(
             seat,
             [
                 (tmp_path / "docs" / "a.md").read_text(),
                 names(tmp_path / "empty"),
-                os.readlink(tmp_path / "current"),
+                os.readlink(tmp_path / "current"),  # noqa: PTH115
             ],
-            ["# a\n", [], os.path.join("docs", "a.md")],
+            ["# a\n", [], str(pathlib.Path("docs", "a.md"))],
             "create writes the file, the directory and the link",
         )
 
@@ -259,9 +266,10 @@ class TestOverwrite:
         """The link is removed and created again."""
         (tmp_path / "current").symlink_to("a.txt")
         overwrite(str(tmp_path), {"current": link("b.txt")})
+        # Path.readlink drops a ./ and a final / of the target.
         check.equal(
             seat,
-            os.readlink(tmp_path / "current"),
+            os.readlink(tmp_path / "current"),  # noqa: PTH115
             "b.txt",
             "overwrite replaces the target",
         )
@@ -320,16 +328,16 @@ class TestOverwrite:
             seat, mode_at(tmp_path / "a"), 0o755, "overwrite gives the new parent 0o755"
         )
 
-    def _a_file_where_a_directory_is_wanted(self, dir: pathlib.Path) -> None:
-        (dir / "docs").write_text("a file")
+    def _a_file_where_a_directory_is_wanted(self, directory: pathlib.Path) -> None:
+        (directory / "docs").write_text("a file")
 
-    def _a_link_where_a_directory_is_wanted(self, dir: pathlib.Path) -> None:
-        (dir / "real").mkdir()
-        (dir / "docs").symlink_to("real")
+    def _a_link_where_a_directory_is_wanted(self, directory: pathlib.Path) -> None:
+        (directory / "real").mkdir()
+        (directory / "docs").symlink_to("real")
 
-    def _a_second_name_of_a_file(self, dir: pathlib.Path) -> None:
-        (dir / "a.txt").write_text("a")
-        os.link(dir / "a.txt", dir / "b.txt")
+    def _a_second_name_of_a_file(self, directory: pathlib.Path) -> None:
+        (directory / "a.txt").write_text("a")
+        os.link(directory / "a.txt", directory / "b.txt")
 
     refusals: ClassVar[list[tuple[str, str, dict[str, Entry], str]]] = [
         (
@@ -445,11 +453,11 @@ class TestUpdate:
         self, seat: Collector, tmp_path: pathlib.Path
     ) -> None:
         """The update creates the directory and its parents."""
-        dir = tmp_path / "golden" / "api"
-        update(str(dir), {"v1/types.go": text("package v1\n")})
+        directory = tmp_path / "golden" / "api"
+        update(str(directory), {"v1/types.go": text("package v1\n")})
         check.equal(
             seat,
-            (dir / "v1" / "types.go").read_text(),
+            (directory / "v1" / "types.go").read_text(),
             "package v1\n",
             "update writes the file",
         )
@@ -458,17 +466,17 @@ class TestUpdate:
         self, seat: Collector, tmp_path: pathlib.Path
     ) -> None:
         """The target of a removed link outside the directory keeps its content."""
-        dir = tmp_path / "golden"
-        (dir / "old").mkdir(parents=True)
-        (dir / "old" / "stale.go").write_text("stale")
-        (dir / "api.go").write_text("api")
+        directory = tmp_path / "golden"
+        (directory / "old").mkdir(parents=True)
+        (directory / "old" / "stale.go").write_text("stale")
+        (directory / "api.go").write_text("api")
         target = tmp_path / "target.txt"
         target.write_text("kept")
-        (dir / "latest").symlink_to(target)
-        update(str(dir), {"api.go": text("api")})
+        (directory / "latest").symlink_to(target)
+        update(str(directory), {"api.go": text("api")})
         check.equal(
             seat,
-            [names(dir), target.read_text()],
+            [names(directory), target.read_text()],
             [["api.go"], "kept"],
             "update removes the entries and keeps the target",
         )
@@ -479,11 +487,11 @@ class TestUpdate:
         """An equal file is the same file afterwards."""
         (tmp_path / "a.txt").write_text("old")
         (tmp_path / "b.txt").write_text("same")
-        kept = os.stat(tmp_path / "b.txt").st_ino
+        kept = (tmp_path / "b.txt").stat().st_ino
         update(str(tmp_path), {"a.txt": text("new"), "b.txt": text("same")})
         check.equal(
             seat,
-            [(tmp_path / "a.txt").read_text(), os.stat(tmp_path / "b.txt").st_ino],
+            [(tmp_path / "a.txt").read_text(), (tmp_path / "b.txt").stat().st_ino],
             ["new", kept],
             "update rewrites a.txt and keeps b.txt",
         )

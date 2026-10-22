@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The reads of a tree from a directory and of the entry at one path.
 
 A reader does not follow links, and it reads a link as an entry with its
@@ -7,9 +10,10 @@ platform records them.
 
 from __future__ import annotations
 
-import builtins
 import os
+import pathlib
 import stat
+from typing import TYPE_CHECKING
 
 from dokimi_assert._files.entry import (
     PERMISSIONS,
@@ -22,6 +26,9 @@ from dokimi_assert._files.entry import (
 )
 from dokimi_assert._files.platform import HOST, target_of
 from dokimi_assert._matcher.fault import FaultError
+
+if TYPE_CHECKING:
+    import builtins
 
 __all__ = ["kind_of_mode", "read_path", "read_tree"]
 
@@ -49,14 +56,18 @@ def kind_of_mode(mode: int) -> Kind | None:
     return None
 
 
-def _content(os_path: str) -> builtins.bytes:
+def _content(os_path: str | pathlib.Path) -> builtins.bytes:
     """Return the bytes of the file at os_path, without following a link."""
     with os.fdopen(os.open(os_path, _READ), "rb") as stream:
         return stream.read()
 
 
 def _entry_of(
-    os_path: str, at: str, status: os.stat_result, modes: bool, content: bool
+    os_path: str | pathlib.Path,
+    at: str,
+    status: os.stat_result,
+    modes: bool,
+    content: bool,
 ) -> Entry:
     """Return the entry at os_path. status is its lstat result.
 
@@ -69,7 +80,8 @@ def _entry_of(
     if kind is None:
         raise FaultError(at, "the entry is not a file, a directory or a link")
     if kind == "link":
-        return link(target_of(os.readlink(os_path)))
+        # Path.readlink drops a ./ and a final / of the target.
+        return link(target_of(os.readlink(os_path)))  # noqa: PTH115
     read = (
         bytes(_content(os_path) if content else b"") if kind == "file" else directory()
     )
@@ -77,26 +89,27 @@ def _entry_of(
     return bits if modes and HOST.recorded_bits != 0 else unstated(bits)
 
 
-def _walk(dir: str, names: list[str], modes: bool, tree: dict[str, Entry]) -> None:
+def _walk(
+    directory: str, names: list[str], modes: bool, tree: dict[str, Entry]
+) -> None:
     """Read the entries below the directory names of dir into tree."""
     try:
-        children = os.listdir(os.path.join(dir, *names))
+        children = list(pathlib.Path(directory, *names).iterdir())
     except OSError as error:
         raise FaultError("/".join(names), "the tree cannot be read", error) from error
-    for name in children:
-        path = [*names, name]
-        os_path = os.path.join(dir, *path)
+    for child in children:
+        path = [*names, child.name]
         at = "/".join(path)
         try:
-            e = _entry_of(os_path, at, os.lstat(os_path), modes, True)
+            e = _entry_of(child, at, child.lstat(), modes, True)
         except OSError as error:
             raise FaultError(at, "the entry cannot be read", error) from error
         tree[at] = e
         if e.directory:
-            _walk(dir, path, modes, tree)
+            _walk(directory, path, modes, tree)
 
 
-def read_tree(dir: str, modes: bool) -> dict[str, Entry]:
+def read_tree(directory: str, modes: bool) -> dict[str, Entry]:
     """Return the tree in dir.
 
     The tree has every entry below dir. Each link is a link with its target.
@@ -104,7 +117,7 @@ def read_tree(dir: str, modes: bool) -> dict[str, Entry]:
     records. The root can be a link to a directory.
 
     Args:
-        dir: The path of the directory in the form of the operating system.
+        directory: The path of the directory in the form of the operating system.
         modes: When True, the tree has the modes of its entries. When False,
             each file has only the execute bit of its owner. An update of a
             golden tree reads the tree this way.
@@ -118,13 +131,15 @@ def read_tree(dir: str, modes: bool) -> dict[str, Entry]:
             is not a file, a directory or a link.
     """
     try:
-        status = os.stat(dir)
+        status = pathlib.Path(directory).stat()
     except OSError as error:
-        raise FaultError("", "the tree cannot be read", error) from error
+        at = ""
+        raise FaultError(at, "the tree cannot be read", error) from error
     if not stat.S_ISDIR(status.st_mode):
-        raise FaultError("", "the root of the tree is not a directory")
+        at = ""
+        raise FaultError(at, "the root of the tree is not a directory")
     tree: dict[str, Entry] = {}
-    _walk(dir, [], modes, tree)
+    _walk(directory, [], modes, tree)
     return tree
 
 
@@ -151,8 +166,10 @@ def read_path(path: str, content: bool) -> Entry | None:
     except (FileNotFoundError, NotADirectoryError):
         return None
     except OSError as error:
-        raise FaultError("", "the entry cannot be read", error) from error
+        at = ""
+        raise FaultError(at, "the entry cannot be read", error) from error
     try:
         return _entry_of(path, "", status, True, content)
     except OSError as error:
-        raise FaultError("", "the entry cannot be read", error) from error
+        at = ""
+        raise FaultError(at, "the entry cannot be read", error) from error

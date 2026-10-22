@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """A file with its content, a directory or a link of a tree of files.
 
 An entry has permission bits when a test gives it a mode.
@@ -96,15 +99,17 @@ class Entry:
             files.text("secret\n").with_mode(0o600)
         """
         if not is_permissions(mode):
-            raise ValueError(
+            msg = (
                 f"files: with_mode({mode_text(mode)}): the mode is not an int "
                 "from 0 to 0o777"
             )
+            raise ValueError(msg)
         if kind_of(self) not in ("file", "directory"):
-            raise ValueError(
+            msg = (
                 f"files: with_mode({mode_text(mode)}): the entry is not a file or "
                 "a directory"
             )
+            raise ValueError(msg)
         return dataclasses.replace(self, executable=False, mode=mode)
 
 
@@ -116,13 +121,13 @@ def _well_formed(call: str, content: object) -> str:
         ValueError: content has a lone surrogate.
     """
     if not isinstance(content, str):
-        raise TypeError(f"files: {call} takes a str, not {type(content).__name__}")
+        msg = f"files: {call} takes a str, not {type(content).__name__}"
+        raise TypeError(msg)
     try:
         content.encode("utf-8")
     except UnicodeEncodeError:
-        raise ValueError(
-            f"files: {call}: UTF-8 cannot encode a str with a lone surrogate"
-        ) from None
+        msg = f"files: {call}: UTF-8 cannot encode a str with a lone surrogate"
+        raise ValueError(msg) from None
     return content
 
 

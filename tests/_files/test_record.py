@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _files/record.py tests the record of a failed comparison of trees."""
 
 from __future__ import annotations
@@ -63,7 +66,8 @@ class TestComparison:
         """A record of 65 differences lists 64 paths and counts 65."""
         want = numbered(65, "b")
         record = comparison(want, numbered(65, "a"), list(want))
-        assert record is not None and record.want is not None
+        assert record is not None
+        assert record.want is not None
         check.equal(
             seat,
             [len(record.want), len(record.got), record.differences],

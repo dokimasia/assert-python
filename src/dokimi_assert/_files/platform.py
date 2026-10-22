@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 r"""The facts that the file systems of the platform record.
 
 A tree reads only what the file systems record. Windows does not record

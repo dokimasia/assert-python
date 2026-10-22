@@ -1,16 +1,21 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _files/difference.py tests how a tree read differs from a wanted tree."""
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import pytest
 
 from dokimi_assert import check
 from dokimi_assert._files.difference import differing, differs
 from dokimi_assert._files.entry import Entry, bytes, directory, executable, link, text
-from dokimi_assert.seat import Collector
 from helpers import WINDOWS
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 class TestDiffers:

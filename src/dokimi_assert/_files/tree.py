@@ -1,14 +1,19 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """A tree of files, and the rules of every tree."""
 
 from __future__ import annotations
 
-import builtins
 from collections.abc import Iterable, Mapping
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from dokimi_assert._files.entry import Entry, directory, kind_of
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert._record.literal import quoted
+
+if TYPE_CHECKING:
+    import builtins
 
 __all__ = ["Tree", "check", "full", "order", "parents_of", "path_fault", "paths_of"]
 
@@ -98,9 +103,8 @@ def _entry_fault(tree: Mapping[str, object], path: str) -> str | None:
         return fault
     e = tree[path]
     kind = kind_of(e)
-    if kind is None:
+    if kind is None or not isinstance(e, Entry):
         return "the entry is not a file, a directory or a link"
-    assert isinstance(e, Entry)
     if kind == "link" and not (isinstance(e.link, str) and _is_target(e.link)):
         return f"the link does not have a target of UTF-8 text without NUL: {e.link!r}"
     for parent in parents_of(path):
@@ -126,11 +130,13 @@ def check(tree: object) -> None:
             a str comes first.
     """
     if not isinstance(tree, Mapping):
-        raise FaultError("", "the tree is not a mapping of paths to entries")
+        at = ""
+        raise FaultError(at, "the tree is not a mapping of paths to entries")
     keys: list[object] = list(tree)
     for path in keys:
         if not isinstance(path, str):
-            raise FaultError("", f"the path {path!r} is not a str")
+            at = ""
+            raise FaultError(at, f"the path {path!r} is not a str")
     entries = cast("Mapping[str, object]", tree)
     for path in paths_of(entries):
         reason = _entry_fault(entries, path)

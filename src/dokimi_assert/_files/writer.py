@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The writes of a tree into a directory.
 
 The directory is the directory of a workspace, a directory that exists, or a
@@ -13,14 +16,15 @@ a mode, and the mode of a directory does not stop a write below it.
 
 from __future__ import annotations
 
-import builtins
 import contextlib
 import functools
 import os
+import pathlib
 import shutil
 import stat
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, cast
 
 from dokimi_assert._files.difference import differs
 from dokimi_assert._files.entry import Entry, content_of, kind_of, unstated
@@ -29,6 +33,10 @@ from dokimi_assert._files.reader import kind_of_mode, read_tree
 from dokimi_assert._files.tree import check, full, paths_of
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert._record.literal import quoted
+
+if TYPE_CHECKING:
+    import builtins
+    from collections.abc import Collection, Mapping, Sequence
 
 __all__ = [
     "DIRECTORY_MODE",
@@ -81,9 +89,9 @@ class _Step:
     run: Callable[[], None]
 
 
-def _os_path(dir: str, path: str) -> str:
+def _os_path(directory: str, path: str) -> pathlib.Path:
     """Return the operating system path of a path of a tree in dir."""
-    return os.path.join(dir, *path.split("/"))
+    return pathlib.Path(directory, *path.split("/"))
 
 
 def mode_of(e: Entry) -> int:
@@ -103,23 +111,25 @@ def mode_of(e: Entry) -> int:
     return EXECUTABLE_MODE if e.executable else FILE_MODE
 
 
-def _write_file(at: str, content: builtins.bytes, flags: int) -> None:
+def _write_file(at: pathlib.Path, content: builtins.bytes, flags: int) -> None:
     """Write content into the file at at, opened with flags."""
     with os.fdopen(os.open(at, flags, _CREATE_FILE), "wb") as stream:
         stream.write(content)
 
 
-def _link(at: str, target: str) -> None:
+def _link(at: pathlib.Path, target: str) -> None:
     """Create a link to target at at.
 
     The link is a directory link when the target is a directory.
     """
     stored = written(target)
-    pointed = os.path.join(os.path.dirname(at), stored)
-    os.symlink(stored, at, target_is_directory=os.path.isdir(pointed))
+    # Path.is_dir raises an error of the file system before Python 3.14, and
+    # os.path.isdir returns False.
+    pointed = os.path.isdir(at.parent / stored)  # noqa: PTH112
+    at.symlink_to(stored, target_is_directory=pointed)
 
 
-def _create_entry(at: str, e: Entry) -> None:
+def _create_entry(at: pathlib.Path, e: Entry) -> None:
     """Create the entry e at at.
 
     A file gets its content and its mode. A directory is created, and a link
@@ -127,17 +137,16 @@ def _create_entry(at: str, e: Entry) -> None:
     """
     kind = kind_of(e)
     if kind == "directory":
-        os.mkdir(at, _CREATE_DIRECTORY)
+        at.mkdir(_CREATE_DIRECTORY)
         return
     if kind == "link":
-        assert e.link is not None
-        _link(at, e.link)
+        _link(at, cast("str", e.link))
         return
     _write_file(at, content_of(e), _CREATE)
-    os.chmod(at, mode_of(e))
+    at.chmod(mode_of(e))
 
 
-def _replace(at: str, e: Entry) -> None:
+def _replace(at: pathlib.Path, e: Entry) -> None:
     """Write e over the entry of its kind at at.
 
     For a link, the write removes the link and creates it with the new
@@ -145,17 +154,19 @@ def _replace(at: str, e: Entry) -> None:
     file, and then replaces the content and the mode.
     """
     if kind_of(e) == "link":
-        assert e.link is not None
-        os.remove(at)
-        _link(at, e.link)
+        at.unlink()
+        _link(at, cast("str", e.link))
         return
-    os.chmod(at, _CREATE_FILE)
+    at.chmod(_CREATE_FILE)
     _write_file(at, content_of(e), _OVERWRITE)
-    os.chmod(at, mode_of(e))
+    at.chmod(mode_of(e))
 
 
 def _creating(
-    dir: str, whole: Mapping[str, Entry], kept: Collection[str], before: Sequence[_Step]
+    directory: str,
+    whole: Mapping[str, Entry],
+    kept: Collection[str],
+    before: Sequence[_Step],
 ) -> list[_Step]:
     """Return the steps that create each entry of whole that kept does not have.
 
@@ -169,14 +180,14 @@ def _creating(
         if path in kept:
             continue
         e = whole[path]
-        at = _os_path(dir, path)
+        at = _os_path(directory, path)
         steps.append(_Step(path, functools.partial(_create_entry, at, e)))
         if e.directory:
-            modes.append(_Step(path, functools.partial(os.chmod, at, mode_of(e))))
+            modes.append(_Step(path, functools.partial(at.chmod, mode_of(e))))
     return [*steps, *reversed(modes)]
 
 
-def _apply(dir: str, plan: Callable[[], list[_Step]]) -> None:
+def _apply(directory: str, plan: Callable[[], list[_Step]]) -> None:
     """Check that dir opens as a directory, and run the steps of plan in order.
 
     Raises:
@@ -184,9 +195,10 @@ def _apply(dir: str, plan: Callable[[], list[_Step]]) -> None:
             fails. The fault of a failed step is at its path.
     """
     try:
-        os.scandir(dir).close()
+        os.scandir(directory).close()
     except OSError as error:
-        raise FaultError("", "the directory cannot be opened", error) from error
+        at = ""
+        raise FaultError(at, "the directory cannot be opened", error) from error
     for step in plan():
         try:
             step.run()
@@ -194,7 +206,7 @@ def _apply(dir: str, plan: Callable[[], list[_Step]]) -> None:
             raise FaultError(step.path, "the entry cannot be written", error) from error
 
 
-def create(dir: str, tree: Mapping[str, Entry]) -> None:
+def create(directory: str, tree: Mapping[str, Entry]) -> None:
     """Write tree into the existing directory dir.
 
     The write creates every entry and does not write over an existing entry.
@@ -203,7 +215,7 @@ def create(dir: str, tree: Mapping[str, Entry]) -> None:
     directory gets its mode, or the mode of mode_of when it does not have one.
 
     Args:
-        dir: The directory.
+        directory: The directory.
         tree: The tree.
 
     Raises:
@@ -214,13 +226,13 @@ def create(dir: str, tree: Mapping[str, Entry]) -> None:
             system maps to an entry that the write already wrote.
     """
     check(tree)
-    _apply(dir, lambda: _creating(dir, full(tree), set(), []))
+    _apply(directory, lambda: _creating(directory, full(tree), set(), []))
 
 
-def _status_at(at: str, path: str) -> os.stat_result | None:
+def _status_at(at: pathlib.Path, path: str) -> os.stat_result | None:
     """Return the lstat result of at, or None when at does not have an entry."""
     try:
-        return os.lstat(at)
+        return at.lstat()
     except FileNotFoundError:
         return None
     except OSError as error:
@@ -250,7 +262,7 @@ def _refuse(
             )
 
 
-def _overwriting(dir: str, tree: Mapping[str, Entry]) -> list[_Step]:
+def _overwriting(directory: str, tree: Mapping[str, Entry]) -> list[_Step]:
     """Return the steps that write tree over the entries in dir.
 
     The plan reads the entry at each path of the full tree in path order. The
@@ -265,7 +277,7 @@ def _overwriting(dir: str, tree: Mapping[str, Entry]) -> list[_Step]:
     modes: list[_Step] = []
     for path in paths_of(whole):
         e = whole[path]
-        at = _os_path(dir, path)
+        at = _os_path(directory, path)
         status = _status_at(at, path)
         if status is None:
             continue
@@ -275,11 +287,11 @@ def _overwriting(dir: str, tree: Mapping[str, Entry]) -> list[_Step]:
         if not e.directory:
             replaced.append(_Step(path, functools.partial(_replace, at, e)))
         elif path in tree:
-            modes.append(_Step(path, functools.partial(os.chmod, at, mode_of(e))))
-    return [*_creating(dir, whole, there, replaced), *reversed(modes)]
+            modes.append(_Step(path, functools.partial(at.chmod, mode_of(e))))
+    return [*_creating(directory, whole, there, replaced), *reversed(modes)]
 
 
-def overwrite(dir: str, tree: Mapping[str, Entry]) -> None:
+def overwrite(directory: str, tree: Mapping[str, Entry]) -> None:
     """Write tree over the entries of the existing directory dir.
 
     When a path of the tree does not have an entry, the write creates the
@@ -292,7 +304,7 @@ def overwrite(dir: str, tree: Mapping[str, Entry]) -> None:
     content and its mode.
 
     Args:
-        dir: The directory.
+        directory: The directory.
         tree: The tree.
 
     Raises:
@@ -305,22 +317,22 @@ def overwrite(dir: str, tree: Mapping[str, Entry]) -> None:
             that cannot be written.
     """
     check(tree)
-    _apply(dir, lambda: _overwriting(dir, tree))
+    _apply(directory, lambda: _overwriting(directory, tree))
 
 
-def _remove(at: str) -> None:
+def _remove(at: pathlib.Path) -> None:
     """Remove the entry at at with everything below a directory.
 
     A missing entry is not an error.
     """
     with contextlib.suppress(FileNotFoundError):
-        if stat.S_ISDIR(os.lstat(at).st_mode):
+        if stat.S_ISDIR(at.lstat().st_mode):
             shutil.rmtree(at)
             return
-        os.remove(at)
+        at.unlink()
 
 
-def update(dir: str, tree: Mapping[str, Entry]) -> None:
+def update(directory: str, tree: Mapping[str, Entry]) -> None:
     """Make dir equal to tree.
 
     The update creates dir and its parents when they are missing. It removes
@@ -331,7 +343,7 @@ def update(dir: str, tree: Mapping[str, Entry]) -> None:
     without a mode.
 
     Args:
-        dir: The directory.
+        directory: The directory.
         tree: The tree.
 
     Raises:
@@ -341,10 +353,11 @@ def update(dir: str, tree: Mapping[str, Entry]) -> None:
     """
     check(tree)
     try:
-        os.makedirs(dir, mode=DIRECTORY_MODE, exist_ok=True)
+        pathlib.Path(directory).mkdir(mode=DIRECTORY_MODE, parents=True, exist_ok=True)
     except OSError as error:
-        raise FaultError("", "the directory cannot be created", error) from error
-    current = read_tree(dir, False)
+        at = ""
+        raise FaultError(at, "the directory cannot be created", error) from error
+    current = read_tree(directory, False)
     wanted = {path: unstated(e) for path, e in full(tree).items()}
     kept: set[str] = set()
     removals: list[_Step] = []
@@ -353,11 +366,13 @@ def update(dir: str, tree: Mapping[str, Entry]) -> None:
         if w is not None and not differs(w, current[path]):
             kept.add(path)
             continue
-        removals.append(_Step(path, functools.partial(_remove, _os_path(dir, path))))
-    _apply(dir, lambda: _creating(dir, wanted, kept, removals))
+        removals.append(
+            _Step(path, functools.partial(_remove, _os_path(directory, path)))
+        )
+    _apply(directory, lambda: _creating(directory, wanted, kept, removals))
 
 
-def unlock(dir: str) -> None:
+def unlock(directory: str | pathlib.Path) -> None:
     """Give the owner the permission to remove every entry below dir.
 
     dir and each directory below it get the permission of the owner to read,
@@ -367,18 +382,18 @@ def unlock(dir: str) -> None:
     change anything when dir is not a directory.
 
     Args:
-        dir: The directory.
+        directory: The directory.
     """
     try:
-        status = os.lstat(dir)
+        status = os.lstat(directory)
     except FileNotFoundError:
         return
     if not stat.S_ISDIR(status.st_mode):
         return
-    os.chmod(dir, stat.S_IMODE(status.st_mode) | _CREATE_DIRECTORY)
-    for name in os.listdir(dir):
-        path = os.path.join(dir, name)
-        child = os.lstat(path)
+    root = pathlib.Path(directory)
+    root.chmod(stat.S_IMODE(status.st_mode) | _CREATE_DIRECTORY)
+    for path in root.iterdir():
+        child = path.lstat()
         if stat.S_ISREG(child.st_mode):
-            os.chmod(path, stat.S_IMODE(child.st_mode) | stat.S_IWUSR)
+            path.chmod(stat.S_IMODE(child.st_mode) | stat.S_IWUSR)
         unlock(path)

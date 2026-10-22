@@ -1,8 +1,11 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _files/tree.py tests a tree of files and the rules of every tree."""
 
 from __future__ import annotations
 
-from typing import Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import pytest
 
@@ -11,7 +14,9 @@ from dokimi_assert._files.entry import Entry, directory, link, text
 from dokimi_assert._files.tree import check as check_tree
 from dokimi_assert._files.tree import full, order, parents_of, path_fault, paths_of
 from dokimi_assert._matcher.fault import FaultError
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 class TestOrder:
@@ -154,7 +159,7 @@ class TestCheck:
         ),
         (
             "raises the fault of a link whose target is not a str",
-            {"a": Entry(link=cast(Any, 3))},
+            {"a": Entry(link=cast("Any", 3))},
             "a: the link does not have a target of UTF-8 text without NUL: 3",
         ),
         (

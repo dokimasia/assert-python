@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The record of a comparison of trees that fails, and the verdict of a comparison.
 
 A record has three fields:
@@ -14,16 +17,20 @@ owner instead. The call record has each tree as a tree literal.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from dokimi_assert._files.entry import Entry, unstated
 from dokimi_assert._files.literal import CONTENT_LIMIT, encode
 from dokimi_assert._files.tree import full, paths_of
 from dokimi_assert._matcher.seat import Mode
-from dokimi_assert._matcher.verdict import Running
 from dokimi_assert._record.literal import detail
 from dokimi_assert.failure import Failure, Where
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
+    from dokimi_assert._matcher.verdict import Running
 
 __all__ = ["MAX_PATHS", "Comparison", "comparison", "missing", "report"]
 

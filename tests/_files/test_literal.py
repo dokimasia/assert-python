@@ -1,9 +1,12 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _files/literal.py tests the tree literal of the definition."""
 
 from __future__ import annotations
 
 import math
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
@@ -11,7 +14,9 @@ from dokimi_assert import check
 from dokimi_assert._files.entry import Entry, bytes, directory, executable, link, text
 from dokimi_assert._files.literal import CONTENT_LIMIT, decode, encode
 from dokimi_assert._matcher.fault import FaultError
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 def literal(*entries: object) -> dict[str, Any]:
@@ -147,14 +152,18 @@ class TestDecode:
         (
             "refuses an entry of two kinds",
             literal({"path": "a", "text": "a", "link": "b"}),
-            "entries[0]: the entry has [text link], and an entry has one of "
-            "text, bytes, directory and link",
+            (
+                "entries[0]: the entry has [text link], and an entry has one of "
+                "text, bytes, directory and link"
+            ),
         ),
         (
             "refuses an entry without a kind",
             literal({"path": "a"}),
-            "entries[0]: the entry has [], and an entry has one of text, "
-            "bytes, directory and link",
+            (
+                "entries[0]: the entry has [], and an entry has one of text, "
+                "bytes, directory and link"
+            ),
         ),
         (
             "refuses a member that the kind does not take",
@@ -169,8 +178,10 @@ class TestDecode:
         (
             "refuses a digest in an input",
             literal({"path": "a", "digest": "sha256:00", "size": 1}),
-            "entries[0].digest: a digest does not have content, and only a record "
-            "has one",
+            (
+                "entries[0].digest: a digest does not have content, and only a record "
+                "has one"
+            ),
         ),
         (
             "refuses a directory that is not true",
@@ -205,8 +216,10 @@ class TestDecode:
         (
             "refuses an entry with a mode and executable",
             literal({"path": "a", "text": "a", "executable": True, "mode": 0o755}),
-            "entries[0]: the entry has a mode and executable, and a mode has "
-            "the execute bit",
+            (
+                "entries[0]: the entry has a mode and executable, and a mode has "
+                "the execute bit"
+            ),
         ),
         (
             "refuses an executable that is not a boolean",
