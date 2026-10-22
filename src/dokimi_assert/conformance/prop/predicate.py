@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The predicates that the bodies and the filters of the property vectors take.
 
 A predicate is a JSON object with a kind and the parameters of the kind. The
@@ -195,12 +198,14 @@ def predicate(spec: object) -> Predicate:
             parameter is not a value of the kind.
     """
     if not isinstance(spec, dict):
-        raise ValueError(f"prop: {json.dumps(spec)} is not a predicate")
+        msg = f"prop: {json.dumps(spec)} is not a predicate"
+        raise ValueError(msg)
     stated = cast("dict[str, Any]", spec)
     kind = stated.get("kind")
     factory = _KINDS.get(kind) if isinstance(kind, str) else None
     if factory is None:
-        raise ValueError(f"prop: {json.dumps(kind)} is not a kind of predicate")
+        msg = f"prop: {json.dumps(kind)} is not a kind of predicate"
+        raise ValueError(msg)
     test = factory(stated)
     if stated.get("not") is True:
         return lambda value: not test(value)

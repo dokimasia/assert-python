@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The named specs of the definition.
 
 A history vector has the name of a named spec in place of a spec of its
@@ -16,12 +19,15 @@ states whose entries are equal in any order.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dokimi_assert.conformance.literal import canonical
 from dokimi_assert.history import Operation
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 __all__ = ["SPECS", "NamedSpec"]
 
@@ -130,7 +136,8 @@ def _key_value(state: dict[Any, Any], op: Operation) -> list[Any]:
         return [_with_value(state, key, op.args[1])]
     if op.name == "append":
         return [_with_value(state, key, f"{current}{op.args[1]}")]
-    raise _undefined("key-value", op)
+    name = "key-value"
+    raise _undefined(name, op)
 
 
 def _queue(state: tuple[Any, ...], op: Operation) -> list[Any]:
@@ -145,7 +152,8 @@ def _queue(state: tuple[Any, ...], op: Operation) -> list[Any]:
     if op.name == "enqueue":
         return [(*state, op.args[0])]
     if op.name != "dequeue":
-        raise _undefined("queue", op)
+        name = "queue"
+        raise _undefined(name, op)
     if not state:
         return [state] if not op.known or op.output is None else []
     return [state[1:]] if not op.known or _same(op.output, state[0]) else []
@@ -168,7 +176,8 @@ def _set(state: tuple[Any, ...], op: Operation) -> list[Any]:
     if op.name == "contains":
         return [state] if not op.known or op.output is present else []
     if op.name != "remove":
-        raise _undefined("set", op)
+        name = "set"
+        raise _undefined(name, op)
     if op.known and op.output is not present:
         return []
     return [tuple(item for item in state if not _same(item, value))]

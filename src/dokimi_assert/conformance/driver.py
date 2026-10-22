@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The driver of a corpus case with a behaviour in place of values.
 
 The assertions that take a callable differ in their arguments. One takes a
@@ -10,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from types import ModuleType
-from typing import Any
+from typing import Any, cast
 
 from dokimi_assert import check, expect
 from dokimi_assert._matcher.option import Option
@@ -36,8 +39,7 @@ def _flips(subject: Subject) -> Callable[[], bool]:
 
     def predicate() -> bool:
         trial = Recorder()
-        assert subject.seated is not None
-        subject.seated(trial)
+        cast("Callable[[Any], None]", subject.seated)(trial)
         return not trial.failed
 
     return predicate
@@ -47,16 +49,14 @@ def _with_input(subject: Subject) -> Callable[[], Any]:
     """Return a call of the operation of subject with its input."""
 
     def call() -> Any:
-        assert subject.call is not None
-        return subject.call(subject.input)
+        return cast("Callable[[Any], Any]", subject.call)(subject.input)
 
     return call
 
 
 def _operands(subject: Subject) -> tuple[Any, Any, Any]:
     """Return the operands of the operation of subject."""
-    assert subject.operands is not None
-    return subject.operands
+    return cast("tuple[Any, Any, Any]", subject.operands)
 
 
 #: The driver of each assertion that takes a callable, by canonical id.

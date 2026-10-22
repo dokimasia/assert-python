@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of conformance/prop/vectors.py tests the runners of the property vectors.
 
 check_prop computes the verdict of every property vector, so the spec checks
@@ -7,12 +10,14 @@ its own verdicts with the assert statement of pytest.
 from __future__ import annotations
 
 import json
-import pathlib
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert.conformance.prop.vectors import CONTRACT, KINDS, check_prop
 from dokimi_assert.conformance.vector import vectors
+
+if TYPE_CHECKING:
+    import pathlib
 
 #: The property vectors of the definition, by kind and id.
 VECTORS = {(v.kind, v.id): v.raw for v in vectors()}
@@ -21,9 +26,9 @@ VECTORS = {(v.kind, v.id): v.raw for v in vectors()}
 DIGIT: dict[str, Any] = {"gen": "integer", "min": 0, "max": 9}
 
 
-def vector(kind: str, id: str, **changes: Any) -> dict[str, Any]:
+def vector(kind: str, vector_id: str, **changes: Any) -> dict[str, Any]:
     """Return the vector of a kind and an id with changes to its members."""
-    return {**VECTORS[(kind, id)], **changes}
+    return {**VECTORS[(kind, vector_id)], **changes}
 
 
 def without(raw: dict[str, Any], member: str) -> dict[str, Any]:
@@ -31,10 +36,12 @@ def without(raw: dict[str, Any], member: str) -> dict[str, Any]:
     return {name: value for name, value in raw.items() if name != member}
 
 
-def fault_of(kind: str, raw: dict[str, Any], dir: pathlib.Path) -> tuple[str, str]:
+def fault_of(
+    kind: str, raw: dict[str, Any], directory: pathlib.Path
+) -> tuple[str, str]:
     """Return the place and the reason of the fault of check_prop, or empty strings."""
     try:
-        check_prop(kind, raw, str(dir))
+        check_prop(kind, raw, str(directory))
     except FaultError as error:
         return error.at, error.reason
     return "", ""
@@ -198,12 +205,12 @@ class TestCheckProp:
 
     def test_returns_for_the_vectors_of_each_kind(self, tmp_path: pathlib.Path) -> None:
         """Every output agrees with the vector."""
-        for kind, id in [
+        for kind, vector_id in [
             ("behaviour", "behaviour/tries-a-stored-case-before-the-simplest"),
             ("recording", "recording/records-the-examples-then-the-stored-cases"),
             ("fixtures", "fixtures/tree"),
         ]:
-            check_prop(kind, vector(kind, id), str(tmp_path / kind))
+            check_prop(kind, vector(kind, vector_id), str(tmp_path / kind))
 
     def test_raises_at_the_output_that_the_library_computes_otherwise(
         self, tmp_path: pathlib.Path
@@ -216,8 +223,10 @@ class TestCheckProp:
         )
         assert fault_of("decoding", raw, tmp_path) == (
             "value",
-            'the library computes {"type": "int", "value": -17}, '
-            'want {"type": "int", "value": -18}',
+            (
+                'the library computes {"type": "int", "value": -17}, '
+                'want {"type": "int", "value": -18}'
+            ),
         )
 
     def test_raises_at_the_first_output_that_differs(

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The vectors of the vendored definition, and the run of one against this library.
 
 A vector is a case of a family outside the corpus of the assertions. It has
@@ -63,8 +66,9 @@ def vectors() -> list[Vector]:
         directory = spec_dir() / "corpus" / family
         for entry in sorted(directory.iterdir(), key=lambda p: p.name):
             document = json.loads(entry.read_text(encoding="utf-8"))
-            for raw in document["cases"]:
-                found.append(Vector(document["kind"], raw["id"], raw))
+            found.extend(
+                Vector(document["kind"], raw["id"], raw) for raw in document["cases"]
+            )
     return found
 
 
@@ -85,7 +89,7 @@ def skip_of(vector: Vector) -> str | None:
     return reason if isinstance(reason, str) else None
 
 
-def check_vector(vector: Vector, dir: str) -> str | None:
+def check_vector(vector: Vector, directory: str) -> str | None:
     """Run vector against this library in the empty directory dir.
 
     A vector of golden-match-tree writes its golden tree below dir. dir is
@@ -95,7 +99,7 @@ def check_vector(vector: Vector, dir: str) -> str | None:
 
     Args:
         vector: The vector.
-        dir: The directory.
+        directory: The directory.
 
     Returns:
         The difference between the run and the vector, or None when the two
@@ -106,7 +110,7 @@ def check_vector(vector: Vector, dir: str) -> str | None:
     if run is None:
         return f"{vector.id}: {json.dumps(vector.kind)} is not a kind of vector"
     try:
-        run(vector.raw, dir)
+        run(vector.raw, directory)
     except FaultError as error:
         return str(error.within(vector.id))
     return None

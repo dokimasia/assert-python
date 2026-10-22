@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The bodies of the property vectors.
 
 A body draws one value under the label value from the generator draw. It
@@ -51,7 +54,8 @@ def _identity_of(value: object) -> str:
         ValueError: The value is not a string.
     """
     if not isinstance(value, str):
-        raise ValueError(f"prop: {json.dumps(value)} is not an identity")
+        msg = f"prop: {json.dumps(value)} is not an identity"
+        raise ValueError(msg)
     return value
 
 
@@ -65,7 +69,8 @@ def _drawing(spec: Mapping[str, Any], end: Ending) -> Body:
     generator = build(spec.get("draw"))
     classify = spec.get("classify", {})
     if not isinstance(classify, dict):
-        raise ValueError(f"prop: classify is {json.dumps(classify)}, not an object")
+        msg = f"prop: classify is {json.dumps(classify)}, not an object"
+        raise ValueError(msg)
     labels = [
         (label, predicate(when))
         for label, when in cast("dict[str, object]", classify).items()
@@ -73,7 +78,8 @@ def _drawing(spec: Mapping[str, Any], end: Ending) -> Body:
     rejects = predicate(spec["rejects-when"]) if "rejects-when" in spec else None
     entries = spec.get("fails", [])
     if not isinstance(entries, list):
-        raise ValueError(f"prop: fails is {json.dumps(entries)}, not a list")
+        msg = f"prop: fails is {json.dumps(entries)}, not a list"
+        raise ValueError(msg)
     fails = [
         (_identity_of(entry.get("identity")), predicate(entry.get("when")))
         for entry in cast("list[dict[str, object]]", entries)
@@ -137,7 +143,8 @@ def body_of(spec: object, end: Ending) -> Body:
             exist, or a part of the body is not valid.
     """
     if not isinstance(spec, dict):
-        raise ValueError(f"prop: {json.dumps(spec)} is not a body")
+        msg = f"prop: {json.dumps(spec)} is not a body"
+        raise ValueError(msg)
     stated = cast("dict[str, Any]", spec)
     kind = stated.get("kind")
     if kind is None:
@@ -148,4 +155,5 @@ def body_of(spec: object, end: Ending) -> Body:
         return _diverging(end)
     if kind == "fails-once":
         return _failing_once(end)
-    raise ValueError(f"prop: {json.dumps(kind)} is not a named body")
+    msg = f"prop: {json.dumps(kind)} is not a named body"
+    raise ValueError(msg)

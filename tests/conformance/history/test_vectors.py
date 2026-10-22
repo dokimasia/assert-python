@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of conformance/history/vectors.py tests the runners of the history vectors.
 
 A runner computes the verdict of every history vector, so the spec checks
@@ -6,8 +9,7 @@ its own verdicts with the assert statement of pytest.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
@@ -18,6 +20,9 @@ from dokimi_assert.conformance.history.vectors import (
     RUNNERS,
 )
 from dokimi_assert.conformance.vector import vectors
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 #: The history vectors of the definition, by id.
 VECTORS = {v.id: v.raw for v in vectors() if v.kind in RUNNERS}
@@ -44,9 +49,9 @@ READ = {
 }
 
 
-def vector(id: str, **changes: Any) -> dict[str, Any]:
+def vector(vector_id: str, **changes: Any) -> dict[str, Any]:
     """Return the vector of an id with changes to its members."""
-    return {**VECTORS[id], **changes}
+    return {**VECTORS[vector_id], **changes}
 
 
 def fault_of(kind: str, raw: Mapping[str, Any]) -> tuple[str, str]:
@@ -78,11 +83,11 @@ class TestRunners:
             "snapshot-isolation",
         ]
 
-    @pytest.mark.parametrize("id", sorted(VECTORS))
-    def test_returns_for_the_vector(self, id: str) -> None:
+    @pytest.mark.parametrize("vector_id", sorted(VECTORS))
+    def test_returns_for_the_vector(self, vector_id: str) -> None:
         """The run agrees with the vector."""
-        kind = next(v.kind for v in vectors() if v.id == id)
-        assert fault_of(kind, VECTORS[id]) == ("", "")
+        kind = next(v.kind for v in vectors() if v.id == vector_id)
+        assert fault_of(kind, VECTORS[vector_id]) == ("", "")
 
     seams: ClassVar[list[tuple[str, dict[str, Any], tuple[str, str]]]] = [
         (
@@ -108,10 +113,12 @@ class TestRunners:
             },
             (
                 "events[0]",
-                'the event is {"index": 0, "kind": "invoke", "call": 0, "client": 0, '
-                '"process": 0, "operation": "write", "args": [{"type": "int", '
-                '"value": 1}], "keys": [{"type": "string", "value": "x"}]}, '
-                'want {"index": 9}',
+                (
+                    'the event is {"index": 0, "kind": "invoke", "call": 0, '
+                    '"client": 0, "process": 0, "operation": "write", "args": '
+                    '[{"type": "int", "value": 1}], "keys": [{"type": "string", '
+                    '"value": "x"}]}, want {"index": 9}'
+                ),
             ),
         ),
         (
@@ -159,8 +166,10 @@ class TestRunners:
             {"intervals": [{**VECTORS[INTERVALS]["intervals"][0], "end": None}]},
             (
                 "intervals[0]",
-                "the entry has a kind without an end, an end without a kind, or a "
-                "kind that does not complete a call",
+                (
+                    "the entry has a kind without an end, an end without a kind, or a "
+                    "kind that does not complete a call"
+                ),
             ),
         ),
         (
@@ -168,8 +177,10 @@ class TestRunners:
             {"intervals": [{**VECTORS[INTERVALS]["intervals"][0], "kind": "widget"}]},
             (
                 "intervals[0]",
-                "the entry has a kind without an end, an end without a kind, or a "
-                "kind that does not complete a call",
+                (
+                    "the entry has a kind without an end, an end without a kind, or a "
+                    "kind that does not complete a call"
+                ),
             ),
         ),
     ]
@@ -220,8 +231,10 @@ class TestRunners:
             vector(PASSING, detail={"partitions": 2, "steps": 6}),
             (
                 "detail",
-                "the runner observes the steps of a pass over one partition in two "
-                "steps or more, and the vector has the partitions 2 and the steps 6",
+                (
+                    "the runner observes the steps of a pass over one partition in two "
+                    "steps or more, and the vector has the partitions 2 and the steps 6"
+                ),
             ),
         ),
         (
@@ -234,10 +247,12 @@ class TestRunners:
             vector(PASSING, detail={"partitions": 1, "steps": 7}),
             (
                 "detail.steps",
-                'the check within 6 steps ends as pass with {"outcome": null, '
-                '"partitions": null, "steps": null, "limit": null}, want '
-                '{"outcome": "undecided", "partitions": 1, "steps": 6, "limit": '
-                '"steps"}',
+                (
+                    'the check within 6 steps ends as pass with {"outcome": null, '
+                    '"partitions": null, "steps": null, "limit": null}, want '
+                    '{"outcome": "undecided", "partitions": 1, "steps": 6, "limit": '
+                    '"steps"}'
+                ),
             ),
         ),
         (
@@ -258,10 +273,10 @@ class TestRunners:
 
     def test_raises_for_an_isolation_vector_of_another_verdict(self) -> None:
         """The vector of a serializable history expects a failure."""
-        id = next(i for i in VECTORS if i.startswith("serializable/"))
-        expected = VECTORS[id]["expect"]
+        vector_id = next(i for i in VECTORS if i.startswith("serializable/"))
+        expected = VECTORS[vector_id]["expect"]
         other = "fail" if expected == "pass" else "pass"
-        at, reason = fault_of("serializable", vector(id, expect=other))
+        at, reason = fault_of("serializable", vector(vector_id, expect=other))
         assert (at, reason.startswith(f"the check ends as {expected}")) == (
             "expect",
             True,

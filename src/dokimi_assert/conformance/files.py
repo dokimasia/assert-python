@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The runners of the files vectors.
 
 A files vector has these parts:
@@ -15,7 +18,7 @@ from __future__ import annotations
 
 import json
 import math
-import os
+import pathlib
 from collections.abc import Callable, Mapping
 from typing import Any, cast
 
@@ -68,7 +71,8 @@ def _args_of(v: Mapping[str, Any], n: int) -> list[Any]:
     args = v.get("args", [])
     if not isinstance(args, list) or len(args) != n:
         count = len(args) if isinstance(args, list) else 0
-        raise FaultError("args", f"the number of arguments is {count}, want {n}")
+        at = "args"
+        raise FaultError(at, f"the number of arguments is {count}, want {n}")
     return args
 
 
@@ -93,7 +97,8 @@ def _argument(
     """Return the argument at i after a check that accepts returns True for it."""
     value = values[i]
     if not accepts(value):
-        raise FaultError(f"args[{i}]", f"the argument is not {what}")
+        at = f"args[{i}]"
+        raise FaultError(at, f"the argument is not {what}")
     return value
 
 
@@ -105,7 +110,7 @@ def _is_str(value: object) -> bool:
 def _path_at(values: list[Any], i: int, ws: str) -> str:
     """Return the operating system path in ws of the argument at i."""
     relative: str = _argument(values, i, "a string", _is_str)
-    return os.path.join(ws, *relative.split("/"))
+    return str(pathlib.Path(ws, *relative.split("/")))
 
 
 def _record_of(seat: Recorder) -> dict[str, Any]:
@@ -123,27 +128,31 @@ def _compare_verdict(
     the vector with the same JSON values.
     """
     if expect not in ("pass", "fail"):
+        at = "expect"
         raise FaultError(
-            "expect", f"the vector expects {json.dumps(expect)}, neither pass nor fail"
+            at, f"the vector expects {json.dumps(expect)}, neither pass nor fail"
         )
     verdict = record["verdict"]
     if verdict != expect:
         error = f" ({record['error']})" if "error" in record else ""
-        raise FaultError("expect", f"the check ends as {verdict}{error}, want {expect}")
+        at = "expect"
+        raise FaultError(at, f"the check ends as {verdict}{error}, want {expect}")
     if expect == "pass":
         return
     detail: Mapping[str, Any] = record["detail"]
     names = sorted(wanted)
     fields = sorted(detail)
     if fields != names:
+        at = "detail"
         raise FaultError(
-            "detail",
+            at,
             f"the record has the fields {json.dumps(fields)}, want {json.dumps(names)}",
         )
     for name in names:
         if not same_json(detail[name], wanted[name]):
+            at = f"detail.{name}"
             raise FaultError(
-                f"detail.{name}",
+                at,
                 f"the field is {json.dumps(detail[name])}, "
                 f"want {json.dumps(wanted[name])}",
             )
@@ -157,13 +166,14 @@ def _check_files(build: _Caller) -> Runner:
     verdict and the detail of its call record with the vector.
     """
 
-    def run(raw: Mapping[str, Any], dir: str) -> None:
+    def run(raw: Mapping[str, Any], directory: str) -> None:
         tree = _tree_at(raw.get("workspace"), "workspace")
         try:
-            create(dir, _within(_WORKSPACE, tree))
+            create(directory, _within(_WORKSPACE, tree))
         except FaultError as error:
-            raise error.within("workspace") from error
-        call = build(raw, dir, os.path.join(dir, _WORKSPACE))
+            outer = "workspace"
+            raise error.within(outer) from error
+        call = build(raw, directory, str(pathlib.Path(directory, _WORKSPACE)))
         seat = Recorder()
         call(seat)
         _compare_verdict(_record_of(seat), raw.get("expect"), raw.get("detail", {}))
@@ -200,9 +210,8 @@ def _unchanged_call(
     build = SUBJECTS.get(kind) if isinstance(kind, str) else None
     touch = None if build is None else build().files
     if touch is None:
-        raise FaultError(
-            "subject.kind", f"{json.dumps(kind)} is not a subject of files"
-        )
+        at = "subject.kind"
+        raise FaultError(at, f"{json.dumps(kind)} is not a subject of files")
     found = touch
 
     def call(seat: Recorder) -> None:
@@ -216,35 +225,41 @@ def _unchanged_call(
 
         files.unchanged(seat, ws, run, CONTRACT)
         if failed:
-            raise FaultError("subject", "the subject fails", failed[0])
+            at = "subject"
+            raise FaultError(at, "the subject fails", failed[0])
 
     return call
 
 
-def _check_working_directory(dir: str) -> None:
+def _check_working_directory(directory: str) -> None:
     """Raise a fault when dir is not the working directory."""
-    if not os.path.samefile(".", dir):
+    if not pathlib.Path.cwd().samefile(directory):
+        at = ""
         raise FaultError(
-            "",
+            at,
             "golden.match_tree resolves a name in the working directory, and the "
             "directory of the vector is not the working directory",
         )
 
 
-def _compare_after(dir: str, after: object) -> None:
+def _compare_after(directory: str, after: object) -> None:
     """Compare the golden tree in dir, read without its modes, with after."""
     try:
-        got = encode(read_tree(dir, False), math.inf)
+        got = encode(read_tree(directory, False), math.inf)
     except FaultError as error:
-        raise FaultError("after", "the golden tree cannot be read", error) from error
+        at = "after"
+        raise FaultError(at, "the golden tree cannot be read", error) from error
     if not same_json(got, after):
+        at = "after"
         raise FaultError(
-            "after",
+            at,
             f"the golden tree is {json.dumps(got)}, want {json.dumps(after)}",
         )
 
 
-def _golden_call(v: Mapping[str, Any], dir: str, ws: str) -> Callable[[Recorder], None]:
+def _golden_call(
+    v: Mapping[str, Any], directory: str, ws: str
+) -> Callable[[Recorder], None]:
     """Return the call of a golden-match-tree vector.
 
     The arguments of the vector are the name and update. golden.match_tree
@@ -257,20 +272,21 @@ def _golden_call(v: Mapping[str, Any], dir: str, ws: str) -> Callable[[Recorder]
     values = _values_of(v, 2)
     name: str = _argument(values, 0, "a string", _is_str)
     update: bool = _argument(values, 1, "a bool", lambda value: isinstance(value, bool))
-    _check_working_directory(dir)
+    _check_working_directory(directory)
     relative = f"testdata/golden/{name}"
     if v.get("golden") is not None:
         tree = _tree_at(v.get("golden"), "golden")
         try:
-            create(dir, _within(relative, tree))
+            create(directory, _within(relative, tree))
         except FaultError as error:
-            raise error.within("golden") from error
+            outer = "golden"
+            raise error.within(outer) from error
     after = v.get("after")
 
     def call(seat: Recorder) -> None:
         golden.match_tree(seat, name, ws, update)
         if after is not None:
-            _compare_after(os.path.join(dir, *relative.split("/")), after)
+            _compare_after(str(pathlib.Path(directory, *relative.split("/"))), after)
 
     return call
 

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of conformance/driver.py tests the driver of a case with a behaviour."""
 
 from __future__ import annotations

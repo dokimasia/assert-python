@@ -1,8 +1,11 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of conformance/prop/forms.py tests the runner of the forms vectors."""
 
 from __future__ import annotations
 
-from typing import Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import pytest
 
@@ -10,15 +13,17 @@ from dokimi_assert import check
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert.conformance.prop.forms import forms_of
 from dokimi_assert.conformance.vector import vectors
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: The forms vectors of the definition, by id.
 FORMS = {v.id: v.raw for v in vectors() if v.kind == "forms"}
 
 
-def vector(id: str, **changes: Any) -> dict[str, Any]:
+def vector(vector_id: str, **changes: Any) -> dict[str, Any]:
     """Return the forms vector of an id with changes to its members."""
-    return {**FORMS[id], **changes}
+    return {**FORMS[vector_id], **changes}
 
 
 def fault_of(seat: Collector, raw: dict[str, Any]) -> tuple[str, str]:
@@ -31,13 +36,15 @@ def fault_of(seat: Collector, raw: dict[str, Any]) -> tuple[str, str]:
 class TestFormsOf:
     """forms_of returns the detail of the call record of the form of a vector."""
 
-    @pytest.mark.parametrize("id", sorted(FORMS))
-    def test_returns_the_detail_of_the_vector(self, seat: Collector, id: str) -> None:
+    @pytest.mark.parametrize("vector_id", sorted(FORMS))
+    def test_returns_the_detail_of_the_vector(
+        self, seat: Collector, vector_id: str
+    ) -> None:
         """The form of the vector runs as the definition states."""
         check.equal(
             seat,
-            forms_of(FORMS[id])["detail"],
-            FORMS[id]["detail"],
+            forms_of(FORMS[vector_id])["detail"],
+            FORMS[vector_id]["detail"],
             "the form has the detail of its vector",
         )
 

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of conformance/files.py tests the runners of the files vectors.
 
 The vectors of the definition test every runner. This spec covers the rules
@@ -9,14 +12,16 @@ so the spec checks its own verdicts with the assert statement of pytest.
 from __future__ import annotations
 
 import errno
-import pathlib
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert.conformance.files import CONTRACT, RUNNERS
 from helpers import UNENFORCED
+
+if TYPE_CHECKING:
+    import pathlib
 
 #: The tree without entries.
 NO_FILES: dict[str, Any] = {"type": "tree", "entries": []}
@@ -42,14 +47,14 @@ def string(value: str) -> dict[str, Any]:
     return {"type": "string", "value": value}
 
 
-def fault_of(kind: str, raw: dict[str, Any], dir: pathlib.Path) -> str:
+def fault_of(kind: str, raw: dict[str, Any], directory: pathlib.Path) -> str:
     """Return the text of the fault of the run of raw as a vector of kind in dir.
 
     Returns:
         The text, or the empty string for a run without a fault.
     """
     try:
-        RUNNERS[kind](raw, str(dir))
+        RUNNERS[kind](raw, str(directory))
     except FaultError as error:
         return str(error)
     return ""
@@ -162,8 +167,10 @@ class TestRunners:
             "raises the fault of a golden vector outside the working directory",
             "golden-match-tree",
             golden(golden_args(False), None),
-            "golden.match_tree resolves a name in the working directory, and the "
-            "directory of the vector is not the working directory",
+            (
+                "golden.match_tree resolves a name in the working directory, and the "
+                "directory of the vector is not the working directory"
+            ),
         ),
         (
             "raises the fault of an is-file argument that is not a typed literal",
@@ -251,8 +258,10 @@ class TestRunners:
                 "args": [string("a.txt"), {"type": "int", "value": 0o10000}],
                 "expect": "pass",
             },
-            "expect: the check ends as error (files.has_mode: the mode 0o10000 is "
-            "not an integer from 0 to 0o777), want pass",
+            (
+                "expect: the check ends as error (files.has_mode: the mode 0o10000 is "
+                "not an integer from 0 to 0o777), want pass"
+            ),
         ),
         (
             "raises the fault of a record with different fields",
@@ -274,8 +283,10 @@ class TestRunners:
                 "expect": "fail",
                 "detail": {"got": string("directory")},
             },
-            'detail.got: the field is {"type": "string", "value": "file"}, '
-            'want {"type": "string", "value": "directory"}',
+            (
+                'detail.got: the field is {"type": "string", "value": "file"}, '
+                'want {"type": "string", "value": "directory"}'
+            ),
         ),
     ]
 

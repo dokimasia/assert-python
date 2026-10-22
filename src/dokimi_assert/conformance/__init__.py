@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The check of this library against the definition.
 
 The definition is language-neutral and has a repository of its own. Each

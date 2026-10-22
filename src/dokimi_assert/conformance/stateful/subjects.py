@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The machine subjects of the definition, which a machines vector runs by name.
 
 Every subject records each call of a client in the history of the case,

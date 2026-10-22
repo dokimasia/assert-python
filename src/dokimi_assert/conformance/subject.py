@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The behaviours that a corpus case passes in place of a callable.
 
 A case has its arguments as typed literals, and a typed literal cannot be a
@@ -9,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import pathlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -129,7 +133,8 @@ def _raises() -> Subject:
     """Return a subject that raises and does not return."""
 
     def bare() -> Any:
-        raise SubjectError("the subject raised")
+        msg = "the subject raised"
+        raise SubjectError(msg)
 
     return Subject(bare=bare)
 
@@ -141,7 +146,8 @@ def _fails_otherwise() -> Subject:
     """
 
     def fails(*_: Any) -> Any:
-        raise SubjectError("the subject failed for its own reason")
+        msg = "the subject failed for its own reason"
+        raise SubjectError(msg)
 
     async def handled(*_: Any) -> Any:
         return fails()
@@ -165,13 +171,18 @@ def _never_settles() -> Subject:
     """
 
     def read() -> Any:
-        raise SubjectError("never settles")
+        msg = "never settles"
+        raise SubjectError(msg)
 
     return Subject(
         seated=lambda trial: trial.record("never settles"),
         induce=lambda: None,
         read=read,
     )
+
+
+#: The attempt at which the subject of _settles_after succeeds.
+_SETTLING_ATTEMPT = 3
 
 
 def _settles_after() -> Subject:
@@ -183,7 +194,7 @@ def _settles_after() -> Subject:
 
     def settled() -> bool:
         attempts[0] += 1
-        return attempts[0] >= 3
+        return attempts[0] >= _SETTLING_ATTEMPT
 
     def seated(trial: Any) -> None:
         if not settled():
@@ -191,7 +202,8 @@ def _settles_after() -> Subject:
 
     def read() -> None:
         if not settled():
-            raise SubjectError("not yet")
+            msg = "not yet"
+            raise SubjectError(msg)
 
     return Subject(seated=seated, induce=lambda: None, read=read)
 
@@ -303,25 +315,26 @@ def _one_object_twice() -> Subject:
     return _yields(one, one)
 
 
-def _each_file(directory: str, fn: Callable[[str], object]) -> None:
+def _each_file(directory: str, fn: Callable[[pathlib.Path], object]) -> None:
     """Call fn with the path of each file of the tree in directory.
 
     Links are skipped.
     """
     for root, _, names in os.walk(directory):
         for name in names:
-            path = os.path.join(root, name)
-            if os.path.isfile(path) and not os.path.islink(path):
+            path = pathlib.Path(root, name)
+            # Path.is_file raises an error of the file system before Python
+            # 3.14, and os.path.isfile returns False.
+            if os.path.isfile(path) and not os.path.islink(path):  # noqa: PTH113, PTH114
                 fn(path)
 
 
-def _read_file(path: str) -> bytes:
+def _read_file(path: pathlib.Path) -> bytes:
     """Return the bytes of the file at path."""
-    with open(path, "rb") as stream:
-        return stream.read()
+    return path.read_bytes()
 
 
-def _write_file(path: str, content: bytes) -> None:
+def _write_file(path: pathlib.Path, content: bytes) -> None:
     """Write content into the file at path. An existing file keeps its mode."""
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, _NEW_FILE_MODE)
     with os.fdopen(descriptor, "wb") as stream:
@@ -345,7 +358,7 @@ def _rewrites_files() -> Subject:
 def _writes_file(name: str, content: bytes) -> Subject:
     """Return a subject that writes content into the file name at the root of a tree."""
     return Subject(
-        files=lambda directory: _write_file(os.path.join(directory, name), content)
+        files=lambda directory: _write_file(pathlib.Path(directory, name), content)
     )
 
 

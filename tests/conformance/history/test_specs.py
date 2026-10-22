@@ -1,16 +1,21 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of conformance/history/specs.py tests the named specs of the definition."""
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
 from dokimi_assert import check
 from dokimi_assert._history.spec import CallOperation
 from dokimi_assert.conformance.history.specs import SPECS
-from dokimi_assert.seat import Collector
 from helpers import refusal
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 def done(name: str, *args: Any, output: Any = None) -> CallOperation:

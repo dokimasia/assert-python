@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of conformance/corpus.py tests the corpus and the verdict of each case.
 
 The spec runs every case of the vendored corpus on both surfaces, and it
@@ -9,7 +12,7 @@ the assert statement of pytest.
 from __future__ import annotations
 
 import dataclasses
-import os
+import pathlib
 
 import pytest
 
@@ -99,9 +102,8 @@ class TestCases:
     def test_has_the_behaviour_of_a_case_with_a_behaviour(self) -> None:
         """A case of raises has a behaviour and does not have values."""
         throwing = [c for c in CASES if c.assertion == "throws"]
-        assert throwing and all(
-            c.subject is not None and c.args == () for c in throwing
-        )
+        assert throwing
+        assert all(c.subject is not None and c.args == () for c in throwing)
 
 
 class TestSurfaces:
@@ -220,7 +222,8 @@ class TestMismatch:
         seat = Recorder()
         check.equal(seat, 1, 2, "equal/x")
         verdict = mismatch(FAILING, seat, False)
-        assert verdict is not None and verdict.startswith("the call record is ")
+        assert verdict is not None
+        assert verdict.startswith("the call record is ")
 
     def test_returns_a_field_of_a_failure_whose_value_differs(self) -> None:
         """The first failure must have the value of the case."""
@@ -300,4 +303,4 @@ class TestMismatch:
                 f"{failure.assertion} did not report a call site"
             )
             assert failure.where.line > 0
-            assert os.path.basename(failure.where.file) == "test_corpus.py"
+            assert pathlib.Path(failure.where.file).name == "test_corpus.py"

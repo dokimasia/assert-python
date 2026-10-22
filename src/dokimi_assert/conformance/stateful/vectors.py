@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The runner of the machines vectors.
 
 A machines vector has a machine subject, and it can have the options of the
@@ -12,17 +15,20 @@ ends the call.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from dokimi_assert import prop, stateful
 from dokimi_assert._matcher.fault import FaultError
-from dokimi_assert.conformance.files import Runner
 from dokimi_assert.conformance.literal import same_json
 from dokimi_assert.conformance.prop.choices import seed_of
 from dokimi_assert.conformance.prop.detail import detail_of
 from dokimi_assert.conformance.stateful.subjects import SUBJECTS, Setup
 from dokimi_assert.seat import Recorder
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from dokimi_assert.conformance.files import Runner
 
 __all__ = ["CONTRACT", "RUNNERS"]
 
@@ -46,7 +52,8 @@ def _strategy_of(written: object) -> stateful.Strategy:
         return stateful.uniform()
     if isinstance(written, dict) and list(cast("dict[str, Any]", written)) == ["pct"]:
         return stateful.pct(cast("dict[str, Any]", written)["pct"])
-    raise FaultError("setup.strategy", f"{json.dumps(written)} is not a strategy")
+    at = "setup.strategy"
+    raise FaultError(at, f"{json.dumps(written)} is not a strategy")
 
 
 def _setup_of(written: Mapping[str, Any]) -> Setup:
@@ -60,7 +67,8 @@ def _setup_of(written: Mapping[str, Any]) -> Setup:
     """
     for name in sorted(written):
         if name not in _SETUP:
-            raise FaultError(f"setup.{name}", "the runner does not take the member")
+            at = f"setup.{name}"
+            raise FaultError(at, "the runner does not take the member")
     steps: list[stateful.Option] = []
     if "mean" in written:
         steps.append(stateful.mean(written["mean"]))
@@ -89,7 +97,8 @@ def _settings_of(written: Mapping[str, Any]) -> list[prop.Option]:
         elif name == "cases":
             options.append(prop.cases(value))
         else:
-            raise FaultError(f"settings.{name}", "the runner does not take the setting")
+            at = f"settings.{name}"
+            raise FaultError(at, "the runner does not take the setting")
     return options
 
 
@@ -104,8 +113,9 @@ def _compare_refusal(record: Mapping[str, Any], error: Mapping[str, Any]) -> Non
     at = f"prop.for_all: draws[{error.get('entry')}].{error.get('reason')}: "
     name = json.dumps(error.get("name"))
     if not message.startswith(at) or name not in message:
+        at = "error"
         raise FaultError(
-            "error",
+            at,
             f"the run ends with {json.dumps(message)}, want a refusal of entry "
             f"{error.get('entry')} of {name}",
         )
@@ -124,8 +134,9 @@ def _check_machines(raw: Mapping[str, Any], _: str) -> None:
     """
     make = SUBJECTS.get(cast("str", raw.get("subject")))
     if make is None:
+        at = "subject"
         raise FaultError(
-            "subject", f"{json.dumps(raw.get('subject'))} is not a machine subject"
+            at, f"{json.dumps(raw.get('subject'))} is not a machine subject"
         )
     setup = _setup_of(cast("dict[str, Any]", raw.get("setup") or {}))
     options = _settings_of(cast("dict[str, Any]", raw.get("settings") or {}))
@@ -141,8 +152,9 @@ def _check_machines(raw: Mapping[str, Any], _: str) -> None:
         return
     detail = detail_of(record)
     if not same_json(detail, raw.get("detail")):
+        at = "detail"
         raise FaultError(
-            "detail",
+            at,
             f"the run has the detail {json.dumps(detail)}, "
             f"want {json.dumps(raw.get('detail'))}",
         )

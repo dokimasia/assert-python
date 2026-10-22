@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The decoder of the typed literals of a corpus case, and their comparison.
 
 A case has its arguments in a language-neutral encoding, because every
@@ -52,13 +55,19 @@ class LiteralError(ValueError):
 class RefInt(int):
     """An int that is a reference. A reference literal decodes to it."""
 
+    __slots__ = ()
+
 
 class RefFloat(float):
     """A float that is a reference. A reference literal decodes to it."""
 
+    __slots__ = ()
+
 
 class RefStr(str):
     """A str that is a reference. A reference literal decodes to it."""
+
+    __slots__ = ()
 
 
 #: The class of the object of a reference literal by the type of its value.
@@ -83,9 +92,8 @@ def _record_class(names: tuple[str, ...]) -> type:
     cls = _RECORDS.get(names)
     if cls is None:
         if not all(name.isidentifier() for name in names):
-            raise LiteralError(
-                f"a field name of a record is not an identifier: {names!r}"
-            )
+            msg = f"a field name of a record is not an identifier: {names!r}"
+            raise LiteralError(msg)
         cls = dataclasses.make_dataclass("Record", list(names), frozen=True)
         _RECORDS[names] = cls
     return cls
@@ -97,7 +105,8 @@ def _integer(value: object) -> int:
         return value
     if isinstance(value, str) and _DIGITS.fullmatch(value):
         return int(value)
-    raise LiteralError(f"the value {json.dumps(value)} is not an int")
+    msg = f"the value {json.dumps(value)} is not an int"
+    raise LiteralError(msg)
 
 
 def _float(value: object) -> float:
@@ -109,7 +118,8 @@ def _float(value: object) -> float:
         return float(value)
     if isinstance(value, str) and value in _NAMED_FLOATS:
         return _NAMED_FLOATS[value]
-    raise LiteralError(f"the value {json.dumps(value)} is not a float")
+    msg = f"the value {json.dumps(value)} is not a float"
+    raise LiteralError(msg)
 
 
 def _scalar(of: str, value: object) -> Any:
@@ -120,11 +130,21 @@ def _scalar(of: str, value: object) -> Any:
         return _float(value)
     if of == "bool":
         if not isinstance(value, bool):
-            raise LiteralError(f"the value {json.dumps(value)} is not a bool")
+            msg = f"the value {json.dumps(value)} is not a bool"
+            raise LiteralError(msg)
         return value
     if not isinstance(value, str):
-        raise LiteralError(f"the value {json.dumps(value)} is not a string")
+        msg = f"the value {json.dumps(value)} is not a string"
+        raise LiteralError(msg)
     return value
+
+
+def _bytes_of(value: object) -> bytes:
+    """Return the bytes of the value of a bytes literal, or raise LiteralError."""
+    if not isinstance(value, str) or not _HEX.fullmatch(value):
+        msg = f"the bytes value {json.dumps(value)} is not lowercase hexadecimal"
+        raise LiteralError(msg)
+    return bytes.fromhex(value)
 
 
 def _element_type(literal: Mapping[str, Any], which: str) -> str:
@@ -135,14 +155,14 @@ def _element_type(literal: Mapping[str, Any], which: str) -> str:
     """
     element = literal.get(which)
     if element is None:
-        raise LiteralError(
-            f"a {literal.get('type')} does not have the member {json.dumps(which)}"
-        )
+        msg = f"a {literal.get('type')} does not have the member {json.dumps(which)}"
+        raise LiteralError(msg)
     if element not in _SCALARS:
-        raise LiteralError(
+        msg = (
             f"the member {json.dumps(which)} of a {literal.get('type')} is not a "
             f"scalar: {json.dumps(element)}"
         )
+        raise LiteralError(msg)
     return str(element)
 
 
@@ -180,12 +200,18 @@ class Objects:
         if kind in _SCALARS:
             return _scalar(str(kind), literal.get("value"))
         if kind == "bytes":
-            value = literal.get("value")
-            if not isinstance(value, str) or not _HEX.fullmatch(value):
-                raise LiteralError(
-                    f"the bytes value {json.dumps(value)} is not lowercase hexadecimal"
-                )
-            return bytes.fromhex(value)
+            return _bytes_of(literal.get("value"))
+        return self._composite(kind, literal)
+
+    def _composite(self, kind: object, literal: Mapping[str, Any]) -> Any:
+        """Return the value of a literal of the type kind that contains values.
+
+        A list, a map, a record, a reference and a tree contain values.
+
+        Raises:
+            LiteralError: kind is not a type of the encoding, or the literal
+                has a value that its type does not allow.
+        """
         if kind == "list":
             return self._list(literal)
         if kind == "map":
@@ -196,21 +222,24 @@ class Objects:
             return self._reference(literal)
         if kind == "tree":
             return decode_tree(literal)
-        raise LiteralError(f"unknown literal type: {kind}")
+        msg = f"unknown literal type: {kind}"
+        raise LiteralError(msg)
 
     def _list(self, literal: Mapping[str, Any]) -> list[Any] | None:
         """Decode a list of scalar values of one type or of item literals."""
         if "items" in literal:
             items = literal["items"]
             if not isinstance(items, list):
-                raise LiteralError("the items of a list are not an array")
+                msg = "the items of a list are not an array"
+                raise LiteralError(msg)
             return [self.decode(item) for item in items]
         of = _element_type(literal, "of")
         value = literal.get("value")
         if value is None:
             return None
         if not isinstance(value, list):
-            raise LiteralError("the value of a list is not an array")
+            msg = "the value of a list is not an array"
+            raise LiteralError(msg)
         return [_scalar(of, element) for element in value]
 
     def _map(self, literal: Mapping[str, Any]) -> dict[Any, Any] | None:
@@ -218,7 +247,8 @@ class Objects:
         if "entries" in literal:
             entries = literal["entries"]
             if not isinstance(entries, list):
-                raise LiteralError("the entries of a map are not an array")
+                msg = "the entries of a map are not an array"
+                raise LiteralError(msg)
             return {self.decode(key): self.decode(value) for key, value in entries}
         of = _element_type(literal, "of")
         _element_type(literal, "key")
@@ -226,14 +256,16 @@ class Objects:
         if value is None:
             return None
         if not isinstance(value, dict):
-            raise LiteralError("the value of a map is not an object")
+            msg = "the value of a map is not an object"
+            raise LiteralError(msg)
         return {key: _scalar(of, element) for key, element in value.items()}
 
     def _record(self, literal: Mapping[str, Any]) -> Any:
         """Decode a record into a dataclass of its fields, in order."""
         fields = literal.get("fields")
         if not isinstance(fields, list):
-            raise LiteralError("the fields of a record are not an array")
+            msg = "the fields of a record are not an array"
+            raise LiteralError(msg)
         names = tuple(str(name) for name, _ in fields)
         values = [self.decode(value) for _, value in fields]
         return _record_class(names)(*values)
@@ -242,15 +274,17 @@ class Objects:
         """Decode a reference into the object of its id."""
         ident = literal.get("id")
         if not isinstance(ident, str):
-            raise LiteralError("a reference does not have an id")
+            msg = "a reference does not have an id"
+            raise LiteralError(msg)
         if ident in self._by_id:
             return self._by_id[ident]
         value = self.decode(literal["value"])
         box = _REFERENCES.get(type(value))
         if value is None or isinstance(value, bool):
-            raise LiteralError(
+            msg = (
                 f"a reference of {json.dumps(literal['value'])} does not have an object"
             )
+            raise LiteralError(msg)
         obj = box(value) if box is not None else value
         self._by_id[ident] = obj
         return obj
@@ -291,6 +325,17 @@ def canonical(value: object) -> str:
     Returns:
         The text.
     """
+    if value is None or isinstance(value, (bool, enum.Enum, int, float)):
+        return _canonical_plain(value)
+    if isinstance(value, str):
+        return f"string:{json.dumps(str(value), ensure_ascii=False)}"
+    if isinstance(value, (bytes, bytearray)):
+        return f"bytes:{bytes(value).hex()}"
+    return _canonical_composite(value)
+
+
+def _canonical_plain(value: bool | enum.Enum | float | None) -> str:
+    """Return the canonical text of None, a bool, an Enum member, an int or a float."""
     if value is None:
         return "null"
     if isinstance(value, bool):
@@ -299,12 +344,14 @@ def canonical(value: object) -> str:
         return f"variant:{value.name}"
     if isinstance(value, int):
         return f"int:{int(value)}"
-    if isinstance(value, float):
-        return "float:nan" if math.isnan(value) else f"float:{float(value)!r}"
-    if isinstance(value, str):
-        return f"string:{json.dumps(str(value), ensure_ascii=False)}"
-    if isinstance(value, (bytes, bytearray)):
-        return f"bytes:{bytes(value).hex()}"
+    return "float:nan" if math.isnan(value) else f"float:{float(value)!r}"
+
+
+def _canonical_composite(value: object) -> str:
+    """Return the canonical text of a list, a tuple, a mapping or a dataclass.
+
+    Any other value has the empty text.
+    """
     if isinstance(value, (list, tuple)):
         return "list:[" + ",".join(canonical(item) for item in value) + "]"
     if isinstance(value, Mapping):

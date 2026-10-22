@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The corpus, and the verdict of a run of one case.
 
 Every implementation of the definition runs the same cases. A library that
@@ -9,11 +12,9 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from types import ModuleType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dokimi_assert import check, expect, option
-from dokimi_assert._matcher.option import Option
 from dokimi_assert._record.call import DEFINITION
 from dokimi_assert.conformance.definition import (
     LANGUAGE,
@@ -23,7 +24,12 @@ from dokimi_assert.conformance.definition import (
     spec_dir,
 )
 from dokimi_assert.conformance.literal import LiteralError, Objects, canonical, decode
-from dokimi_assert.seat import Recorder
+
+if TYPE_CHECKING:
+    from types import ModuleType
+
+    from dokimi_assert._matcher.option import Option
+    from dokimi_assert.seat import Recorder
 
 __all__ = [
     "SURFACES",
@@ -149,9 +155,8 @@ def options_of(case: Case) -> list[Option]:
         name = named.get(rid, "")
         make = getattr(option, name, None) if name else None
         if make is None:
-            raise LookupError(
-                f"{case.id}: the relaxation {rid} does not have a Python option"
-            )
+            msg = f"{case.id}: the relaxation {rid} does not have a Python option"
+            raise LookupError(msg)
         out.append(make())
     return out
 
@@ -180,11 +185,16 @@ def _record_mismatch(case: Case, recorder: Recorder) -> str | None:
             f"the record has the contract {json.dumps(record.contract)}, "
             f"want {json.dumps(case.id)}"
         )
-    fields = _fields_mismatch("the record", record.detail, case)
+    return _detail_mismatch(record.detail, case)
+
+
+def _detail_mismatch(detail: Mapping[str, Any], case: Case) -> str | None:
+    """Compare the detail of a failure record with the detail of a case."""
+    fields = _fields_mismatch("the record", detail, case)
     if fields is not None:
         return fields
     for name, want in case.detail.items():
-        got = record.detail.get(name)
+        got = detail.get(name)
         if canonical(got) != canonical(want):
             return f'detail "{name}" is {canonical(got)}, want {canonical(want)}'
     return None
@@ -212,7 +222,12 @@ def _call_mismatch(case: Case, recorder: Recorder, aborting: bool) -> str | None
         if detail is None:
             return None
         return f"a passing call record has the detail {json.dumps(detail)}"
-    named = _fields_mismatch("the call record", detail or {}, case)
+    return _literal_mismatch(detail or {}, case)
+
+
+def _literal_mismatch(detail: Mapping[str, Any], case: Case) -> str | None:
+    """Compare the typed literals of the detail of a call record with a case."""
+    named = _fields_mismatch("the call record", detail, case)
     if named is not None:
         return named
     for name, want_value in case.detail.items():

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The reader of the vendored definition that this library implements.
 
 The files are vendored, so a build is reproducible and a test run does not
@@ -8,8 +11,10 @@ from __future__ import annotations
 
 import json
 from importlib import resources
-from importlib.resources.abc import Traversable
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from importlib.resources.abc import Traversable
 
 __all__ = [
     "LANGUAGE",

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The generators of the property vectors.
 
 The definition writes a generator as a JSON object whose member gen has the
@@ -44,7 +47,8 @@ def _int_of(spec: _Spec, key: str) -> int:
             is not an integer.
     """
     if key not in spec:
-        raise ValueError(f"prop: {json.dumps(spec.get('gen'))} needs {key}")
+        msg = f"prop: {json.dumps(spec.get('gen'))} needs {key}"
+        raise ValueError(msg)
     return literal.integer(spec[key])
 
 
@@ -58,7 +62,8 @@ def _bool_of(spec: _Spec, key: str) -> bool:
     if value is None:
         return False
     if not isinstance(value, bool):
-        raise ValueError(f"prop: {key} is {json.dumps(value)}, not a bool")
+        msg = f"prop: {key} is {json.dumps(value)}, not a bool"
+        raise ValueError(msg)
     return value
 
 
@@ -67,6 +72,10 @@ def _sizes_of(spec: _Spec) -> tuple[int, int | None]:
     low = _int_of(spec, "min_size") if "min_size" in spec else 0
     high = None if spec.get("max_size") is None else _int_of(spec, "max_size")
     return low, high
+
+
+#: The parts of p: a numerator and a denominator.
+_FRACTION_PARTS = 2
 
 
 def _probability_of(spec: _Spec) -> Fraction:
@@ -81,7 +90,10 @@ def _probability_of(spec: _Spec) -> Fraction:
     refusal = ValueError(
         f"prop: p is {json.dumps(value)}, not [numerator, denominator]"
     )
-    if not isinstance(value, list) or len(cast("list[object]", value)) != 2:
+    if (
+        not isinstance(value, list)
+        or len(cast("list[object]", value)) != _FRACTION_PARTS
+    ):
         raise refusal
     num, den = cast("list[object]", value)
     if type(num) is not int or type(den) is not int or not 0 <= num <= den or den < 1:
@@ -97,7 +109,8 @@ def _values_of(spec: _Spec) -> list[object]:
     """
     values = spec.get("values")
     if not isinstance(values, list):
-        raise ValueError(f"prop: values is {json.dumps(values)}, not a list")
+        msg = f"prop: values is {json.dumps(values)}, not a list"
+        raise ValueError(msg)
     return [literal.decode(value) for value in cast("list[object]", values)]
 
 
@@ -110,7 +123,8 @@ def _string(spec: _Spec, _: Generator[Any] | None) -> Generator[Any]:
     low, high = _sizes_of(spec)
     alphabet = spec.get("alphabet")
     if alphabet is not None and not isinstance(alphabet, str):
-        raise ValueError(f"prop: alphabet is {json.dumps(alphabet)}, not a string")
+        msg = f"prop: alphabet is {json.dumps(alphabet)}, not a string"
+        raise ValueError(msg)
     return prop.string(alphabet=alphabet, min_size=low, max_size=high)
 
 
@@ -123,7 +137,8 @@ def _string_matching(spec: _Spec, _: Generator[Any] | None) -> Generator[Any]:
     """
     pattern = spec.get("pattern")
     if not isinstance(pattern, str):
-        raise ValueError(f"prop: pattern is {json.dumps(pattern)}, not a string")
+        msg = f"prop: pattern is {json.dumps(pattern)}, not a string"
+        raise ValueError(msg)
     return prop.string_matching(pattern)
 
 
@@ -167,9 +182,8 @@ def _one_of(spec: _Spec, scope: Generator[Any] | None) -> Generator[Any]:
     """
     of = spec.get("of")
     if not isinstance(of, list) or not of:
-        raise ValueError(
-            f"prop: one-of needs a list of generators, not {json.dumps(of)}"
-        )
+        msg = f"prop: one-of needs a list of generators, not {json.dumps(of)}"
+        raise ValueError(msg)
     return prop.one_of(*(build(item, scope) for item in cast("list[object]", of)))
 
 
@@ -197,9 +211,8 @@ def _map(spec: _Spec, scope: Generator[Any] | None) -> Generator[Any]:
     subject = spec.get("subject")
     function = FUNCTIONS.get(subject) if isinstance(subject, str) else None
     if function is None:
-        raise ValueError(
-            f"prop: the subject {json.dumps(subject)} does not have a function"
-        )
+        msg = f"prop: the subject {json.dumps(subject)} does not have a function"
+        raise ValueError(msg)
     return build(spec.get("of"), scope).map(function)
 
 
@@ -245,16 +258,17 @@ def build(spec: object, scope: Generator[Any] | None = None) -> Generator[Any]:
             generator, or a self is outside every extension.
     """
     if not isinstance(spec, dict):
-        raise ValueError(f"prop: {json.dumps(spec)} is not a generator")
+        msg = f"prop: {json.dumps(spec)} is not a generator"
+        raise ValueError(msg)
     stated = cast("dict[str, Any]", spec)
     gen = stated.get("gen")
     if gen == "self":
         if scope is None:
-            raise ValueError(
-                "prop: self is outside the extension of a recursive generator"
-            )
+            msg = "prop: self is outside the extension of a recursive generator"
+            raise ValueError(msg)
         return scope
     builder = _BUILDERS.get(gen) if isinstance(gen, str) else None
     if builder is None:
-        raise ValueError(f"prop: {json.dumps(gen)} is not a generator")
+        msg = f"prop: {json.dumps(gen)} is not a generator"
+        raise ValueError(msg)
     return builder(stated, scope)

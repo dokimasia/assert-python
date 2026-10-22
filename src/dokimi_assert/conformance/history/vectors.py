@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The runners of the history vectors.
 
 A seam vector records a script through a History, or intervals through
@@ -13,16 +16,19 @@ the detail of the call record with the vector.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from dokimi_assert import history
 from dokimi_assert._history.event import event_json
 from dokimi_assert._matcher.fault import FaultError
-from dokimi_assert.conformance.files import Runner
 from dokimi_assert.conformance.history.specs import SPECS
 from dokimi_assert.conformance.literal import decode, same_json
 from dokimi_assert.seat import Recorder
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
+
+    from dokimi_assert.conformance.files import Runner
 
 __all__ = ["ISOLATION_CONTRACT", "LINEARIZABLE_CONTRACT", "RUNNERS"]
 
@@ -182,7 +188,8 @@ def _intervals(raw: object) -> tuple[history.History | None, int | None]:
             interval.
     """
     if not isinstance(raw, list):
-        raise FaultError("intervals", "the intervals are not a list")
+        at = "intervals"
+        raise FaultError(at, "the intervals are not a list")
     entries = [
         _interval_of(entry, f"intervals[{i}]")
         for i, entry in enumerate(cast("list[dict[str, Any]]", raw))
@@ -202,7 +209,8 @@ def _check_seam(raw: Mapping[str, Any], _: str) -> None:
             event differs from the event of the vector.
     """
     if ("script" in raw) == ("intervals" in raw):
-        raise FaultError("", "the vector has neither a script nor intervals, or both")
+        at = ""
+        raise FaultError(at, "the vector has neither a script nor intervals, or both")
     recorded: history.History | None
     if "script" in raw:
         recorded, refused = _record(raw["script"], "script")
@@ -211,23 +219,27 @@ def _check_seam(raw: Mapping[str, Any], _: str) -> None:
     want = raw.get("refused")
     if refused != want:
         got = "no entry" if refused is None else f"entry {refused}"
-        raise FaultError("refused", f"the seam refuses {got}, want {json.dumps(want)}")
+        at = "refused"
+        raise FaultError(at, f"the seam refuses {got}, want {json.dumps(want)}")
     if recorded is None or refused is not None:
         return
     events = [event_json(event) for event in recorded.events()]
     stated = raw.get("events")
     if not isinstance(stated, list):
-        raise FaultError("events", "the events are not a list")
+        at = "events"
+        raise FaultError(at, "the events are not a list")
     wanted = cast("list[object]", stated)
     for i, (event, expected) in enumerate(zip(events, wanted, strict=False)):
         if not same_json(event, expected):
+            at = f"events[{i}]"
             raise FaultError(
-                f"events[{i}]",
+                at,
                 f"the event is {json.dumps(event)}, want {json.dumps(expected)}",
             )
     if len(events) != len(wanted):
+        at = "events"
         raise FaultError(
-            "events", f"the number of events is {len(events)}, want {len(wanted)}"
+            at, f"the number of events is {len(events)}, want {len(wanted)}"
         )
 
 
@@ -239,7 +251,8 @@ def _history_of(raw: Mapping[str, Any]) -> history.History:
     """
     recorded, refused = _record(raw.get("history"), "history")
     if refused is not None:
-        raise FaultError(f"history[{refused}]", "the seam refuses the entry")
+        at = f"history[{refused}]"
+        raise FaultError(at, "the seam refuses the entry")
     return recorded
 
 
@@ -260,13 +273,15 @@ def _compare_verdict(call: Mapping[str, Any], raw: Mapping[str, Any]) -> None:
     """
     expect = raw.get("expect")
     if expect not in ("pass", "fail"):
+        at = "expect"
         raise FaultError(
-            "expect", f"the vector expects {json.dumps(expect)}, neither pass nor fail"
+            at, f"the vector expects {json.dumps(expect)}, neither pass nor fail"
         )
     if call["verdict"] != expect:
         error = f" ({call['error']})" if "error" in call else ""
+        at = "expect"
         raise FaultError(
-            "expect", f"the check ends as {call['verdict']}{error}, want {expect}"
+            at, f"the check ends as {call['verdict']}{error}, want {expect}"
         )
     if expect == "pass":
         return
@@ -274,13 +289,15 @@ def _compare_verdict(call: Mapping[str, Any], raw: Mapping[str, Any]) -> None:
     stated = cast("dict[str, Any]", raw.get("detail", {}))
     for name in sorted(stated):
         if name not in detail:
+            at = f"detail.{name}"
             raise FaultError(
-                f"detail.{name}",
+                at,
                 f"the record does not have the field, want {json.dumps(stated[name])}",
             )
         if not same_json(detail[name], stated[name]):
+            at = f"detail.{name}"
             raise FaultError(
-                f"detail.{name}",
+                at,
                 f"the field is {json.dumps(detail[name])}, "
                 f"want {json.dumps(stated[name])}",
             )
@@ -305,6 +322,11 @@ def _options_of(raw: Mapping[str, Any]) -> list[history.Option]:
     return options
 
 
+#: The fewest steps of a passing linearizable vector. The runner checks it
+#: under a budget of one step less, and a budget has one step at least.
+_LEAST_STEPS = 2
+
+
 def _check_linearizable(raw: Mapping[str, Any], _: str) -> None:
     """Check the history of a linearizable vector against its named spec.
 
@@ -321,7 +343,8 @@ def _check_linearizable(raw: Mapping[str, Any], _: str) -> None:
     """
     spec = SPECS.get(cast("str", raw.get("spec")))
     if spec is None:
-        raise FaultError("spec", f"{json.dumps(raw.get('spec'))} is not a named spec")
+        at = "spec"
+        raise FaultError(at, f"{json.dumps(raw.get('spec'))} is not a named spec")
     recorded = _history_of(raw)
     options = _options_of(raw)
 
@@ -337,17 +360,19 @@ def _check_linearizable(raw: Mapping[str, Any], _: str) -> None:
         return
     stated = cast("dict[str, Any]", raw.get("detail", {}))
     steps = stated.get("steps")
-    if stated.get("partitions") != 1 or type(steps) is not int or steps < 2:
+    if stated.get("partitions") != 1 or type(steps) is not int or steps < _LEAST_STEPS:
+        at = "detail"
         raise FaultError(
-            "detail",
+            at,
             "the runner observes the steps of a pass over one partition in two steps "
             f"or more, and the vector has the partitions "
             f"{json.dumps(stated.get('partitions'))} and the steps {json.dumps(steps)}",
         )
     exact = checked(history.budget(steps))
     if exact["verdict"] != "pass":
+        at = "detail.steps"
         raise FaultError(
-            "detail.steps",
+            at,
             f"the check ends as {exact['verdict']} within {steps} steps, want pass",
         )
     under = checked(history.budget(steps - 1))
@@ -360,8 +385,9 @@ def _check_linearizable(raw: Mapping[str, Any], _: str) -> None:
     }
     got = {name: detail.get(name) for name in want}
     if under["verdict"] != "fail" or not same_json(got, want):
+        at = "detail.steps"
         raise FaultError(
-            "detail.steps",
+            at,
             f"the check within {steps - 1} steps ends as {under['verdict']} with "
             f"{json.dumps(got)}, want {json.dumps(want)}",
         )

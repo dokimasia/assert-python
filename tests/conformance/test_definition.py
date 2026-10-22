@@ -1,6 +1,11 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of conformance/definition.py tests the reader of the vendored definition."""
 
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from dokimi_assert import check, expect
 from dokimi_assert.conformance.definition import (
@@ -17,7 +22,9 @@ from dokimi_assert.conformance.definition import (
     surface_names,
     version,
 )
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 class TestLanguage:

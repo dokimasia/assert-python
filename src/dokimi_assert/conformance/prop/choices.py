@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The form of a choice and of a seed in the property vectors.
 
 The definition writes an integer choice as a JSON integer, or as a decimal
@@ -59,7 +62,8 @@ def parse_choice(written: object) -> Choice:
     if list(form) == ["sequence"] and isinstance(elements, list):
         items = cast("list[object]", elements)
         return Choice("sequence", tuple(literal.integer(item) for item in items))
-    raise ValueError(f"prop: {json.dumps(written)} is not a choice")
+    msg = f"prop: {json.dumps(written)} is not a choice"
+    raise ValueError(msg)
 
 
 def parse_choices(written: object) -> list[Choice]:
@@ -76,7 +80,8 @@ def parse_choices(written: object) -> list[Choice]:
             a choice.
     """
     if not isinstance(written, list):
-        raise ValueError(f"prop: {json.dumps(written)} is not a list of choices")
+        msg = f"prop: {json.dumps(written)} is not a list of choices"
+        raise ValueError(msg)
     return [parse_choice(item) for item in cast("list[object]", written)]
 
 
@@ -93,5 +98,6 @@ def seed_of(seed: object) -> int:
         ValueError: The value is not a decimal string.
     """
     if not isinstance(seed, str) or not _DECIMAL.fullmatch(seed):
-        raise ValueError(f"prop: the seed {json.dumps(seed)} is not a decimal string")
+        msg = f"prop: the seed {json.dumps(seed)} is not a decimal string"
+        raise ValueError(msg)
     return int(seed)

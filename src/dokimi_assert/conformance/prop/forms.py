@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The runner of the forms vectors.
 
 A forms vector has a form, the kinds of the subjects that the assertion of
@@ -18,18 +21,20 @@ from __future__ import annotations
 import json
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from typing import Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from dokimi_assert import prop
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert._prop.engine import literal
-from dokimi_assert._prop.engine.generator import Generator
 from dokimi_assert.conformance.literal import decode
 from dokimi_assert.conformance.prop.choices import seed_of
 from dokimi_assert.conformance.prop.function import FUNCTIONS
 from dokimi_assert.conformance.prop.generator import build
 from dokimi_assert.conformance.subject import SUBJECTS, Subject, SubjectError
 from dokimi_assert.seat import Recorder
+
+if TYPE_CHECKING:
+    from dokimi_assert._prop.engine.generator import Generator
 
 __all__ = ["CONTRACT", "Input", "forms_of"]
 
@@ -54,13 +59,15 @@ _OWN = SubjectError("the subject failed for its own reason")
 
 def _raises(_: Any) -> None:
     """Raise the failure of a subject."""
-    raise SubjectError("the subject raised")
+    msg = "the subject raised"
+    raise SubjectError(msg)
 
 
 def _raises_on_negative(x: Any) -> None:
     """Raise the failure of a subject for a negative input."""
     if x < 0:
-        raise SubjectError("the subject raised")
+        msg = "the subject raised"
+        raise SubjectError(msg)
 
 
 #: The predicate of each subject kind of two items, by the kind.
@@ -363,7 +370,8 @@ def _input_of(raw: Mapping[str, Any]) -> Generator[Any]:
         FaultError: The vector has both a shape and a generator, or neither.
     """
     if ("shape" in raw) == ("generator" in raw):
-        raise FaultError("", "the vector has neither a shape nor a generator, or both")
+        at = ""
+        raise FaultError(at, "the vector has neither a shape nor a generator, or both")
     if "generator" in raw:
         return build(raw["generator"])
     return prop.of_shape(json.dumps(raw["shape"]))
@@ -404,7 +412,8 @@ def forms_of(raw: Mapping[str, Any]) -> dict[str, Any]:
     form = raw.get("form")
     driver = _DRIVERS.get(form) if isinstance(form, str) else None
     if driver is None:
-        raise FaultError("form", f"{json.dumps(form)} is not a form that a vector runs")
+        at = "form"
+        raise FaultError(at, f"{json.dumps(form)} is not a form that a vector runs")
     options: list[prop.FormOption] = [
         prop.using(Input, _input_of(raw)),
         prop.seed(seed_of(raw.get("seed"))),
@@ -425,7 +434,8 @@ def forms_of(raw: Mapping[str, Any]) -> dict[str, Any]:
     ours = record.get("detail")
     if not isinstance(ours, dict):
         error = json.dumps(record.get("error"), ensure_ascii=False)
-        raise FaultError("", f"the form ends with the fault {error}")
+        at = ""
+        raise FaultError(at, f"the form ends with the fault {error}")
     detail = cast("dict[str, Any]", ours)
     theirs = cast("dict[str, Any]", raw.get("detail") or {})
     failure = _failure_of(detail.get("failure"), theirs.get("failure"))

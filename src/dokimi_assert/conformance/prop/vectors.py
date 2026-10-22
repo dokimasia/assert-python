@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The runners of the property vectors.
 
 Each kind of property vector has a function that takes the inputs of a
@@ -18,7 +21,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping
 from datetime import date, timedelta
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from dokimi_assert import check, prop
 from dokimi_assert._matcher.fault import FaultError
@@ -26,8 +29,6 @@ from dokimi_assert._prop.directory import save
 from dokimi_assert._prop.engine import coverage, literal, shape, store, tokens
 from dokimi_assert._prop.engine.bridge import Bridging
 from dokimi_assert._prop.engine.case import Case, Generating, Rejected, Replaying
-from dokimi_assert._prop.engine.choice import Choice
-from dokimi_assert._prop.engine.generator import Generator
 from dokimi_assert._prop.engine.inverse import inverse_of
 from dokimi_assert._prop.engine.runner import Settings, run
 from dokimi_assert._prop.engine.shrink import DEFAULT_BUDGET
@@ -48,6 +49,10 @@ from dokimi_assert.conformance.prop.generator import build
 from dokimi_assert.conformance.prop.predicate import predicate
 from dokimi_assert.failure import Failure
 from dokimi_assert.seat import Recorder
+
+if TYPE_CHECKING:
+    from dokimi_assert._prop.engine.choice import Choice
+    from dokimi_assert._prop.engine.generator import Generator
 
 __all__ = ["CONTRACT", "KINDS", "check_prop"]
 
@@ -119,7 +124,8 @@ def _generator_of(raw: Mapping[str, Any]) -> Generator[Any]:
         FaultError: The vector has both a shape and a generator, or neither.
     """
     if ("shape" in raw) == ("generator" in raw):
-        raise FaultError("", "the vector has neither a shape nor a generator, or both")
+        at = ""
+        raise FaultError(at, "the vector has neither a shape nor a generator, or both")
     if "shape" in raw:
         return shape.read(raw["shape"])
     return build(raw["generator"])
@@ -264,9 +270,8 @@ def _store(raw: Mapping[str, Any], _: str) -> dict[str, Any]:
     if back.verdict != "replay" or tokens.encode(back.choices) != tokens.encode(
         choices
     ):
-        raise FaultError(
-            "entry", "the entry does not read back as a replay of its choices"
-        )
+        at = "entry"
+        raise FaultError(at, "the entry does not read back as a replay of its choices")
     return {"name": store.name(contract, choices), "entry": written}
 
 
@@ -288,7 +293,7 @@ def _drawn(choices: list[Choice], spec: object, at: str) -> dict[str, Any]:
     return {"label": DRAWN, "value": decoded["value"]}
 
 
-def _write_stored(stored: object, dir: str, spec: object) -> None:
+def _write_stored(stored: object, directory: str, spec: object) -> None:
     """Write each stored case of the settings of a vector into the store dir.
 
     The entry of a case is an entry of the property of the vector, with the
@@ -303,7 +308,11 @@ def _write_stored(stored: object, dir: str, spec: object) -> None:
         drawn = _drawn(choices, spec, f"settings.stored[{i}]")
         failure = store.Failure(CONTRACT, choices, _STORED, [drawn])
         found = (_FIRST_FOUND + timedelta(days=i)).isoformat()
-        save(dir, store.name(CONTRACT, choices), store.entry(failure, version(), found))
+        save(
+            directory,
+            store.name(CONTRACT, choices),
+            store.entry(failure, version(), found),
+        )
 
 
 def _example_of(examples: object, spec: object) -> prop.Option:
@@ -318,15 +327,16 @@ def _example_of(examples: object, spec: object) -> prop.Option:
     """
     listed = cast("list[object]", examples)
     if len(listed) != 1:
+        at = "settings.examples"
         raise FaultError(
-            "settings.examples",
+            at,
             f"the settings have {len(listed)} examples, and a run follows one trace",
         )
     drawn = _drawn(parse_choices(listed[0]), spec, "settings.examples[0]")
     return prop.draws(json.dumps([drawn]))
 
 
-def _options_of(settings: object, dir: str, spec: object) -> list[Any]:
+def _options_of(settings: object, directory: str, spec: object) -> list[Any]:
     """Return the options of the run of a vector, and write its stored cases into dir.
 
     The run is hermetic, so the variables of the engine do not change it.
@@ -339,16 +349,18 @@ def _options_of(settings: object, dir: str, spec: object) -> list[Any]:
             valid.
     """
     if not isinstance(settings, dict):
-        raise ValueError(f"prop: the settings {json.dumps(settings)} are not an object")
+        msg = f"prop: the settings {json.dumps(settings)} are not an object"
+        raise ValueError(msg)
     written = cast("dict[str, Any]", settings)
     for name in sorted(written):
         if name not in _SETTINGS:
-            raise FaultError(f"settings.{name}", "the runner does not take the setting")
+            at = f"settings.{name}"
+            raise FaultError(at, "the runner does not take the setting")
     options: list[Any] = [
         prop.seed(seed_of(written.get("seed"))),
         prop.hermetic(),
         prop.shrink_time(0),
-        prop.store(dir),
+        prop.store(directory),
     ]
     plain = {
         "cases": prop.cases,
@@ -359,13 +371,15 @@ def _options_of(settings: object, dir: str, spec: object) -> list[Any]:
     options.extend(
         option(written[name]) for name, option in plain.items() if name in written
     )
-    for requirement in cast("list[dict[str, Any]]", written.get("requirements", [])):
-        options.append(prop.require(requirement["label"], requirement["share"]))
+    options.extend(
+        prop.require(requirement["label"], requirement["share"])
+        for requirement in cast("list[dict[str, Any]]", written.get("requirements", []))
+    )
     if "replay" in written:
         options.append(prop.replay(written["replay"]))
     if "examples" in written:
         options.append(_example_of(written["examples"], spec))
-    _write_stored(written.get("stored", []), dir, spec)
+    _write_stored(written.get("stored", []), directory, spec)
     return options
 
 
@@ -391,16 +405,18 @@ def _records_of(recorder: Recorder) -> list[dict[str, Any]]:
     return [json.loads(record) for record in recorder.records]
 
 
-def _behaviour(raw: Mapping[str, Any], dir: str) -> dict[str, Any]:
+def _behaviour(raw: Mapping[str, Any], directory: str) -> dict[str, Any]:
     """Return the detail of the call record of the run of a behaviour vector."""
     spec = raw.get("body")
     body = body_of(spec, _failing)
     recorder = Recorder()
-    prop.for_all(recorder, CONTRACT, body, *_options_of(raw.get("settings"), dir, spec))
+    prop.for_all(
+        recorder, CONTRACT, body, *_options_of(raw.get("settings"), directory, spec)
+    )
     return {"detail": detail_of(_records_of(recorder)[0])}
 
 
-def _recording(raw: Mapping[str, Any], dir: str) -> dict[str, Any]:
+def _recording(raw: Mapping[str, Any], directory: str) -> dict[str, Any]:
     """Return the verdict of the property of a recording vector.
 
     The runner compares the calls of true in the body with the calls of the
@@ -414,7 +430,9 @@ def _recording(raw: Mapping[str, Any], dir: str) -> dict[str, Any]:
     spec = raw.get("body")
     body = body_of(spec, _asserting)
     recorder = Recorder()
-    prop.for_all(recorder, CONTRACT, body, *_options_of(raw.get("settings"), dir, spec))
+    prop.for_all(
+        recorder, CONTRACT, body, *_options_of(raw.get("settings"), directory, spec)
+    )
     first, *calls = _records_of(recorder)
     names = ("seq", "parent", "run", "phase", "verdict")
     got = [{name: call.get(name) for name in names} for call in calls]
@@ -423,8 +441,9 @@ def _recording(raw: Mapping[str, Any], dir: str) -> dict[str, Any]:
         for i, call in enumerate(cast("list[dict[str, Any]]", raw.get("calls")))
     ]
     if not same_json(got, want):
+        at = "calls"
         raise FaultError(
-            "calls", f"the library records {json.dumps(got)}, want {json.dumps(want)}"
+            at, f"the library records {json.dumps(got)}, want {json.dumps(want)}"
         )
     return {"verdict": first["verdict"]}
 
@@ -448,13 +467,13 @@ KINDS: dict[str, Compute] = {
 }
 
 
-def check_prop(kind: str, raw: Mapping[str, Any], dir: str) -> None:
+def check_prop(kind: str, raw: Mapping[str, Any], directory: str) -> None:
     """Run a property vector, and compare each output with the output of the vector.
 
     Args:
         kind: The kind of the vector. It is a key of KINDS.
         raw: The JSON object of the vector.
-        dir: A new empty directory of the vector. A behaviour vector and a
+        directory: A new empty directory of the vector. A behaviour vector and a
             recording vector write their stored cases there.
 
     Raises:
@@ -463,11 +482,12 @@ def check_prop(kind: str, raw: Mapping[str, Any], dir: str) -> None:
             member of the vector.
     """
     try:
-        outputs = KINDS[kind](raw, dir)
+        outputs = KINDS[kind](raw, directory)
     except FaultError:
         raise
     except Exception as error:
-        raise FaultError("", "the vector does not run", error) from error
+        at = ""
+        raise FaultError(at, "the vector does not run", error) from error
     for name, got in outputs.items():
         want = raw.get(name)
         if not same_json(got, want):

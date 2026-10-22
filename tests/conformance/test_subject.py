@@ -1,11 +1,12 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of conformance/subject.py tests the behaviours of the corpus cases."""
 
 from __future__ import annotations
 
 import asyncio
-import pathlib
-from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -14,6 +15,10 @@ from dokimi_assert._files.literal import CONTENT_LIMIT
 from dokimi_assert.conformance.subject import SUBJECTS, Subject, SubjectError
 from dokimi_assert.seat import Collector, Recorder
 from helpers import UNENFORCED
+
+if TYPE_CHECKING:
+    import pathlib
+    from collections.abc import Callable
 
 
 def build(kind: str) -> Subject:

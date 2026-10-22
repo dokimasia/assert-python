@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The fixture types of the definition, and the runner of the fixtures vectors.
 
 A fixtures vector has a fixture type and the shape of the type. Each class
@@ -19,11 +22,10 @@ import dataclasses
 import ipaddress
 import json
 import uuid
-from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta, timezone
 from decimal import Decimal
-from typing import Annotated, Any, cast
+from typing import TYPE_CHECKING, Annotated, Any, cast
 from zoneinfo import ZoneInfo
 
 import annotated_types
@@ -31,6 +33,9 @@ import annotated_types
 from dokimi_assert import prop
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert.conformance.literal import same_json
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 __all__ = ["FIXTURES", "fixtures_of"]
 
@@ -150,6 +155,8 @@ refunded = type("refunded", (str,), {"__doc__": "A refund with a text reason."})
 
 class Status(str):
     """An enumeration of the text values pending, paid and shipped, in that order."""
+
+    __slots__ = ()
 
 
 @dataclass(frozen=True)
@@ -397,14 +404,16 @@ def fixtures_of(raw: Mapping[str, Any]) -> dict[str, Any]:
     fixture = raw.get("fixture")
     t = FIXTURES.get(fixture) if isinstance(fixture, str) else None
     if t is None:
-        raise FaultError("fixture", f"{json.dumps(fixture)} is not a fixture type")
+        at = "fixture"
+        raise FaultError(at, f"{json.dumps(fixture)} is not a fixture type")
     read = json.loads(prop.shape_of(t))
     del read["source"]
     got = _normal(read)
     want = _normal(cast("dict[str, Any]", raw.get("shape")))
     if not same_json(got, want):
+        at = "shape"
         raise FaultError(
-            "shape",
+            at,
             f"the fixture type has the shape {json.dumps(got, sort_keys=True)}, "
             f"want {json.dumps(want, sort_keys=True)}",
         )

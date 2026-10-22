@@ -1,9 +1,12 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of conformance/prop/fixture.py tests the fixture types and their vectors."""
 
 from __future__ import annotations
 
 import json
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -11,7 +14,9 @@ from dokimi_assert import check
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert.conformance.prop.fixture import FIXTURES, fixtures_of
 from dokimi_assert.conformance.vector import vectors
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: The fixtures vectors of the definition, by the name of the fixture.
 FIXTURE_VECTORS = {v.raw["fixture"]: v.raw for v in vectors() if v.kind == "fixtures"}
@@ -82,8 +87,10 @@ class TestFixturesOf:
             fault_of(seat, raw),
             (
                 "shape",
-                'the fixture type has the shape {"fields": [["enabled", {"shape": '
-                '"bool"}]], "shape": "record"}, want {"shape": "bool"}',
+                (
+                    'the fixture type has the shape {"fields": [["enabled", {"shape": '
+                    '"bool"}]], "shape": "record"}, want {"shape": "bool"}'
+                ),
             ),
             "the fault is at the shape",
         )

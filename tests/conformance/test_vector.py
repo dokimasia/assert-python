@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of conformance/vector.py tests the vectors and their runner.
 
 The spec runs each vector of this library in a new directory. It checks its
@@ -8,9 +11,8 @@ the verdict of every vector.
 from __future__ import annotations
 
 import json
-import pathlib
 import re
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
@@ -23,6 +25,9 @@ from dokimi_assert.conformance.vector import (
     vectors,
 )
 from helpers import WINDOWS
+
+if TYPE_CHECKING:
+    import pathlib
 
 VECTORS = vectors()
 

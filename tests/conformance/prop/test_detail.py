@@ -1,13 +1,18 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of conformance/prop/detail.py tests the detail of a call record."""
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from dokimi_assert import check
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert.conformance.prop.detail import detail_of
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 def failure(assertion: str) -> dict[str, Any]:

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of conformance/literal.py tests the typed literals of a corpus case.
 
 A literal that the decoder cannot read stops the run, because an empty case
@@ -9,7 +12,7 @@ from __future__ import annotations
 import dataclasses
 import enum
 import math
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
@@ -26,7 +29,9 @@ from dokimi_assert.conformance.literal import (
     same_json,
 )
 from dokimi_assert.option import by_identity, equate_nans
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 class Colour(enum.Enum):

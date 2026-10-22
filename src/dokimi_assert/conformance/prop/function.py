@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The functions of the subject kinds of the definition that take one input.
 
 The map generator of the property vectors and the functions of the forms
@@ -8,8 +11,10 @@ the values that the engine decodes.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 __all__ = ["FUNCTIONS"]
 

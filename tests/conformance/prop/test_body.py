@@ -1,17 +1,22 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of conformance/prop/body.py tests the bodies of the property vectors."""
 
 from __future__ import annotations
 
-from typing import Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import pytest
 
 from dokimi_assert import check
 from dokimi_assert._prop.engine.case import Case, Rejected
-from dokimi_assert._prop.engine.choice import IntegerBounds
 from dokimi_assert.conformance.prop.body import DRAWN, body_of
-from dokimi_assert.seat import Collector
 from helpers import body_case, refusal, replaying
+
+if TYPE_CHECKING:
+    from dokimi_assert._prop.engine.choice import IntegerBounds
+    from dokimi_assert.seat import Collector
 
 #: The generator of the digits.
 DIGIT: dict[str, Any] = {"gen": "integer", "min": 0, "max": 9}

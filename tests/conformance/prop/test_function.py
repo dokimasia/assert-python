@@ -1,14 +1,19 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of conformance/prop/function.py tests the functions of the subject kinds."""
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
 from dokimi_assert import check
 from dokimi_assert.conformance.prop.function import FUNCTIONS
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 class TestFunctions:

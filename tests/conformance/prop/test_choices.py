@@ -1,9 +1,12 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of conformance/prop/choices.py tests the form of choices and seeds."""
 
 from __future__ import annotations
 
 import math
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
@@ -15,8 +18,10 @@ from dokimi_assert.conformance.prop.choices import (
     parse_choices,
     seed_of,
 )
-from dokimi_assert.seat import Collector
 from helpers import refusal
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 class TestChoiceLiteral:

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of conformance/stateful/vectors.py tests the runner of the machines vectors.
 
 The runner computes the verdict of every machines vector, so the spec checks
@@ -24,9 +27,9 @@ FAILING = "counter-overflows/a-third-increment-without-a-reset-returns-0"
 REFUSED = "store-loses-on-crash/a-flush-of-an-empty-buffer-is-refused"
 
 
-def vector(id: str, **changes: Any) -> dict[str, Any]:
+def vector(vector_id: str, **changes: Any) -> dict[str, Any]:
     """Return the machines vector of an id with changes to its members."""
-    return {**VECTORS[id], **changes}
+    return {**VECTORS[vector_id], **changes}
 
 
 def fault_of(raw: dict[str, Any]) -> tuple[str, str]:
@@ -52,12 +55,12 @@ class TestRunners:
 
     def test_takes_the_mean_and_the_concurrent_steps_and_the_cases(self) -> None:
         """A correct counter passes five cases under any steps."""
-        id = "correct-counter/passes-with-two-clients"
+        vector_id = "correct-counter/passes-with-two-clients"
         raw = vector(
-            id,
+            vector_id,
             setup={"mean": 2, "concurrent": 2},
             settings={"seed": "1", "cases": 5},
-            detail={**VECTORS[id]["detail"], "cases": 5},
+            detail={**VECTORS[vector_id]["detail"], "cases": 5},
         )
         assert fault_of(raw) == ("", "")
 
@@ -103,9 +106,11 @@ class TestRunners:
             vector(REFUSED, error={"entry": 0, "name": "crash", "reason": "step"}),
             (
                 "error",
-                'the run ends with "prop.for_all: draws[1].step: the machine cannot '
-                'take the step \\"flush\\" there", want a refusal of entry 0 of '
-                '"crash"',
+                (
+                    'the run ends with "prop.for_all: draws[1].step: the machine '
+                    'cannot take the step \\"flush\\" there", want a refusal of entry '
+                    '0 of "crash"'
+                ),
             ),
         ),
         (
@@ -113,8 +118,10 @@ class TestRunners:
             vector(REFUSED, error=None),
             (
                 "",
-                'the run ends with the fault "prop.for_all: draws[1].step: the '
-                'machine cannot take the step \\"flush\\" there"',
+                (
+                    'the run ends with the fault "prop.for_all: draws[1].step: the '
+                    'machine cannot take the step \\"flush\\" there"'
+                ),
             ),
         ),
     ]
