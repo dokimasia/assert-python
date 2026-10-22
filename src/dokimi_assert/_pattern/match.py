@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 r"""The match of text against a pattern of the portable subset.
 
 The module re of Python reads the subset with three differences. The

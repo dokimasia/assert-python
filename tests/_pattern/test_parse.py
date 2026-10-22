@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _pattern/parse.py tests the parser of the portable pattern subset.
 
 Each entry of testdata/verdicts.json is the verdict of the reference parser
@@ -10,7 +13,7 @@ from __future__ import annotations
 
 import json
 import pathlib
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -27,7 +30,9 @@ from dokimi_assert._pattern.parse import (
     Repeat,
     parse,
 )
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 VERDICTS: list[dict[str, Any]] = json.loads(
     (pathlib.Path(__file__).parent / "testdata" / "verdicts.json").read_text(

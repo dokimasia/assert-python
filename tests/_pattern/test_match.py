@@ -1,13 +1,20 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _pattern/match.py tests the match of text against a pattern."""
 
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import pytest
 
 from dokimi_assert import check
 from dokimi_assert._pattern.match import compile_pattern
 from dokimi_assert._pattern.parse import PatternError
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 tests: list[tuple[str, str, str, bool]] = [
     (
