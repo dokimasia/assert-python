@@ -33,15 +33,18 @@ LANGUAGE = "python"
 def spec_dir() -> Traversable:
     """Return the directory of the vendored definition.
 
+    The directory is the package dokimi_assert.conformance. Each file of the
+    definition is at its path in assert-spec, such as spec/assertions.json.
+
     Returns:
         The directory as a traversable of importlib.resources.
     """
-    return resources.files("dokimi_assert.conformance") / "spec"
+    return resources.files("dokimi_assert.conformance")
 
 
 def _read(name: str) -> Any:
-    """Return the JSON of one file of the vendored definition."""
-    return json.loads((spec_dir() / name).read_text(encoding="utf-8"))
+    """Return the JSON of one file in the directory spec of the definition."""
+    return json.loads((spec_dir() / "spec" / name).read_text(encoding="utf-8"))
 
 
 def assertions() -> dict[str, Any]:
@@ -82,7 +85,8 @@ def overlay() -> dict[str, Any]:
     Returns:
         The vendored overlay.
     """
-    return dict(_read("overlay.json"))
+    overlay_file = spec_dir() / "overlays" / f"{LANGUAGE}.json"
+    return dict(json.loads(overlay_file.read_text(encoding="utf-8")))
 
 
 def relaxation_names() -> dict[str, str]:

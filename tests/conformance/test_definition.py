@@ -73,7 +73,7 @@ class TestVersion:
         """The version is the file VERSION without its line end."""
         content = (spec_dir() / "VERSION").read_text(encoding="utf-8").strip()
         check.equal(seat, version(), content, "version returns the content of VERSION")
-        check.equal(seat, version(), "8.0.0", "the vendored version is 8.0.0")
+        check.equal(seat, version(), "9.0.0", "the vendored version is 9.0.0")
 
 
 class TestOverlay:
