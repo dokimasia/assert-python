@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The steps of a machine in a case."""
 
 from __future__ import annotations
@@ -5,13 +8,11 @@ from __future__ import annotations
 import functools
 import inspect
 import threading
-from collections.abc import Callable, Sequence
 from fractions import Fraction
-from typing import Any, Generic, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
 
 from dokimi_assert._history.concurrently import concurrently
 from dokimi_assert._history.linearizable import LINEARIZABLE, fields_of, whole
-from dokimi_assert._history.spec import Spec
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert._matcher.loop import Loop
 from dokimi_assert._prop.case import Case, FaultSignal, on_engine
@@ -24,6 +25,11 @@ from dokimi_assert._prop.engine.traces import Tracing
 from dokimi_assert._stateful.machine import Action, Machine, validate
 from dokimi_assert._stateful.option import Config, Option, configure
 from dokimi_assert.failure import Failure, call_site
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
+    from dokimi_assert._history.spec import Spec
 
 __all__ = ["steps"]
 
@@ -365,7 +371,11 @@ class _Run(Generic[_S]):
         available: list[Action[_S]] = []
         for action in listed:
             enabled = action.enabled
-            if enabled is None or all([enabled(state) for state in self._states]):
+            if enabled is None:
+                available.append(action)
+                continue
+            verdicts = [enabled(state) for state in self._states]
+            if all(verdicts):
                 available.append(action)
         return available
 

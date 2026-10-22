@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _stateful/steps.py tests the steps of a machine in a case.
 
 The spec covers the swarm, the steps of each part, the checks, the traces
@@ -11,7 +14,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import pytest
 
@@ -45,8 +48,10 @@ from dokimi_assert._stateful.option import (
 from dokimi_assert._stateful.scheduler import Scheduler
 from dokimi_assert._stateful.steps import steps
 from dokimi_assert._stateful.strategy import uniform
-from dokimi_assert.seat import Collector
 from helpers import body_case, refusal, replaying
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: The generator of the inputs of the actions.
 DIGIT = Integer(IntegerBounds(0, 9))

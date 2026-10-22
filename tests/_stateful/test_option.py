@@ -1,9 +1,11 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _stateful/option.py tests the options of the steps of a machine."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import pytest
 
@@ -22,8 +24,12 @@ from dokimi_assert._stateful.option import (
 )
 from dokimi_assert._stateful.scheduler import Scheduler
 from dokimi_assert._stateful.strategy import uniform
-from dokimi_assert.seat import Collector
 from helpers import body_case, refusal, replaying
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from dokimi_assert.seat import Collector
 
 
 class TestConfig:

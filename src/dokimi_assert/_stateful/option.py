@@ -1,11 +1,18 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The options of the steps of a machine."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING
 
 from dokimi_assert._stateful.scheduler import Scheduler
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 __all__ = [
     "Config",
@@ -63,7 +70,8 @@ class Option:
 def _counted(call: str, n: int, least: int) -> None:
     """Raise ValueError when n is not an int of least or more."""
     if type(n) is not int or n < least:
-        raise ValueError(f"stateful: {call}({n!r}) needs an int of {least} or more")
+        msg = f"stateful: {call}({n!r}) needs an int of {least} or more"
+        raise ValueError(msg)
 
 
 def mean(n: int) -> Option:

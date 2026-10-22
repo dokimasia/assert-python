@@ -1,19 +1,24 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _stateful/machine.py tests what a machine must state."""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import pytest
 
 from dokimi_assert import check
 from dokimi_assert._history.spec import Spec
-from dokimi_assert._prop.case import Case
 from dokimi_assert._stateful.machine import Action, validate
-from dokimi_assert.seat import Collector
 from helpers import refusal
+
+if TYPE_CHECKING:
+    from dokimi_assert._prop.case import Case
+    from dokimi_assert.seat import Collector
 
 
 def nothing(c: Case, client: int, value: object) -> None:

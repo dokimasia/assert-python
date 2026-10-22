@@ -1,14 +1,21 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The machines that describe a subject and the actions that steps take on it."""
 
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Generic, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar
 
-from dokimi_assert._history.spec import Spec
 from dokimi_assert._prop.case import Case
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from dokimi_assert._history.spec import Spec
 
 __all__ = ["Action", "Machine", "validate"]
 
@@ -119,14 +126,15 @@ def validate(machine: Machine[Any]) -> None:
     for action in machine.actions:
         name = json.dumps(action.name, ensure_ascii=False)
         if type(action.weight) is not int or action.weight < 0:
-            raise ValueError(
+            msg = (
                 f"stateful: the weight {action.weight!r} of the action {name} is "
                 "not an int of 0 or more"
             )
+            raise ValueError(msg)
         if not callable(action.run):
-            raise TypeError(f"stateful: the run of the action {name} is not callable")
+            msg = f"stateful: the run of the action {name} is not callable"  # type: ignore[unreachable]
+            raise TypeError(msg)
         if action.name in names:
-            raise ValueError(
-                f"stateful: two actions of the machine have the name {name}"
-            )
+            msg = f"stateful: two actions of the machine have the name {name}"
+            raise ValueError(msg)
         names.add(action.name)

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The strategies of the task scheduler, which choose the ready task to release."""
 
 from __future__ import annotations
@@ -55,5 +58,6 @@ def pct(depth: int) -> Strategy:
         ValueError: depth is not an int of 1 or more.
     """
     if type(depth) is not int or depth < 1:
-        raise ValueError(f"stateful: pct({depth!r}) needs an int of 1 or more")
+        msg = f"stateful: pct({depth!r}) needs an int of 1 or more"
+        raise ValueError(msg)
     return Strategy(depth)

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _stateful/scheduler.py tests the releases of the task scheduler.
 
 Each order and each choice of a port of a TypeScript case is the order and
@@ -11,7 +14,7 @@ import asyncio
 import contextvars
 import types
 from collections.abc import Callable, Coroutine, Generator
-from typing import Any, ClassVar, NoReturn, cast
+from typing import TYPE_CHECKING, Any, ClassVar, NoReturn, cast
 
 import pytest
 
@@ -23,8 +26,10 @@ from dokimi_assert._prop.engine.choice import UINT64_MAX, IntegerBounds
 from dokimi_assert._prop.engine.source import Source
 from dokimi_assert._stateful.scheduler import Scheduler
 from dokimi_assert._stateful.strategy import Strategy, pct, uniform
-from dokimi_assert.seat import Collector
 from helpers import body_case, replaying
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: The bounds of a choice between two values, and of a choice of one value.
 BINARY = IntegerBounds(0, 1)
@@ -112,9 +117,11 @@ class TestScheduler:
 
         scheduler.spawn(looks)
         scheduler.run()
+        # asyncio.get_running_loop raises where no loop runs, and
+        # _get_running_loop returns None.
         check.equal(
             seat,
-            [seen[0] is scheduler, asyncio.events._get_running_loop()],
+            [seen[0] is scheduler, asyncio.events._get_running_loop()],  # noqa: SLF001
             [True, None],
             "the task runs on the scheduler, and the test runs on no loop",
         )
@@ -290,7 +297,8 @@ class TestSchedulerRun:
         scheduler, _, log = started(uniform())
 
         async def raises() -> None:
-            raise ValueError("broken")
+            msg = "broken"
+            raise ValueError(msg)
 
         scheduler.spawn(raises)
         raised_by(seat, scheduler)
@@ -311,7 +319,8 @@ class TestSchedulerRun:
                 log.append("closed")
 
         async def raises() -> None:
-            raise ValueError("broken")
+            msg = "broken"
+            raise ValueError(msg)
 
         scheduler.spawn(waits)
         scheduler.spawn(raises)
@@ -569,8 +578,10 @@ class TestSchedulerRun:
             [type(error), str(error)],
             [
                 RuntimeError,
-                "stateful: every task that has not ended waits on a future, and no "
-                "callback or timer is left",
+                (
+                    "stateful: every task that has not ended waits on a future, and no "
+                    "callback or timer is left"
+                ),
             ],
             "the run ends at the deadlock",
         )

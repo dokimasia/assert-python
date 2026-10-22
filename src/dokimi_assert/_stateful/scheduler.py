@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The task scheduler, whose releases of tasks are choices of a case.
 
 The scheduler is an event loop of asyncio, and a task is a coroutine. The
@@ -26,14 +29,17 @@ from asyncio import events
 from collections import deque
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
-from typing import Any, NoReturn, TypeVarTuple, cast, final
+from typing import TYPE_CHECKING, Any, NoReturn, TypeVarTuple, cast, final
 
 from dokimi_assert._matcher.fault import FaultError
+from dokimi_assert._override import override
 from dokimi_assert._prop.case import Case, FaultSignal, on_engine
 from dokimi_assert._prop.engine.case import Case as Engine
 from dokimi_assert._prop.engine.case import Request
 from dokimi_assert._prop.engine.choice import UINT64_MAX, IntegerBounds
-from dokimi_assert._stateful.strategy import Strategy
+
+if TYPE_CHECKING:
+    from dokimi_assert._stateful.strategy import Strategy
 
 __all__ = ["Scheduler"]
 
@@ -78,6 +84,7 @@ class _Timer(asyncio.TimerHandle):
     cancel of a timer of asyncio also calls a private member of its loop.
     """
 
+    @override
     def cancel(self) -> None:
         """Cancel the timer."""
         asyncio.Handle.cancel(self)
@@ -200,10 +207,13 @@ class Scheduler(asyncio.AbstractEventLoop):
                 coroutine.
         """
         if self._running:
-            raise RuntimeError("stateful: a task called run of its own scheduler")
+            msg = "stateful: a task called run of its own scheduler"
+            raise RuntimeError(msg)
         self._running = True
-        previous = events._get_running_loop()
-        events._set_running_loop(self)
+        # asyncio provides these two functions for the implementations of an
+        # event loop.
+        previous = events._get_running_loop()  # noqa: SLF001
+        events._set_running_loop(self)  # noqa: SLF001
         try:
             points = on_engine(self._case, self._change_points)
             release = 0
@@ -220,9 +230,10 @@ class Scheduler(asyncio.AbstractEventLoop):
             self._drop()
             raise
         finally:
-            events._set_running_loop(previous)
+            events._set_running_loop(previous)  # noqa: SLF001
             self._running = False
 
+    @override
     def call_soon(
         self,
         callback: Callable[[*_Ts], object],
@@ -245,6 +256,7 @@ class Scheduler(asyncio.AbstractEventLoop):
         self._callbacks.append(_Callback(handle, callback, args, within))
         return handle
 
+    @override
     def call_later(
         self,
         delay: float,
@@ -266,6 +278,7 @@ class Scheduler(asyncio.AbstractEventLoop):
         """
         return self.call_at(self._now + delay, callback, *args, context=context)
 
+    @override
     def call_at(
         self,
         when: float,
@@ -294,6 +307,7 @@ class Scheduler(asyncio.AbstractEventLoop):
         heapq.heappush(self._timers, (when, next(self._order), timer))
         return handle
 
+    @override
     def time(self) -> float:
         """Return the time on the clock of the scheduler, in seconds from 0.
 
@@ -302,6 +316,7 @@ class Scheduler(asyncio.AbstractEventLoop):
         """
         return self._now
 
+    @override
     def create_future(self) -> asyncio.Future[Any]:
         """Return a future of this event loop.
 
@@ -310,6 +325,7 @@ class Scheduler(asyncio.AbstractEventLoop):
         """
         return asyncio.Future(loop=self)
 
+    @override
     def is_running(self) -> bool:
         """Report whether run is releasing tasks.
 
@@ -318,6 +334,7 @@ class Scheduler(asyncio.AbstractEventLoop):
         """
         return self._running
 
+    @override
     def is_closed(self) -> bool:
         """Report whether the event loop is closed. A scheduler is never closed.
 
@@ -326,6 +343,7 @@ class Scheduler(asyncio.AbstractEventLoop):
         """
         return False
 
+    @override
     def get_debug(self) -> bool:
         """Report whether the event loop runs in debug mode. A scheduler never does.
 
@@ -334,6 +352,7 @@ class Scheduler(asyncio.AbstractEventLoop):
         """
         return False
 
+    @override
     def call_exception_handler(self, context: dict[str, Any]) -> None:
         """Ignore an error that asyncio reports outside a task.
 
@@ -401,11 +420,11 @@ class Scheduler(asyncio.AbstractEventLoop):
         and a count of releases after each presence of 1. The uniform
         strategy makes none.
         """
-        points: list[int] = []
-        for _ in range(1, self._strategy.depth):
-            if e.integer(_PRESENCE, 1) == 1:
-                points.append(e.integer(_UNSIGNED))
-        return points
+        return [
+            e.integer(_UNSIGNED)
+            for _ in range(1, self._strategy.depth)
+            if e.integer(_PRESENCE, 1) == 1
+        ]
 
     def _settle(self) -> None:
         """Call the due callbacks and timers until a task is ready.
@@ -436,10 +455,11 @@ class Scheduler(asyncio.AbstractEventLoop):
         while self._timers and self._timers[0][2].handle.cancelled():
             heapq.heappop(self._timers)
         if not self._timers:
-            raise RuntimeError(
+            msg = (
                 "stateful: every task that has not ended waits on a future, and "
                 "no callback or timer is left"
             )
+            raise RuntimeError(msg)
         self._now = self._timers[0][0]
 
     def _next(self) -> _Task:
@@ -479,14 +499,12 @@ class Scheduler(asyncio.AbstractEventLoop):
             self._ready.append(task)
             return
         if not asyncio.isfuture(yielded):
-            raise RuntimeError(
-                f"stateful: a task yielded {yielded!r} instead of a future"
-            )
+            msg = f"stateful: a task yielded {yielded!r} instead of a future"
+            raise RuntimeError(msg)
         future = cast("asyncio.Future[object]", yielded)
         if future.get_loop() is not self:
-            raise RuntimeError(
-                "stateful: a task awaited a future of another event loop"
-            )
+            msg = "stateful: a task awaited a future of another event loop"
+            raise RuntimeError(msg)
         future.add_done_callback(lambda _: self._ready.append(task))
 
     def _step(self, task: _Task) -> object:
@@ -500,9 +518,8 @@ class Scheduler(asyncio.AbstractEventLoop):
         if coroutine is None:
             started = task.start()
             if not inspect.iscoroutine(started):
-                raise TypeError(
-                    f"stateful: the task returned {started!r} instead of a coroutine"
-                )
+                msg = f"stateful: the task returned {started!r} instead of a coroutine"
+                raise TypeError(msg)
             coroutine = task.coroutine = started
         return coroutine.send(None)
 
