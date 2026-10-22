@@ -459,6 +459,30 @@ replay: prop.replay("prop1:AAEAAAABAAEAAA") or DOKIMI_ASSERT_PROP_REPLAY=prop1:A
   `campaign`. The option `prop.hermetic()` makes a run ignore the four
   variables.
 
+`prop.around` runs each run of the body inside a wrapper, so that every
+case, shrink candidate and replay starts in an environment of its own, such
+as a frozen clock:
+
+```python
+from collections.abc import Callable
+
+import time_machine
+
+from dokimi_assert import prop
+
+
+def frozen(run: Callable[[], None]) -> None:
+    with time_machine.travel(0, tick=False):
+        run()
+
+
+def test_backoff(seat):
+    prop.for_all(seat, "a retry waits for its backoff", waits_for_backoff, prop.around(frozen))
+```
+
+A wrapper that does not call `run`, calls it a second time or raises ends
+the call with a fault.
+
 ## Histories
 
 ```python
