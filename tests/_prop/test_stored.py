@@ -60,7 +60,7 @@ class TestEntryOf:
                 name("the total is positive", integers(3)),
                 {
                     "store": 1,
-                    "definition": "9.0.0",
+                    "definition": "10.0.0",
                     "property": "the total is positive",
                     "identity": {
                         "assertion": "equal",

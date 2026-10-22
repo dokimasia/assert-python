@@ -19,7 +19,7 @@ __all__ = ["DEFINITION", "Call", "Phase", "Place", "Verdict", "encode_call"]
 
 #: The version of the definition that this library implements. Every call
 #: record contains it.
-DEFINITION = "9.0.0"
+DEFINITION = "10.0.0"
 
 #: How a call ended.
 Verdict = Literal["pass", "fail", "error"]

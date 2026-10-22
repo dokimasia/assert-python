@@ -238,6 +238,8 @@ SURFACE_MODULES = {
     "failure.contract": "failure",
     "failure.detail": "failure",
     "seat.report": "seat",
+    "seat.report-fault": "seat",
+    "allocs-checked": "bench",
     "controlled-clock": "clock",
     "seat.clock": "seat",
     "clock.now": "clock",

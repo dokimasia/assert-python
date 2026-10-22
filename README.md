@@ -77,9 +77,27 @@ seat:
   and not to its teardown.
 - Construct a `Standard` outside pytest, where nothing ends a test.
 - Use a `Recorder` to read what an assertion reported, through `failed`,
-  `message`, `messages`, `failures` and `records`.
+  `message`, `messages`, `failures`, `faults` and `records`.
 - The `prop.Case` of a property is a seat too, so every assertion works
   inside a property.
+
+A fault is an input or an environment that a call refuses, such as a
+pattern that does not compile. A seat with the method `report_fault`
+receives the fault as the exception it is, and a `Recorder` keeps it. A
+`Collector` and a `Standard` raise the exception at the call.
+`seat.fault(seat, error)` ends the call of a helper of your own in the same
+way:
+
+```python
+from dokimi_assert.seat import fault
+
+
+def restart_of(seat, service):
+    if service.restart is None:
+        fault(seat, ValueError(f"{service.name} cannot restart"))
+        return None
+    return service.restart
+```
 
 ## Two surfaces
 
@@ -483,6 +501,22 @@ def test_backoff(seat):
 A wrapper that does not call `run`, calls it a second time or raises ends
 the call with a fault.
 
+`prop.using(t, generator)` makes `generator` the generator of `t` in one
+run of `for_all`, `fuzz` or a property form. A draw of `prop.of(t)` decodes
+with it, and a draw of `prop.of(u)` generates each `t` inside `u` with it.
+Inside the generator, `prop.of(t)` is the generator of `t` without the
+option. The generator can then narrow the values of its own type:
+
+```python
+def test_a_paid_order_ships(seat):
+    open_orders = prop.of(Status).filter(lambda s: s is not Status.CANCELLED)
+    prop.for_all(seat, "a paid order ships", ships_when_paid, prop.using(Status, open_orders))
+```
+
+`prop.values(generator, seed, n)` returns the values of the first random
+cases of a seed outside a property. A benchmark then measures the same
+inputs in every run.
+
 ## Histories
 
 ```python
@@ -661,7 +695,9 @@ library against it:
 - CPython does not keep a running count of allocations. The overlay
   declines `max_allocs`, `max_allocs_with_setup`,
   `bench.Contract.max_allocs`, `prop.max_allocs` and
-  `prop.max_allocs_with_setup` for that reason.
+  `prop.max_allocs_with_setup` for that reason. `bench.allocs_checked()`
+  returns False and the reason, so a test can report that its run does not
+  check an allocation ceiling.
 - `Contract.max_bytes` measures with `tracemalloc`, which slows the body. A
   contract that states `max_bytes` also measures its latency on traced
   iterations, so set its ceilings from a traced run.
@@ -689,8 +725,9 @@ gate again and checks that the tag agrees with `pyproject.toml`. Then it
 publishes to PyPI through Trusted Publishing.
 
 The design is in
-[RFC-0001](docs/rfc/0001-the-python-implementation.md) and
-[RFC-0002](docs/rfc/0002-definition-8-in-python.md).
+[RFC-0001](docs/rfc/0001-the-python-implementation.md),
+[RFC-0002](docs/rfc/0002-definition-8-in-python.md) and
+[RFC-0004](docs/rfc/0004-definition-10-in-python.md).
 
 ## Licence
 
