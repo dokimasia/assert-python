@@ -53,9 +53,12 @@ build: ## Build the sdist and wheel, then check what they carry
 	uv run --no-project --with twine twine check dist/*
 	@echo "built; publishing happens in CI on a version tag"
 
-spec-sync: ## Refresh the vendored definition from assert-spec
-	@./tools/spec-sync.sh src/dokimi_assert/conformance/spec python
+# The command that runs spec, which vendors the definition of assert-spec.
+SPEC ?= spec
+
+spec-sync: ## Vendor the definition of assert-spec at the head of its branch main
+	@$(SPEC) sync
 
 .PHONY: spec-check
-spec-check: ## Check the vendored definition is intact and say if it is behind
-	@./tools/spec-check.sh src/dokimi_assert/conformance/spec
+spec-check: ## Check that the vendored definition is intact and comes from a commit of assert-spec
+	@$(SPEC) check
