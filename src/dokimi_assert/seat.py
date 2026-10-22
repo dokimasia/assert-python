@@ -9,6 +9,10 @@ Collector      raises      collects, raised when the test ends
 Standard       raises      raises
 Recorder       collects    collects
 =============  ==========  ===================================
+
+A fault ends the call on both surfaces. A Recorder keeps the fault, and the
+other two seats raise it. A helper of a test ends its own call with a fault
+through fault.
 """
 
 from __future__ import annotations
@@ -17,12 +21,38 @@ import threading
 from collections.abc import Callable
 
 from dokimi_assert._matcher.seat import Seat
-from dokimi_assert._matcher.verdict import fault_text
+from dokimi_assert._matcher.verdict import end, fault_text
 from dokimi_assert._record.calls import keep, lines, own
 from dokimi_assert.clock import Clock, System
 from dokimi_assert.failure import Failure, render
 
-__all__ = ["Collector", "Recorder", "Seat", "Standard", "clean_up"]
+__all__ = ["Collector", "Recorder", "Seat", "Standard", "clean_up", "fault"]
+
+
+def fault(seat: Seat, error: BaseException) -> None:
+    """End the call of a helper with error, a fault.
+
+    A fault is an argument or an environment that the helper refuses. A seat
+    that has report_fault receives error with ending True, as a Recorder
+    does. For any other seat, fault raises error. The faults of this library
+    end their calls the same way. fault does not write a call record,
+    because the call is not a call of an assertion.
+
+        fault(seat, ValueError("the check calls restart without restartable"))
+
+    A seat that takes the fault returns, so a helper returns after fault.
+
+    Args:
+        seat: The seat of the call of the helper.
+        error: The fault.
+
+    Raises:
+        TypeError: error is not an exception.
+    """
+    __tracebackhide__ = True
+    if not isinstance(error, BaseException):  # pyright: ignore[reportUnnecessaryIsInstance]
+        raise TypeError(f"seat.fault({error!r}) needs an exception")  # pyright: ignore[reportUnreachable]
+    end(seat, error)
 
 
 class Standard:
@@ -85,6 +115,7 @@ class Recorder:
         self._recorded: list[str] = []
         self._helpers: int = 0
         self._records: list[Failure] = []
+        self._faults: list[BaseException] = []
         self._clock: Clock | None = None
         self._guard: threading.Lock = threading.Lock()
         keep(own(self))
@@ -125,6 +156,35 @@ class Recorder:
         """
         with self._guard:
             return list(self._records)
+
+    def report_fault(self, fault: BaseException, ending: bool) -> None:
+        """Keep one fault, and fail with its text when it ends its call.
+
+        An assertion and fault pass a fault here as the exception it is, so a
+        test compares the exception and does not search its text. A fault
+        that ends its call fails the recorder, as fail does with the text of
+        the fault. A fault that a call notes and runs on past does not fail
+        it.
+
+        Args:
+            fault: The fault.
+            ending: When True, the fault ends its call.
+        """
+        with self._guard:
+            self._faults.append(fault)
+        if ending:
+            self.fail(fault_text(fault))
+
+    @property
+    def faults(self) -> list[BaseException]:
+        """Every fault that arrived through report_fault, in call order.
+
+        Returns:
+            The faults, those that ended their calls and those that a call
+            noted.
+        """
+        with self._guard:
+            return list(self._faults)
 
     @property
     def records(self) -> list[str]:

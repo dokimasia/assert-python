@@ -8,10 +8,11 @@ from dokimi_assert._matcher.seat import (
     name_test,
     named_test,
     report,
+    takes_faults,
     takes_records,
 )
 from dokimi_assert.clock import Controlled, System
-from dokimi_assert.seat import Recorder, Standard
+from dokimi_assert.seat import Collector, Recorder, Standard
 
 
 class TestReport:
@@ -40,6 +41,18 @@ class TestTakesRecords:
     def test_reports_false_for_a_seat_without_report(self) -> None:
         """A standard seat receives the sentence."""
         assert not takes_records(Standard())
+
+
+class TestTakesFaults:
+    """takes_faults reports whether a seat receives a fault as an exception."""
+
+    def test_reports_true_for_a_seat_with_report_fault(self) -> None:
+        """A recorder receives the fault."""
+        assert takes_faults(Recorder())
+
+    def test_reports_false_for_a_seat_without_report_fault(self) -> None:
+        """A collector ends the call with the exception."""
+        assert not takes_faults(Collector())
 
 
 class _Clocked:

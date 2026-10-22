@@ -3,7 +3,8 @@
 eventually makes one for each attempt, and rejects makes one for its check.
 The calls of a body are a run of the call that ran the body, so the record
 of that call contains them. A failure that stops ends the body, as it ends a
-test.
+test. A fault that ends its call fails the body with the text of the fault,
+and a fault that a call notes passes to the seat of the assertion.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from typing import TypeVar
 
 from dokimi_assert._matcher.loop import Loop
 from dokimi_assert._matcher.seat import Seat
+from dokimi_assert._matcher.verdict import fault_text, note_fault
 from dokimi_assert._record.calls import Slot, own, run
 
 __all__ = ["Body", "Ended", "run_on"]
@@ -36,15 +38,17 @@ class Body:
             string.
     """
 
-    def __init__(self, slot: Slot | None) -> None:
+    def __init__(self, slot: Slot | None, parent: Seat) -> None:
         """Return the seat of one run of a body.
 
         Args:
             slot: The slot of the call that runs the body, or None when the
                 call is not recorded.
+            parent: The seat of the assertion that runs the body.
         """
         self.failed: bool = False
         self.message: str = ""
+        self.parent: Seat = parent
         run(own(self), slot)
 
     def helper(self) -> None:
@@ -73,6 +77,25 @@ class Body:
         if not self.failed:
             self.message = message
         self.failed = True
+
+    def report_fault(self, fault: BaseException, ending: bool) -> None:
+        """Receive a fault of a call of the body.
+
+        A fault that ends its call fails the body with the text of the fault,
+        and ends the body. A noted fault passes to the seat of the assertion,
+        and the body continues.
+
+        Args:
+            fault: The fault.
+            ending: When True, the fault ends its call.
+
+        Raises:
+            Ended: The fault ends its call.
+        """
+        if not ending:
+            note_fault(self.parent, fault)
+            return
+        self.fail(fault_text(fault))
 
 
 _B = TypeVar("_B", bound=Body)

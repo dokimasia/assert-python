@@ -3,23 +3,40 @@
 Each verdict function writes the record of the call when the seat records
 calls. A seat that takes records receives the record of a failure. Any other
 seat receives the sentence of the record. On both surfaces, a fault ends the
-call through fail of the seat. A faulted call did not check anything, and a
-test that continued would fail on the same fault again.
+call. A faulted call did not check anything, and a test that continued would
+fail on the same fault again. A seat that takes faults receives the fault as
+the exception it is, and any other seat ends the call with the exception.
 """
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Mapping
 from typing import Any
 
-from dokimi_assert._matcher.seat import Mode, Seat, report, takes_records
+from dokimi_assert._matcher.seat import (
+    Mode,
+    Seat,
+    report,
+    takes_faults,
+    takes_records,
+)
 from dokimi_assert._record.call import Call
 from dokimi_assert._record.calls import Slot, add, calls_of
 from dokimi_assert._record.literal import detail as literal_of
 from dokimi_assert._record.switch import reading
 from dokimi_assert.failure import Failure, Where, call_site, render
 
-__all__ = ["Running", "end", "fail", "fault", "fault_text", "pass_"]
+__all__ = [
+    "Running",
+    "as_fault",
+    "end",
+    "fail",
+    "fault",
+    "fault_text",
+    "note_fault",
+    "pass_",
+]
 
 
 def fault_text(error: object) -> str:
@@ -34,18 +51,60 @@ def fault_text(error: object) -> str:
     return str(error)
 
 
-def end(seat: Seat, error: object) -> None:
-    """End a call with a fault through fail of the seat.
+def as_fault(error: object) -> BaseException:
+    """Return a fault as an exception.
 
-    It does not write a call record. It might not return.
+    Args:
+        error: The fault.
+
+    Returns:
+        error when it is an exception, and an Exception of its text otherwise.
+    """
+    return error if isinstance(error, BaseException) else Exception(fault_text(error))
+
+
+def end(seat: Seat, error: object) -> None:
+    """End a call with a fault.
+
+    A seat that takes faults receives the fault with ending True. For any
+    other seat, end raises the fault. It does not write a call record. It
+    might not return.
+
+    Args:
+        seat: The seat of the call.
+        error: The fault. A value that is not an exception becomes an
+            Exception of its text.
+
+    Raises:
+        BaseException: The fault, for a seat that does not take faults.
+    """
+    __tracebackhide__ = True
+    seat.helper()
+    fault = as_fault(error)
+    if takes_faults(seat):
+        seat.report_fault(fault, True)
+        return
+    raise fault
+
+
+def note_fault(seat: Seat, error: object, stacklevel: int = 2) -> None:
+    """Note a fault that does not end the call.
+
+    A seat that takes faults receives the fault with ending False. For any
+    other seat, the text of the fault is a warning of the module warnings,
+    which pytest shows in the summary of the run.
 
     Args:
         seat: The seat of the call.
         error: The fault.
+        stacklevel: The frame of the warning, counted as warnings.warn counts
+            it from the caller of note_fault.
     """
-    __tracebackhide__ = True
-    seat.helper()
-    seat.fail(fault_text(error))
+    fault = as_fault(error)
+    if takes_faults(seat):
+        seat.report_fault(fault, False)
+        return
+    warnings.warn(fault_text(fault), stacklevel=stacklevel + 1)
 
 
 def _site(where: Where | None) -> tuple[str, int] | None:
@@ -159,7 +218,8 @@ class Running:
         """Report that error ended the call without a verdict.
 
         The error is a refusal of an argument or of the environment. The call
-        ends through fail of the seat on both surfaces, and it might not return.
+        ends with the fault on both surfaces, as end ends it, and it might not
+        return.
 
         Args:
             mode: The surface of the call.

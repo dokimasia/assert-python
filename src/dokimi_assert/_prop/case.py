@@ -28,6 +28,7 @@ from dokimi_assert._history.history import History
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert._matcher.loop import Loop
 from dokimi_assert._matcher.seat import Seat, clock_of
+from dokimi_assert._matcher.verdict import fault_text, note_fault
 from dokimi_assert._prop.engine.case import Case as Engine
 from dokimi_assert._prop.engine.case import Decoder, Failed, Rejected
 from dokimi_assert._prop.engine.traces import TraceError
@@ -351,6 +352,22 @@ class Case:
         state.records.append(failure)
         if aborting:
             _stop(state, _failed_with(state.records[0]))
+
+    def report_fault(self, fault: BaseException, ending: bool) -> None:
+        """Receive a fault of a call of the body.
+
+        A fault that ends its call fails the case with the text of the fault,
+        as fail does. A noted fault passes to the seat of the property, and
+        the body runs on.
+
+        Args:
+            fault: The fault.
+            ending: When True, the fault ends its call.
+        """
+        if not ending:
+            note_fault(self._state.seat, fault)
+            return
+        self.fail(fault_text(fault))
 
     def clock(self) -> Clock:
         """Return the clock of the seat of the property.

@@ -17,6 +17,7 @@ from dokimi_assert.clock import Clock, System
 from dokimi_assert.failure import Failure
 
 __all__ = [
+    "FaultReporter",
     "Mode",
     "Reporter",
     "Seat",
@@ -24,6 +25,7 @@ __all__ = [
     "name_test",
     "named_test",
     "report",
+    "takes_faults",
     "takes_records",
 ]
 
@@ -32,9 +34,10 @@ __all__ = [
 class Seat(Protocol):
     """The object through which an assertion reports a failure.
 
-    A seat can also have two more methods. report(failure, aborting)
-    receives the failure record in place of its sentence. clock() returns
-    the clock that assertions read.
+    A seat can also have three more methods. report(failure, aborting)
+    receives the failure record in place of its sentence.
+    report_fault(fault, ending) receives a fault as the exception it is.
+    clock() returns the clock that assertions read.
     """
 
     def helper(self) -> None:
@@ -113,6 +116,31 @@ def takes_records(seat: object) -> TypeGuard[Reporter]:
         True when the seat has a callable member report.
     """
     return callable(getattr(seat, "report", None))
+
+
+class FaultReporter(Protocol):
+    """A seat that takes a fault as the exception it is."""
+
+    def report_fault(self, fault: BaseException, ending: bool) -> None:
+        """Receive one fault.
+
+        Args:
+            fault: The fault.
+            ending: When True, the fault ends the call. When False, the call
+                notes the fault and runs on past it.
+        """
+
+
+def takes_faults(seat: object) -> TypeGuard[FaultReporter]:
+    """Report whether seat takes faults as exceptions.
+
+    Args:
+        seat: The seat of a call.
+
+    Returns:
+        True when the seat has a callable member report_fault.
+    """
+    return callable(getattr(seat, "report_fault", None))
 
 
 def clock_of(seat: object) -> Clock:

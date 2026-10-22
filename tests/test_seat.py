@@ -5,17 +5,48 @@ It uses pytest's assert alone, because every other spec asserts on a seat.
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import pytest
 
 from dokimi_assert import check, expect
 from dokimi_assert.clock import Controlled, System
 from dokimi_assert.failure import Failure
-from dokimi_assert.seat import Collector, Recorder, Seat, Standard, clean_up
+from dokimi_assert.seat import Collector, Recorder, Seat, Standard, clean_up, fault
 from helpers import records
 
 FAILURE = Failure("equal", "the count is right", {"want": 1, "got": 2})
 
 SENTENCE = "the count is right: want 1, got 2"
+
+
+class TestFault:
+    """fault ends the call of a helper with a fault."""
+
+    def test_passes_the_fault_to_a_seat_with_report_fault(self) -> None:
+        """A recorder keeps the fault, fails with its text, and keeps no record."""
+        seat = Recorder()
+        refused = ValueError("the check calls restart without restartable")
+        fault(seat, refused)
+        assert (seat.faults, seat.message, seat.records) == (
+            [refused],
+            "the check calls restart without restartable",
+            [],
+        )
+
+    def test_raises_the_fault_on_a_seat_without_report_fault(self) -> None:
+        """A standard seat ends the call with the exception itself."""
+        refused = ValueError("the check calls restart without restartable")
+        with pytest.raises(ValueError) as raised:
+            fault(Standard(), refused)
+        assert raised.value is refused
+
+    def test_raises_type_error_for_a_value_that_is_not_an_exception(self) -> None:
+        """A fault is an exception."""
+        with pytest.raises(
+            TypeError, match=r"^seat\.fault\('refused'\) needs an exception$"
+        ):
+            fault(Recorder(), cast(Any, "refused"))
 
 
 class TestSeat:
@@ -125,6 +156,42 @@ class TestRecorderFailures:
         seat = Recorder()
         seat.fail("a bare message")
         assert seat.failures == []
+
+
+class TestRecorderReportFault:
+    """Recorder.report_fault receives a fault as the exception it is."""
+
+    def test_fails_with_the_text_of_a_fault_that_ends_its_call(self) -> None:
+        """An ending fault fails the recorder as fail does."""
+        seat = Recorder()
+        seat.report_fault(OSError("the store refuses a write"), True)
+        assert (seat.message, seat.messages) == ("the store refuses a write", [])
+
+    def test_does_not_fail_for_a_noted_fault(self) -> None:
+        """The call runs on past a noted fault."""
+        seat = Recorder()
+        seat.report_fault(OSError("the store skips a file"), False)
+        assert (seat.failed, seat.message) == (False, "")
+
+
+class TestRecorderFaults:
+    """Recorder.faults returns the faults that arrived."""
+
+    def test_returns_every_fault_in_call_order(self) -> None:
+        """The recorder keeps the ending faults and the noted ones."""
+        seat = Recorder()
+        noted = OSError("the store skips a file")
+        ending = ValueError("the seed is not a number")
+        seat.report_fault(noted, False)
+        seat.report_fault(ending, True)
+        assert seat.faults == [noted, ending]
+
+    def test_returns_a_copy(self) -> None:
+        """A caller can keep the list while the recorder takes faults."""
+        seat = Recorder()
+        kept = seat.faults
+        seat.report_fault(OSError("the store skips a file"), False)
+        assert kept == []
 
 
 class TestRecorderRecords:

@@ -9,7 +9,16 @@ from __future__ import annotations
 import pytest
 
 from dokimi_assert._matcher.seat import Mode
-from dokimi_assert._matcher.verdict import Running, end, fail, fault, fault_text, pass_
+from dokimi_assert._matcher.verdict import (
+    Running,
+    as_fault,
+    end,
+    fail,
+    fault,
+    fault_text,
+    note_fault,
+    pass_,
+)
 from dokimi_assert._record.calls import own, run
 from dokimi_assert.failure import Failure, Where
 from dokimi_assert.seat import Recorder, Standard
@@ -24,15 +33,52 @@ class TestFaultText:
         assert fault_text(ValueError("no such shape")) == "no such shape"
 
 
+class TestAsFault:
+    """as_fault returns a fault as an exception."""
+
+    def test_returns_an_exception_itself(self) -> None:
+        """An exception is already a fault."""
+        refused = ValueError("no such shape")
+        assert as_fault(refused) is refused
+
+    def test_returns_an_exception_of_the_text_of_another_value(self) -> None:
+        """A text becomes an Exception with that text."""
+        made = as_fault("no such shape")
+        assert (type(made), str(made)) == (Exception, "no such shape")
+
+
 class TestEnd:
     """end ends a call with a fault."""
 
-    def test_fails_the_seat_with_the_text_of_the_fault(self) -> None:
-        """The call ends through fail of the seat and does not write a record."""
+    def test_passes_the_fault_to_a_seat_with_report_fault(self) -> None:
+        """A recorder keeps the fault, fails with its text and keeps no record."""
         seat = Recorder()
-        end(seat, ValueError("refused"))
-        assert seat.message == "refused"
-        assert seat.records == []
+        refused = ValueError("refused")
+        end(seat, refused)
+        assert (seat.faults, seat.message, seat.records) == ([refused], "refused", [])
+
+    def test_raises_the_fault_on_a_seat_without_report_fault(self) -> None:
+        """A standard seat ends the call with the exception itself."""
+        refused = ValueError("refused")
+        with pytest.raises(ValueError) as raised:
+            end(Standard(), refused)
+        assert raised.value is refused
+
+
+class TestNoteFault:
+    """note_fault notes a fault that does not end the call."""
+
+    def test_passes_the_fault_to_a_seat_with_report_fault(self) -> None:
+        """A recorder keeps a noted fault and does not fail."""
+        seat = Recorder()
+        noted = OSError("the store skips a file")
+        note_fault(seat, noted)
+        assert (seat.faults, seat.failed) == ([noted], False)
+
+    def test_warns_with_the_text_on_a_seat_without_report_fault(self) -> None:
+        """A standard seat receives the text as a warning."""
+        with pytest.warns(UserWarning, match=r"^the store skips a file$"):
+            note_fault(Standard(), OSError("the store skips a file"))
 
 
 class TestPass:

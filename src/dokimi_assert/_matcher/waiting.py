@@ -89,7 +89,7 @@ def eventually(
         while True:
             attempts += 1
             try:
-                trial = run_on(Body(call.slot), body, loop)
+                trial = run_on(Body(call.slot, seat), body, loop)
             except FaultError as error:
                 call.faulted(mode, "eventually", msg, error)
                 return

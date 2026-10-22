@@ -258,6 +258,43 @@ class TestCaseReport:
         )
 
 
+class TestCaseReportFault:
+    """Case.report_fault receives a fault of a call of the body."""
+
+    def test_ends_the_case_with_the_text_of_a_fault_that_ends_its_call(
+        self, seat: Collector
+    ) -> None:
+        """An ending fault fails the case as fail does."""
+        c, _ = case_on()
+        after: list[bool] = []
+
+        def body(one: Case) -> None:
+            one.report_fault(ValueError("the seed is not a number"), True)
+            after.append(True)
+
+        failure = record_of(ending(c, body)).failure
+        check.equal(
+            seat,
+            [failure.assertion, failure.contract, after],
+            ["", "the seed is not a number", []],
+            "the fault ends the case",
+        )
+
+    def test_passes_a_noted_fault_to_the_seat_of_the_property(
+        self, seat: Collector
+    ) -> None:
+        """The body runs on past a noted fault, and the case passes."""
+        recorder = Recorder()
+        c = Case(Engine(Replaying(integers())), recorder, None, FREE)
+        noted = OSError("the store skips a file")
+        check.is_none(
+            seat,
+            ending(c, lambda one: one.report_fault(noted, False)),
+            "the case passes",
+        )
+        check.equal(seat, recorder.faults, [noted], "the seat receives the fault")
+
+
 class TestCaseClock:
     """Case.clock returns the clock of the seat of the property."""
 
