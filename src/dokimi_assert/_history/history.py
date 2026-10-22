@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The invocations and the completions of the calls to one object in recording order.
 
 Each client starts on a process of its own. The history numbers the
@@ -12,12 +15,14 @@ from __future__ import annotations
 
 import threading
 import weakref
-from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from dokimi_assert._history.event import Completion, Event, Invocation
 from dokimi_assert._record.literal import encode, json, quoted
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
 
 __all__ = ["Call", "History", "identity_of", "recorded"]
 
@@ -182,18 +187,20 @@ class History:
         with state.lock:
             open_call = state.open.get(client)
             if open_call is not None:
-                raise RuntimeError(
+                msg = (
                     f"history: invoke({client}, {quoted(operation)}) while call "
                     f"{open_call} of client {client} is open"
                 )
+                raise RuntimeError(msg)
             ids: list[str] = []
             for key in keys:
                 identity = identity_of(key)
                 if identity is None:
-                    raise TypeError(
+                    msg = (
                         f"history: the key {key!r} of invoke({client}, "
                         f"{quoted(operation)}) does not have a typed literal"
                     )
+                    raise TypeError(msg)
                 ids.append(identity)
             process = state.process.get(client)
             if process is None:
@@ -231,7 +238,8 @@ def _complete(state: _State, call: int, kind: _Ending, value: Any) -> None:
     with state.lock:
         invocation = state.events[call]
         if state.open.get(invocation.client) != call:
-            raise RuntimeError(f"history: call {call} completes a second time")
+            msg = f"history: call {call} completes a second time"
+            raise RuntimeError(msg)
         del state.open[invocation.client]
         if kind == "unknown":
             del state.process[invocation.client]

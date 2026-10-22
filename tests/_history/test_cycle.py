@@ -1,8 +1,11 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _history/cycle.py tests the searches of the dependency graph."""
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import pytest
 
@@ -16,7 +19,9 @@ from dokimi_assert._history.cycle import (
     path,
     simple,
 )
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 def graph(*edges: tuple[int, int]) -> Graph:

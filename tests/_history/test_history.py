@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _history/history.py tests the recording of a history.
 
 The reference implementation of the definition gives the same orders and the
@@ -7,13 +10,15 @@ same processes.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dokimi_assert import check
 from dokimi_assert._history.event import Completion, Invocation
 from dokimi_assert._history.history import Call, History, identity_of, recorded
-from dokimi_assert.seat import Collector
 from helpers import refusal
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 @dataclass(frozen=True)

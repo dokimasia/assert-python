@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The sequential specification of an object, and the operations that it receives.
 
 A check of a history reads the history against a spec.

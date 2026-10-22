@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The derivation over the transactions of one history.
 
 The derivation finds the committed transactions, the version order of each
@@ -17,9 +20,8 @@ version order.
 from __future__ import annotations
 
 import itertools
-from collections.abc import Callable, Iterator, Sequence, Set
 from dataclasses import dataclass, field
-from typing import Any, Literal, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Literal, TypeVar, cast
 
 from dokimi_assert._history.cycle import (
     RELATIONS,
@@ -31,6 +33,10 @@ from dokimi_assert._history.cycle import (
 )
 from dokimi_assert._history.history import identity_of
 from dokimi_assert._history.transaction import APPEND, READ, Transaction
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator, Sequence
+    from collections.abc import Set as AbstractSet
 
 __all__ = [
     "ANOMALIES",
@@ -694,7 +700,7 @@ class Analysis:
         """Return the evidence of the edge from a to b."""
         return self._edges[(a, b)]
 
-    def _graph(self, relations: Set[Relation]) -> Graph:
+    def _graph(self, relations: AbstractSet[Relation]) -> Graph:
         """Return the sorted targets of each transaction over the edges of relations."""
         out: dict[int, list[int]] = {}
         for (source, target), evidence in self._edges.items():

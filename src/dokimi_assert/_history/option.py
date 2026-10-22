@@ -1,10 +1,17 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The options that set the limits and the workers of a check of linearizability."""
 
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 __all__ = [
     "BUDGET",
@@ -64,7 +71,8 @@ def _counted(call: str, n: int, least: int) -> int:
         ValueError: n is not an int of least or more.
     """
     if type(n) is not int or n < least:
-        raise ValueError(f"history: {call}({n!r}) needs an int of {least} or more")
+        msg = f"history: {call}({n!r}) needs an int of {least} or more"
+        raise ValueError(msg)
     return n
 
 
@@ -128,9 +136,8 @@ def time_limit(seconds: float) -> Option:
         ValueError: seconds is not a finite number of 0 or more.
     """
     if type(seconds) not in (int, float) or not 0 <= seconds < math.inf:
-        raise ValueError(
-            f"history: time_limit({seconds!r}) needs a finite number of 0 or more"
-        )
+        msg = f"history: time_limit({seconds!r}) needs a finite number of 0 or more"
+        raise ValueError(msg)
     return Option(lambda config: replace(config, time_limit=float(seconds)))
 
 

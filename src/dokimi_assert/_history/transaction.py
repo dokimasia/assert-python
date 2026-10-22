@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The transactions of a history of list appends. The isolation checks read them.
 
 A transaction is one call of the operation txn. Its arguments are its
@@ -13,13 +16,15 @@ their typed literals.
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Final, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal
 
 from dokimi_assert._history.event import Completion, Event, Invocation
 from dokimi_assert._history.history import identity_of
 from dokimi_assert._record.literal import detail as literal_of
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 __all__ = [
     "APPEND",
@@ -110,10 +115,13 @@ def identity(call: int, value: object) -> str:
     """
     found = identity_of(value)
     if found is None:
-        raise TransactionError(
-            f"call {call} has the value {value!r} without a typed literal"
-        )
+        msg = f"call {call} has the value {value!r} without a typed literal"
+        raise TransactionError(msg)
     return found
+
+
+#: The parts of a micro-operation: the function, the key and the value.
+_MOP_PARTS = 3
 
 
 def _parts(raw: object) -> tuple[Fn, Any, Any] | None:
@@ -122,7 +130,7 @@ def _parts(raw: object) -> tuple[Fn, Any, Any] | None:
     The result is None for a value that is not a sequence of three parts
     whose first part is append or read.
     """
-    if not isinstance(raw, (list, tuple)) or len(raw) != 3:
+    if not isinstance(raw, (list, tuple)) or len(raw) != _MOP_PARTS:
         return None
     parts: Sequence[Any] = raw
     fn = parts[0]
@@ -137,15 +145,15 @@ def _invoked(call: int, position: int, raw: object) -> Mop:
     """Return the micro-operation of one argument of an invocation."""
     parts = _parts(raw)
     if parts is None:
-        raise TransactionError(
+        msg = (
             f"argument {position} of call {call} is {raw!r}, not [append, key, "
             "value] or [read, key, None]"
         )
+        raise TransactionError(msg)
     fn, key, value = parts
     if fn == READ and value is not None:
-        raise TransactionError(
-            f"the read at argument {position} of call {call} has a list before it ran"
-        )
+        msg = f"the read at argument {position} of call {call} has a list before it ran"
+        raise TransactionError(msg)
     identity(call, key)
     if fn == APPEND:
         identity(call, value)
@@ -166,20 +174,22 @@ def _repeated(call: int, position: int, mop: Mop, raw: object) -> Mop:
     )
     if parts is None or not repeats:
         stated = [mop.fn, mop.key, mop.value]
-        raise TransactionError(
+        msg = (
             f"micro-operation {position} of the output of call {call} is {raw!r} "
             f"and does not repeat {stated!r}"
         )
+        raise TransactionError(msg)
     if mop.fn == APPEND:
         return mop
     value = parts[2]
     if value is None:
         return Mop(READ, mop.key, [])
     if not isinstance(value, (list, tuple)):
-        raise TransactionError(
+        msg = (
             f"the read at micro-operation {position} of the output of call {call} "
             f"returned {value!r}, not a list"
         )
+        raise TransactionError(msg)
     items: list[Any] = list(value)
     for item in items:
         identity(call, item)
@@ -189,10 +199,11 @@ def _repeated(call: int, position: int, mop: Mop, raw: object) -> Mop:
 def _returned(call: int, mops: Sequence[Mop], output: object) -> tuple[Mop, ...]:
     """Return the micro-operations of an ok output that repeat the invoked ones."""
     if not isinstance(output, (list, tuple)) or len(output) != len(mops):
-        raise TransactionError(
+        msg = (
             f"the output of call {call} does not repeat the micro-operations of its "
             "invocation"
         )
+        raise TransactionError(msg)
     stated: Sequence[Any] = output
     return tuple(
         _repeated(call, position, mop, raw)
@@ -206,9 +217,10 @@ def _transaction_of(
     """Return the transaction of one call. completion is None for a pending call."""
     call = invocation.index
     if invocation.operation != TXN:
-        raise TransactionError(
+        msg = (
             f"call {call} is {json.dumps(invocation.operation)}, not {json.dumps(TXN)}"
         )
+        raise TransactionError(msg)
     mops = tuple(
         _invoked(call, position, raw) for position, raw in enumerate(invocation.args)
     )
@@ -233,14 +245,14 @@ def _register(txn: Transaction, appended: dict[tuple[str, str], int]) -> None:
         name = (identity(txn.call, mop.key), identity(txn.call, mop.value))
         first = appended.get(name)
         if first == txn.call:
-            raise TransactionError(
-                f"call {txn.call} appends {mop.value!r} to the key {mop.key!r} twice"
-            )
+            msg = f"call {txn.call} appends {mop.value!r} to the key {mop.key!r} twice"
+            raise TransactionError(msg)
         if first is not None:
-            raise TransactionError(
+            msg = (
                 f"calls {first} and {txn.call} both append {mop.value!r} to the key "
                 f"{mop.key!r}"
             )
+            raise TransactionError(msg)
         appended[name] = txn.call
 
 

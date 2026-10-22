@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _history/linearizable.py tests the check of linearizability.
 
 Each outcome, each count of steps and each record of the spec matches the
@@ -8,7 +11,7 @@ and spec.
 from __future__ import annotations
 
 import time
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
@@ -24,11 +27,14 @@ from dokimi_assert._history.linearizable import (
 )
 from dokimi_assert._history.linearizable import check as checked
 from dokimi_assert._history.option import budget, memo_limit, time_limit, workers
-from dokimi_assert._history.partition import Span
 from dokimi_assert._history.search import SpecError
-from dokimi_assert._history.spec import Operation
+from dokimi_assert._override import override
 from dokimi_assert.seat import Collector, Recorder, Standard
 from helpers import REGISTER, Register, records
+
+if TYPE_CHECKING:
+    from dokimi_assert._history.partition import Span
+    from dokimi_assert._history.spec import Operation
 
 #: The typed literal of None.
 NULL = {"type": "null"}
@@ -66,36 +72,44 @@ def two_partitions() -> History:
 class Raising(Register):
     """A register whose next raises for each operation."""
 
+    @override
     def next(self, state: object, op: Operation) -> list[object]:
         """Raise ValueError."""
-        raise ValueError(f"no {op.name} after {state!r}")
+        msg = f"no {op.name} after {state!r}"
+        raise ValueError(msg)
 
 
 class RaisingInitial(Register):
     """A register whose initial raises."""
 
+    @override
     def initial(self) -> object:
         """Raise ValueError."""
-        raise ValueError("boom")
+        msg = "boom"
+        raise ValueError(msg)
 
 
 class RaisingRead(Register):
     """A register whose next raises for a read."""
 
+    @override
     def next(self, state: object, op: Operation) -> list[object]:
         """Raise ValueError for a read."""
         if op.name == "read":
-            raise ValueError("boom")
+            msg = "boom"
+            raise ValueError(msg)
         return super().next(state, op)
 
 
 class RaisingNine(Register):
     """A register whose next raises for a write of 9."""
 
+    @override
     def next(self, state: object, op: Operation) -> list[object]:
         """Raise ValueError for a write of 9."""
         if op.name == "write" and op.args[0] == 9:
-            raise ValueError("boom")
+            msg = "boom"
+            raise ValueError(msg)
         return super().next(state, op)
 
 
@@ -726,8 +740,10 @@ class TestIsLinearizable:
             "a next that raises",
             two_partitions(),
             RaisingRead(),
-            "history.is_linearizable: calls[2]: the function next of the spec raises "
-            'for "read": boom',
+            (
+                "history.is_linearizable: calls[2]: the function next of the spec "
+                'raises for "read": boom'
+            ),
         ),
     ]
 

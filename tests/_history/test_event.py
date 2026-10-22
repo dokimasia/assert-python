@@ -1,14 +1,20 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _history/event.py tests the events of a history and their JSON form."""
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
 from dokimi_assert import check
 from dokimi_assert._history.event import Completion, Event, Invocation, event_json
-from dokimi_assert.seat import Collector
+from dokimi_assert._override import override
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: The fields of the events of call 0 by client 0 on process 0.
 HEAD = {"call": 0, "client": 0, "process": 0}
@@ -22,6 +28,7 @@ def integer(value: int) -> dict[str, Any]:
 class Probe:
     """A value without a typed literal and with a fixed repr."""
 
+    @override
     def __repr__(self) -> str:
         """Return the text that the opaque literal contains."""
         return "Probe()"

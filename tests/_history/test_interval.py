@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _history/interval.py tests the history of calls with a start and an end.
 
 The reference implementation of the definition gives the same orders and the
@@ -7,14 +10,16 @@ same refusals.
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import pytest
 
 from dokimi_assert import check
 from dokimi_assert._history.event import Completion, Invocation
 from dokimi_assert._history.interval import Interval, IntervalError, from_intervals
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 def read(client: int, start: float, end: float | None = None) -> Interval:

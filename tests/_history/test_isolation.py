@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _history/isolation.py tests the checks of the isolation levels.
 
 Each verdict and each record of the spec matches the result of the reference
@@ -6,8 +9,7 @@ implementation of the definition on the same history.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import pytest
 
@@ -38,6 +40,9 @@ from helpers import (
     run_txn,
     write_skew,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 #: The two isolation levels.
 LEVELS: tuple[Level, ...] = (SERIALIZABLE, SNAPSHOT_ISOLATION)

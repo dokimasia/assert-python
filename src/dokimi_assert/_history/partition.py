@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The calls of a history that a check of linearizability reads, and their partitions.
 
 The check removes every call that failed. Two calls that share a key are in
@@ -9,13 +12,15 @@ first invocations.
 from __future__ import annotations
 
 import itertools
-from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dokimi_assert._history.event import Completion, Event, Invocation
 from dokimi_assert._history.spec import CallOperation
 from dokimi_assert._record.literal import detail as literal_of
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 __all__ = [
     "Checked",

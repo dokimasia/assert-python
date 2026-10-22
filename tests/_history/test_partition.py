@@ -1,9 +1,14 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _history/partition.py tests the calls of a history and their partitions.
 
 The reference implementation of the definition gives the same partitions.
 """
 
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from dokimi_assert import check
 from dokimi_assert._history.history import History, recorded
@@ -15,7 +20,9 @@ from dokimi_assert._history.partition import (
     partitions_of,
     span_json,
 )
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 def calls(history: History) -> list[Checked]:

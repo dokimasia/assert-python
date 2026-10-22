@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """A driver that runs the clients of a history at the same time."""
 
 from __future__ import annotations
@@ -5,11 +8,13 @@ from __future__ import annotations
 import contextvars
 import math
 import threading
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dokimi_assert._matcher.loop import Loop
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 __all__ = ["Outcome", "concurrently"]
 
@@ -72,15 +77,17 @@ def concurrently(
         outcomes = history.concurrently(4, 60, client)
     """
     if type(clients) is not int or clients < 1:
-        raise ValueError(
+        msg = (
             f"history: concurrently({clients!r}, {within!r}): clients is not an int "
             "of 1 or more"
         )
+        raise ValueError(msg)
     if type(within) not in (int, float) or not 0 <= within < math.inf:
-        raise ValueError(
+        msg = (
             f"history: concurrently({clients!r}, {within!r}): within is not a finite "
             "number of 0 or more"
         )
+        raise ValueError(msg)
     outcomes = [Outcome(client) for client in range(clients)]
     raised: dict[int, BaseException] = {}
     ended = threading.Condition()

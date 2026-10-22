@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _history/concurrently.py tests the driver of the clients of a history."""
 
 from __future__ import annotations
@@ -6,14 +9,16 @@ import asyncio
 import math
 import threading
 from contextvars import ContextVar
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
 from dokimi_assert import check
 from dokimi_assert._history.concurrently import Outcome, concurrently
-from dokimi_assert.seat import Collector
 from helpers import refusal
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: A wait in seconds that is longer than any body of the spec needs.
 PATIENT = 60.0
@@ -177,10 +182,12 @@ class TestConcurrently:
                 raising.wait(PATIENT)
                 waited.set()
             elif client == 2:
-                raise ValueError("client 2")
+                msg = "client 2"
+                raise ValueError(msg)
             elif client == 3:
                 raising.set()
-                raise ValueError("client 3")
+                msg = "client 3"
+                raise ValueError(msg)
 
         error = check.raises(
             seat,
@@ -204,7 +211,8 @@ class TestConcurrently:
 
         def late(_: int) -> None:
             gate.wait()
-            raise ValueError("too late")
+            msg = "too late"
+            raise ValueError(msg)
 
         outcomes = concurrently(1, 0, late)
         gate.open()
@@ -240,8 +248,10 @@ class TestConcurrently:
             "a time that is not a number",
             1,
             "10",
-            "history: concurrently(1, '10'): within is not a finite number of 0 or "
-            "more",
+            (
+                "history: concurrently(1, '10'): within is not a finite number of 0 or "
+                "more"
+            ),
         ),
     ]
 

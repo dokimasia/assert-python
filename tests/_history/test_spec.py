@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _history/spec.py tests the sequential specifications that a check reads.
 
 The reference implementation of the definition takes the same steps for the
@@ -7,9 +10,8 @@ spec of a subject.
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
@@ -21,7 +23,11 @@ from dokimi_assert._history.spec import (
     spec_from,
     state_key,
 )
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
+    from dokimi_assert.seat import Collector
 
 
 @dataclass(frozen=True)

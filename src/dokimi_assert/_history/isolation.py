@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The checks that the transactions of a history do not have a forbidden anomaly.
 
 A check first reads the micro-operations for the six anomalies that do not
@@ -10,9 +13,8 @@ has.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Final, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal
 
 from dokimi_assert._history.derivation import (
     ANOMALIES,
@@ -24,7 +26,6 @@ from dokimi_assert._history.derivation import (
     Link,
     Observation,
 )
-from dokimi_assert._history.event import Event
 from dokimi_assert._history.history import History
 from dokimi_assert._history.transaction import (
     Transaction,
@@ -37,6 +38,11 @@ from dokimi_assert._matcher.seat import Mode, Seat
 from dokimi_assert._matcher.verdict import Running
 from dokimi_assert._record.literal import detail as literal_of
 from dokimi_assert.failure import Failure, call_site
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from dokimi_assert._history.event import Event
 
 __all__ = [
     "SERIALIZABLE",

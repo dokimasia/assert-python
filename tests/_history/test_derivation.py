@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _history/derivation.py tests the derivation over the transactions.
 
 Each instance of the spec is the instance that the reference implementation
@@ -6,7 +9,7 @@ of the definition finds in the same history.
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import pytest
 
@@ -22,8 +25,10 @@ from dokimi_assert._history.derivation import (
 )
 from dokimi_assert._history.history import History
 from dokimi_assert._history.transaction import transactions
-from dokimi_assert.seat import Collector
 from helpers import append, invoke_txn, read_of, read_skew, run_txn, write_skew
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 def instance(history: History, anomaly: Anomaly) -> Instance | None:

@@ -1,10 +1,13 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _history/option.py tests the options of a check of linearizability."""
 
 from __future__ import annotations
 
 import math
 from collections.abc import Callable
-from typing import Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import pytest
 
@@ -20,8 +23,10 @@ from dokimi_assert._history.option import (
     time_limit,
     workers,
 )
-from dokimi_assert.seat import Collector
 from helpers import refusal
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: A case of a refusal. It has a name, the call, and the text of its ValueError.
 Refusal = tuple[str, Callable[[], Option], str]

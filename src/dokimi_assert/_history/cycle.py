@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The searches of the dependency graph of committed transactions.
 
 The searches find the strongly connected components of the graph, the
@@ -8,7 +11,8 @@ search visits the edges of a transaction in the order of their targets.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence, Set
+from collections.abc import Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from typing import Literal
 
 __all__ = [
@@ -113,7 +117,9 @@ def components(nodes: Sequence[int], graph: Graph) -> list[list[int]]:
     return sorted(search.found, key=lambda component: component[0])
 
 
-def path(start: int, goal: int, graph: Graph, members: Set[int]) -> list[int] | None:
+def path(
+    start: int, goal: int, graph: Graph, members: AbstractSet[int]
+) -> list[int] | None:
     """Return the shortest path from start to goal within members.
 
     When two paths are shortest, the result is the one that comes first in
@@ -134,9 +140,10 @@ def path(start: int, goal: int, graph: Graph, members: Set[int]) -> list[int] | 
     for node in queue:
         if node == goal:
             found = [node]
-            while node != start:
-                node = parent[node]
-                found.append(node)
+            step = node
+            while step != start:
+                step = parent[step]
+                found.append(step)
             return found[::-1]
         for target in graph.get(node, ()):
             if target in members and target not in parent:

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _history/transaction.py tests the transactions of a history.
 
 The reference implementation of the definition refuses the same histories.
@@ -5,8 +8,7 @@ The reference implementation of the definition refuses the same histories.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import pytest
 
@@ -23,8 +25,12 @@ from dokimi_assert._history.transaction import (
     transaction_json,
     transactions,
 )
-from dokimi_assert.seat import Collector
 from helpers import append, invoke_txn, read_of, refusal, run_txn
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from dokimi_assert.seat import Collector
 
 
 def refused(history: History) -> str:
@@ -205,14 +211,18 @@ class TestTransactions:
         (
             "an argument that is not a micro-operation",
             lambda h: h.invoke(0, TXN, [[APPEND, "x"]], "x"),
-            "argument 0 of call 0 is ['append', 'x'], not [append, key, value] or "
-            "[read, key, None]",
+            (
+                "argument 0 of call 0 is ['append', 'x'], not [append, key, value] or "
+                "[read, key, None]"
+            ),
         ),
         (
             "an argument of another function",
             lambda h: h.invoke(0, TXN, [["delete", "x", None]], "x"),
-            "argument 0 of call 0 is ['delete', 'x', None], not [append, key, value] "
-            "or [read, key, None]",
+            (
+                "argument 0 of call 0 is ['delete', 'x', None], not [append, key, "
+                "value] or [read, key, None]"
+            ),
         ),
         (
             "a read that has a list before it ran",
@@ -222,40 +232,52 @@ class TestTransactions:
         (
             "an output that repeats another value",
             lambda h: invoke_txn(h, 0, append("x", 1)).ok([append("x", 2)]),
-            "micro-operation 0 of the output of call 0 is ['append', 'x', 2] and "
-            "does not repeat ['append', 'x', 1]",
+            (
+                "micro-operation 0 of the output of call 0 is ['append', 'x', 2] and "
+                "does not repeat ['append', 'x', 1]"
+            ),
         ),
         (
             "an output that repeats a read as an append",
             lambda h: invoke_txn(h, 0, read_of("x", None)).ok([append("x", 1)]),
-            "micro-operation 0 of the output of call 0 is ['append', 'x', 1] and "
-            "does not repeat ['read', 'x', None]",
+            (
+                "micro-operation 0 of the output of call 0 is ['append', 'x', 1] and "
+                "does not repeat ['read', 'x', None]"
+            ),
         ),
         (
             "an output that is not a micro-operation",
             lambda h: invoke_txn(h, 0, append("x", 1)).ok([7]),
-            "micro-operation 0 of the output of call 0 is 7 and does not repeat "
-            "['append', 'x', 1]",
+            (
+                "micro-operation 0 of the output of call 0 is 7 and does not repeat "
+                "['append', 'x', 1]"
+            ),
         ),
         (
             "an output of another number of micro-operations",
             lambda h: invoke_txn(h, 0, append("x", 1)).ok(
                 [append("x", 1), read_of("x", [1])]
             ),
-            "the output of call 0 does not repeat the micro-operations of its "
-            "invocation",
+            (
+                "the output of call 0 does not repeat the micro-operations of its "
+                "invocation"
+            ),
         ),
         (
             "an output that is not a list",
             lambda h: invoke_txn(h, 0, append("x", 1)).ok(7),
-            "the output of call 0 does not repeat the micro-operations of its "
-            "invocation",
+            (
+                "the output of call 0 does not repeat the micro-operations of its "
+                "invocation"
+            ),
         ),
         (
             "a read that did not return a list",
             lambda h: invoke_txn(h, 0, read_of("x", None)).ok([read_of("x", 5)]),
-            "the read at micro-operation 0 of the output of call 0 returned 5, not a "
-            "list",
+            (
+                "the read at micro-operation 0 of the output of call 0 returned 5, "
+                "not a list"
+            ),
         ),
         (
             "a value that two calls append to one key",

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The events of a history, and their JSON form in a record.
 
 Each event has its index in recording order, its kind, its call, the client

@@ -1,8 +1,11 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _history/sentence.py tests the sentences of the history records."""
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import pytest
 
@@ -14,8 +17,10 @@ from dokimi_assert._history.linearizable import fields_of
 from dokimi_assert._history.option import budget
 from dokimi_assert._history.sentence import isolation_sentence, sentence
 from dokimi_assert.failure import Failure
-from dokimi_assert.seat import Collector
 from helpers import REGISTER
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 def record_of(history: History, *budgets: int) -> Failure:
@@ -52,14 +57,12 @@ class TestSentence:
         check.equal(
             seat,
             sentence(record_of(history)),
-            "\n".join(
-                [
-                    "c: violated in the partition of 'x'",
-                    "    steps 2, partitions 1, calls 2, concurrency 1",
-                    "    linearized: call 0 write(1) -> None",
-                    "    states: 1",
-                    "    rejected: call 2 read() -> None",
-                ]
+            (
+                "c: violated in the partition of 'x'\n"
+                "    steps 2, partitions 1, calls 2, concurrency 1\n"
+                "    linearized: call 0 write(1) -> None\n"
+                "    states: 1\n"
+                "    rejected: call 2 read() -> None"
             ),
             "the sentence lists the frontier of the partition of x",
         )
@@ -74,14 +77,12 @@ class TestSentence:
         check.equal(
             seat,
             sentence(record_of(history, 1)),
-            "\n".join(
-                [
-                    "c: undecided in the partition of every key, at the steps limit",
-                    "    steps 1, partitions 1, calls 2, concurrency 1",
-                    "    linearized: call 0 write(1) -> None",
-                    "    states: 1",
-                    "    rejected: none",
-                ]
+            (
+                "c: undecided in the partition of every key, at the steps limit\n"
+                "    steps 1, partitions 1, calls 2, concurrency 1\n"
+                "    linearized: call 0 write(1) -> None\n"
+                "    states: 1\n"
+                "    rejected: none"
             ),
             "the first line of the sentence ends with the steps limit",
         )
@@ -96,14 +97,12 @@ class TestSentence:
         check.equal(
             seat,
             sentence(record_of(history)),
-            "\n".join(
-                [
-                    "c: violated in the partition of every key",
-                    "    steps 3, partitions 1, calls 2, concurrency 2",
-                    "    linearized: call 0 write(1), outcome unknown",
-                    "    states: 1",
-                    "    rejected: call 2 read() -> 9",
-                ]
+            (
+                "c: violated in the partition of every key\n"
+                "    steps 3, partitions 1, calls 2, concurrency 2\n"
+                "    linearized: call 0 write(1), outcome unknown\n"
+                "    states: 1\n"
+                "    rejected: call 2 read() -> 9"
             ),
             "the write has the text outcome unknown",
         )
@@ -126,17 +125,15 @@ class TestIsolationSentence:
         check.equal(
             seat,
             isolation_sentence(record),
-            "\n".join(
-                [
-                    "c: G0",
-                    "    kinds: G0, G2",
-                    "    call 0 -ww-> call 1: call 1 appended 2 to 'x' after 1",
-                    "    call 1 -wr-> call 2: call 2 read 'y' ending in 3",
-                    "    call 2 -rw-> call 3: call 2 read [] from 'z', and call 3 "
-                    "appended 4 to it",
-                    "    call 3 -rw-> call 0: call 3 read 'z' ending in 5, and call 0 "
-                    "appended 6 after it",
-                ]
+            (
+                "c: G0\n"
+                "    kinds: G0, G2\n"
+                "    call 0 -ww-> call 1: call 1 appended 2 to 'x' after 1\n"
+                "    call 1 -wr-> call 2: call 2 read 'y' ending in 3\n"
+                "    call 2 -rw-> call 3: call 2 read [] from 'z', and call 3 "
+                "appended 4 to it\n"
+                "    call 3 -rw-> call 0: call 3 read 'z' ending in 5, and call 0 "
+                "appended 6 after it"
             ),
             "each edge has a line of its own",
         )
@@ -159,8 +156,10 @@ class TestIsolationSentence:
             Observation(
                 "internal-inconsistency", calls=(0,), key="x", reads=([1],), whole=True
             ),
-            "call 0 read [1] from 'x', and its earlier micro-operations require the "
-            "list []",
+            (
+                "call 0 read [1] from 'x', and its earlier micro-operations require "
+                "the list []"
+            ),
         ),
         (
             "a read that contradicts the end of the list",
@@ -171,8 +170,10 @@ class TestIsolationSentence:
                 reads=([1],),
                 expected=(2,),
             ),
-            "call 0 read [1] from 'x', and its earlier appends require a list that "
-            "ends with [2]",
+            (
+                "call 0 read [1] from 'x', and its earlier appends require a list that "
+                "ends with [2]"
+            ),
         ),
         (
             "a read of a later append",
@@ -191,8 +192,10 @@ class TestIsolationSentence:
             Observation(
                 "incompatible-order", calls=(6, 8), key="x", reads=([1, 2], [1, 3])
             ),
-            "calls 6 and 8 read [1, 2] and [1, 3] from 'x', and neither is a prefix "
-            "of the other",
+            (
+                "calls 6 and 8 read [1, 2] and [1, 3] from 'x', and neither is a "
+                "prefix of the other"
+            ),
         ),
         (
             "an aborted read",

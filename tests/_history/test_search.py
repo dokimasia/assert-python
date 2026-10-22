@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _history/search.py tests the search of one partition.
 
 Each verdict, each count of steps and each frontier of the spec matches the
@@ -8,8 +11,7 @@ from __future__ import annotations
 
 import math
 import time
-from collections.abc import Hashable, Sequence
-from typing import Any, ClassVar, NoReturn
+from typing import TYPE_CHECKING, Any, ClassVar, NoReturn
 
 import pytest
 
@@ -20,9 +22,14 @@ from dokimi_assert._history.option import time_limit as time_limited
 from dokimi_assert._history.partition import Span, calls_of
 from dokimi_assert._history.search import Deadline, Ending, Search, SpecError, Verdict
 from dokimi_assert._history.spec import CallOperation, Operation, Spec, spec_from
+from dokimi_assert._override import override
 from dokimi_assert.option import equate_nans
-from dokimi_assert.seat import Collector
 from helpers import REGISTER, Register
+
+if TYPE_CHECKING:
+    from collections.abc import Hashable, Sequence
+
+    from dokimi_assert.seat import Collector
 
 
 def searched(history: History, spec: Spec[Any], *options: Option) -> Ending[Any]:
@@ -82,6 +89,7 @@ class Lock:
 class Lossy(Register):
     """A register that can lose a write. A write leaves the new or the old value."""
 
+    @override
     def next(self, state: object, op: Operation) -> list[object]:
         """Return the new value and the old value after a write."""
         if op.name == "write":
@@ -152,12 +160,14 @@ def counter() -> Any:
 
 def boom(*_: object) -> NoReturn:
     """Raise ValueError for any arguments."""
-    raise ValueError("boom")
+    msg = "boom"
+    raise ValueError(msg)
 
 
 class BrokenInitial(Register):
     """A register whose initial raises."""
 
+    @override
     def initial(self) -> object:
         """Raise ValueError."""
         return boom()
@@ -166,6 +176,7 @@ class BrokenInitial(Register):
 class BrokenNext(Register):
     """A register whose next raises."""
 
+    @override
     def next(self, state: object, op: Operation) -> list[object]:
         """Raise ValueError."""
         return boom(state, op)
@@ -174,6 +185,7 @@ class BrokenNext(Register):
 class BrokenEqual(Register):
     """A register whose next returns two states and whose equal raises."""
 
+    @override
     def next(self, state: object, op: Operation) -> list[object]:
         """Return 1 and 2."""
         del state, op

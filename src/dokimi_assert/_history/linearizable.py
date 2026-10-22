@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The check that a history is linearizable.
 
 Each partition of a linearizable history has an order of its calls that
@@ -6,10 +9,9 @@ respects their real-time order. The spec accepts that order.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from dokimi_assert._history.history import History, recorded
 from dokimi_assert._history.option import Option, configure
@@ -30,12 +32,16 @@ from dokimi_assert._history.search import (
     SpecError,
     Verdict,
 )
-from dokimi_assert._history.spec import Spec
 from dokimi_assert._matcher.fault import FaultError, of_operation
 from dokimi_assert._matcher.seat import Mode, Seat
 from dokimi_assert._matcher.verdict import Running
 from dokimi_assert._record.literal import detail as literal_of
 from dokimi_assert.failure import Failure, call_site
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
+    from dokimi_assert._history.spec import Spec
 
 __all__ = [
     "LINEARIZABLE",
@@ -120,6 +126,10 @@ def _passed(partitions: int, steps: int) -> Detail[Any]:
     return Detail("passed", partitions, steps, (), 0, 0, (), (), (), None)
 
 
+#: The fewest partitions whose searches run on the threads of the workers.
+_PARALLEL_PARTITIONS = 2
+
+
 def _endings(
     partitions: Sequence[Partition],
     workers: int,
@@ -132,7 +142,7 @@ def _endings(
     ending of a partition then waits for its search. The stop cancels the
     searches that have not started and waits for the others.
     """
-    if workers == 1 or len(partitions) < 2:
+    if workers == 1 or len(partitions) < _PARALLEL_PARTITIONS:
         return (lambda i: run(partitions[i].calls)), lambda: None
     pool = ThreadPoolExecutor(min(workers, len(partitions)))
     futures: list[Future[Ending[_S]]] = [pool.submit(run, p.calls) for p in partitions]

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The search of one partition for a linearization. The definition fixes the search.
 
 The search is the scan of Wing and Gong. It keeps a memo of the
@@ -28,12 +31,9 @@ import json
 import math
 import threading
 import time
-from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass
-from typing import Any, Generic, Literal, TypeVar, final
+from typing import TYPE_CHECKING, Any, Generic, Literal, TypeVar, final
 
-from dokimi_assert._history.option import Config
-from dokimi_assert._history.partition import Checked, Span
 from dokimi_assert._history.spec import (
     Operation,
     Spec,
@@ -41,6 +41,12 @@ from dokimi_assert._history.spec import (
     same_state,
     state_key,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Hashable, Sequence
+
+    from dokimi_assert._history.option import Config
+    from dokimi_assert._history.partition import Checked, Span
 
 __all__ = ["Deadline", "Ending", "Limit", "Search", "SpecError", "Verdict"]
 
@@ -179,8 +185,10 @@ class Search(Generic[_S]):
         self._key: Callable[[_S], Hashable] = (
             state_key if stated_key is None else stated_key
         )
+        # mypy reads spec as a Spec of any state type, and a SubjectSpec has a
+        # state type of its own.
         self._cost: Callable[[Any], int] = (
-            spec.cost if isinstance(spec, SubjectSpec) else lambda _: 1
+            spec.cost if isinstance(spec, SubjectSpec) else lambda _: 1  # type: ignore[redundant-expr, unreachable]
         )
         self._budget: int = config.budget
         self._memo_limit: int = config.memo_limit
@@ -308,10 +316,12 @@ class Search(Generic[_S]):
             self._calling = "next"
             cost = self._cost(state)
             if self._steps + cost > self._budget:
-                raise _LimitError("steps")
+                limit: Limit = "steps"
+                raise _LimitError(limit)
             if self._steps >= self._clock_at:
                 if self._deadline.passed():
-                    raise _LimitError("time")
+                    limit = "time"
+                    raise _LimitError(limit)
                 self._clock_at = self._steps + _CLOCK_STEPS
             self._steps += cost
             for after in self._spec.next(state, op):
@@ -333,7 +343,8 @@ class Search(Generic[_S]):
             ):
                 return False
         if (self._configurations + 1) * len(self._calls) > self._memo_limit:
-            raise _LimitError("memo")
+            limit: Limit = "memo"
+            raise _LimitError(limit)
         bucket.append(states)
         self._configurations += 1
         return True

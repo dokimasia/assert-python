@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The sentences of the records of the history assertions.
 
 A seat that does not take records receives the sentence of a record.
@@ -5,12 +8,15 @@ A seat that does not take records receives the sentence of a record.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from dokimi_assert._history.derivation import Edge, Evidence, Observation
-from dokimi_assert._history.partition import Span
-from dokimi_assert.failure import Failure
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from dokimi_assert._history.partition import Span
+    from dokimi_assert.failure import Failure
 
 __all__ = ["isolation_sentence", "sentence"]
 
