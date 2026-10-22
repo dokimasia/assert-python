@@ -50,7 +50,7 @@ from dokimi_assert._prop.engine.runner import (
 from dokimi_assert._prop.engine.store import MAX_DEPTH
 from dokimi_assert._prop.engine.traces import Draw, Entry, TraceError
 from dokimi_assert._prop.environment import budget_of, mutated, seed_of, token_of
-from dokimi_assert._prop.option import Config
+from dokimi_assert._prop.option import Config, Wrapper
 from dokimi_assert._prop.registry import close
 from dokimi_assert._prop.stored import differs, entry_of
 from dokimi_assert._record.calls import Slot, cut, own
@@ -61,6 +61,10 @@ __all__ = ["Call", "Property", "PropertyBody"]
 #: The name of the draws option. The location of each fault in its entries
 #: starts with this name.
 _DRAWS = "draws"
+
+#: The name of the around option. The text of each fault of its wrapper
+#: starts with this name.
+_AROUND = "around"
 
 #: The body of a property. It is a function of a case, and it can return an
 #: awaitable.
@@ -191,6 +195,73 @@ def _note(op: str, fault: FaultError) -> None:
     warnings.warn(str(of_operation(op, fault)), stacklevel=4)
 
 
+class _Run:
+    """The function run that a wrapper of the around option receives for one case.
+
+    Its first call runs the case, and it keeps the signal or the failure that
+    ended the case. A later call, and a call after the wrapper returned, run
+    nothing.
+    """
+
+    def __init__(self, case: Callable[[], None]) -> None:
+        """Return the run of a case that has not run."""
+        self._case: Callable[[], None] = case
+        self._lock: threading.Lock = threading.Lock()
+        self._done: threading.Event = threading.Event()
+        self.calls: int = 0
+        self.started: bool = False
+        self.closed: bool = False
+        self.ending: BaseException | None = None
+
+    def __call__(self) -> None:
+        """Run the case at the first call before the wrapper returned."""
+        with self._lock:
+            self.calls += 1
+            if self.calls > 1 or self.closed:
+                return
+            self.started = True
+        try:
+            self._case()
+        except BaseException as ending:
+            self.ending = ending
+        finally:
+            self._done.set()
+
+    def close(self) -> None:
+        """Make each later call run nothing, and wait for a case that started."""
+        with self._lock:
+            self.closed = True
+        if self.started:
+            self._done.wait()
+
+
+def _wrapped(wrapper: Wrapper, case: Callable[[], None]) -> None:
+    """Run a case inside wrapper, and end as the case ended.
+
+    Raises:
+        FaultSignal: wrapper returned without calling run, called run a second
+            time or raised.
+        BaseException: the signal or the failure that ended the case.
+    """
+    run = _Run(case)
+    raised: Exception | None = None
+    try:
+        wrapper(run)
+    except Exception as error:
+        raised = error
+    run.close()
+    if raised is not None:
+        raise FaultSignal(FaultError(_AROUND, "the wrapper raised", raised)) from raised
+    if not run.started:
+        raise FaultSignal(
+            FaultError(_AROUND, "the wrapper returned without calling run")
+        )
+    if run.calls > 1:
+        raise FaultSignal(FaultError(_AROUND, "the wrapper called run a second time"))
+    if run.ending is not None:
+        raise run.ending
+
+
 class Property:
     """A property with its settings and its store.
 
@@ -205,6 +276,7 @@ class Property:
         budget: int,
         replay: tuple[Choice, ...] | None,
         directory: str,
+        around: Wrapper | None = None,
     ) -> None:
         """Return a property. Call Property.of instead.
 
@@ -219,6 +291,7 @@ class Property:
                 None.
             directory: The directory of the store, or the empty string for a
                 property without one.
+            around: The wrapper of each run of the body, or None.
         """
         self.call: Call = call
         self._settings: Settings = settings
@@ -226,6 +299,7 @@ class Property:
         self._budget: int = budget
         self._replay: tuple[Choice, ...] | None = replay
         self._directory: str = directory
+        self._around: Wrapper | None = around
 
     @staticmethod
     def of(
@@ -279,6 +353,7 @@ class Property:
             budget,
             _replay_of(config),
             store_of(seat, config.store),
+            config.around,
         )
 
     def run(self, seat: Seat, running: Running, body: PropertyBody) -> None:
@@ -295,6 +370,8 @@ class Property:
         - Another property of the test has the same contract and store.
         - The store cannot be read, or it has a damaged file.
         - The body cannot follow an entry of the draws option.
+        - The wrapper of the around option returns without calling run,
+          calls run a second time or raises.
 
         Args:
             seat: The seat of the call.
@@ -431,19 +508,27 @@ class Property:
         """Return the engine body that runs body in a case on seat.
 
         A case on the thread of the run runs on the loop of the run. A case on
-        a worker thread runs on a loop of its own.
+        another thread runs on a loop of its own. Under the around option,
+        each case runs inside the wrapper.
         """
         location = Location(self.call.where, self.call.pinned)
         thread = threading.get_ident()
         assertion = self.call.assertion
+        around = self._around
 
-        def adapted(engine: EngineCase) -> None:
-            c = Case(engine, seat, slot, location)
+        def run_case(c: Case) -> None:
             if threading.get_ident() == thread:
                 execute(c, body, loop)
                 return
             with Loop(assertion) as own_loop:
                 execute(c, body, own_loop)
+
+        def adapted(engine: EngineCase) -> None:
+            c = Case(engine, seat, slot, location)
+            if around is None:
+                run_case(c)
+                return
+            _wrapped(around, lambda: run_case(c))
 
         return adapted
 

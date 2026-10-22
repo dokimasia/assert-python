@@ -102,7 +102,11 @@ class Deadline:
         self.stopped: threading.Event = threading.Event()
 
     def passed(self) -> bool:
-        """Report whether the time of the check has passed or the check has stopped."""
+        """Report whether the time of the check has passed or the check has stopped.
+
+        Returns:
+            True when the time has passed or the check has stopped.
+        """
         return self.stopped.is_set() or time.monotonic() >= self._end
 
 

@@ -22,7 +22,9 @@ the shapes of types, and of and shape_of read them. of_shape returns the
 generator of a shape file.
 
 A failing run writes its minimal case to the store of the test under
-testdata/prop. Later runs replay it first.
+testdata/prop. Later runs replay it first. around runs each run of the
+body inside a wrapper, such as a frozen clock, so that each run gets an
+environment of its own.
 """
 
 from __future__ import annotations
@@ -105,6 +107,8 @@ from dokimi_assert._prop.markers import (
 from dokimi_assert._prop.option import (
     FormOption,
     Option,
+    Wrapper,
+    around,
     cases,
     draws,
     example,
@@ -146,7 +150,9 @@ __all__ = [
     "Version",
     "WallTime",
     "Width",
+    "Wrapper",
     "accumulates",
+    "around",
     "boolean",
     "bytes",
     "cases",

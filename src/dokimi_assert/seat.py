@@ -119,6 +119,9 @@ class Recorder:
         A message that a caller passed to fail or record directly leaves no
         record, so an assertion that did not report a record is visible
         here.
+
+        Returns:
+            The failure records.
         """
         with self._guard:
             return list(self._records)
@@ -128,6 +131,9 @@ class Recorder:
         """The call records of the calls on this recorder.
 
         Each is one line of JSON, in the order of the numbers of the calls.
+
+        Returns:
+            The lines of the records.
         """
         return lines(own(self))
 
@@ -176,7 +182,11 @@ class Recorder:
 
     @property
     def failed(self) -> bool:
-        """Whether a failure arrived through either surface."""
+        """Whether a failure arrived through either surface.
+
+        Returns:
+            True after a failure.
+        """
         with self._guard:
             return self._fatal is not None or bool(self._recorded)
 
@@ -187,6 +197,9 @@ class Recorder:
         It is the empty string when nothing failed. A test that reads it
         does not raise when the assertion under test wrongly reported
         nothing.
+
+        Returns:
+            The first message, or the empty string.
         """
         with self._guard:
             if self._fatal is not None:
@@ -195,13 +208,21 @@ class Recorder:
 
     @property
     def messages(self) -> list[str]:
-        """Every failure that arrived through record, in call order."""
+        """Every failure that arrived through record, in call order.
+
+        Returns:
+            The messages of the failures.
+        """
         with self._guard:
             return list(self._recorded)
 
     @property
     def helper_calls(self) -> int:
-        """The number of calls of helper."""
+        """The number of calls of helper.
+
+        Returns:
+            The number of calls.
+        """
         with self._guard:
             return self._helpers
 
@@ -250,7 +271,11 @@ class Collector:
 
     @property
     def failures(self) -> list[Failure]:
-        """Every failure record that arrived, in call order."""
+        """Every failure record that arrived, in call order.
+
+        Returns:
+            The failure records.
+        """
         with self._guard:
             return list(self._records)
 
@@ -313,7 +338,11 @@ class Collector:
 
     @property
     def collected(self) -> list[str]:
-        """Every failure that the collector keeps, in call order."""
+        """Every failure that the collector keeps, in call order.
+
+        Returns:
+            The messages of the failures.
+        """
         with self._guard:
             return list(self._collected)
 

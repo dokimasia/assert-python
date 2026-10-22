@@ -45,7 +45,7 @@ class Zone:
     changes: tuple[Change, ...]
 
 
-_TABLE = json.loads((spec_dir() / "zones.json").read_text(encoding="utf-8"))
+_TABLE = json.loads((spec_dir() / "spec" / "zones.json").read_text(encoding="utf-8"))
 
 #: The zone list in the order of the definition.
 ZONES: tuple[Zone, ...] = tuple(

@@ -149,7 +149,14 @@ class Integer(Generator[int]):
         self.id: str = id
 
     def decode(self, c: Case) -> int:
-        """Return the integer that the case chooses."""
+        """Return the integer that the case chooses.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The integer.
+        """
         with c.span(self.id):
             return c.integer(self.bounds, None, True)
 
@@ -173,7 +180,14 @@ class Float(Generator[float]):
         self.bounds: FloatBounds = bounds
 
     def decode(self, c: Case) -> float:
-        """Return the float that the case chooses."""
+        """Return the float that the case chooses.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The float.
+        """
         bounds = self.bounds
         request = Request(bounds, lambda source: draw.float_value(source, bounds))
         with c.span(Float.ID):
@@ -201,7 +215,14 @@ class Bool(Generator[bool]):
         self.p: Fraction = p
 
     def decode(self, c: Case) -> bool:
-        """Return True when the case chooses 1."""
+        """Return True when the case chooses 1.
+
+        Args:
+            c: The case.
+
+        Returns:
+            True for the choice 1, and False for the choice 0.
+        """
         p = self.p
         request = Request(_BIT, lambda source: draw.boolean(source, p))
         with c.span(Bool.ID):
@@ -227,7 +248,14 @@ class Just(Generator[_T]):
         self.value: _T = value
 
     def decode(self, c: Case) -> _T:
-        """Return the given value."""
+        """Return the given value.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The value.
+        """
         with c.span(Just.ID):
             return self.value
 
@@ -252,7 +280,14 @@ class SampledFrom(Generator[_T]):
         self._bounds: IntegerBounds = IntegerBounds(0, len(values) - 1)
 
     def decode(self, c: Case) -> _T:
-        """Return the value at the index that the case chooses."""
+        """Return the value at the index that the case chooses.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The value at the index.
+        """
         with c.span(SampledFrom.ID):
             return self.values[c.integer(self._bounds, 0)]
 
@@ -279,7 +314,14 @@ class OneOf(Generator[_T]):
         self._bounds: IntegerBounds = IntegerBounds(0, len(of) - 1)
 
     def decode(self, c: Case) -> _T:
-        """Return the value that the chosen alternative decodes."""
+        """Return the value that the chosen alternative decodes.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The value of the alternative.
+        """
         with c.span(OneOf.ID):
             return self.of[c.integer(self._bounds, 0)].decode(c)
 
@@ -307,7 +349,14 @@ class Optional(Generator[_T | None]):
         self.of: Generator[_T] = of
 
     def decode(self, c: Case) -> _T | None:
-        """Return None when absent, and the decoded value when present."""
+        """Return None when absent, and the decoded value when present.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The value, or None for a presence choice of 0.
+        """
         with c.span(Optional.ID):
             return self.of.decode(c) if c.integer(_BIT, 1) == 1 else None
 
@@ -341,7 +390,17 @@ class List(Generator[list[_T]]):
         self.unique: bool = unique
 
     def decode(self, c: Case) -> list[_T]:
-        """Return the list that the flags and the elements of the case decode to."""
+        """Return the list that the flags and the elements of the case decode to.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The list.
+
+        Raises:
+            Rejected: The list stops below its minimum size.
+        """
 
         def element() -> tuple[_T, str | None]:
             value = self.of.decode(c)
@@ -381,7 +440,17 @@ class Dict(Generator[Pairs], Generic[_K, _V]):
         self.sizes: Sizes = sizes
 
     def decode(self, c: Case) -> Pairs:
-        """Return the entries that the flags, keys and values of the case decode to."""
+        """Return the entries that the flags, keys and values of the case decode to.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The entries.
+
+        Raises:
+            Rejected: The dict stops below its minimum size.
+        """
 
         def entry() -> tuple[tuple[_K, _V], str]:
             key = self.keys.decode(c)
@@ -423,7 +492,14 @@ class Text(Generator[str]):
         self.bounds: SequenceBounds = bounds
 
     def decode(self, c: Case) -> str:
-        """Return the string of the indices that the case chooses."""
+        """Return the string of the indices that the case chooses.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The string.
+        """
         with c.span(Text.ID):
             indices = c.sequence(self.bounds)
         characters = self.characters
@@ -451,7 +527,14 @@ class Bytes(Generator[bytes]):
         self.bounds: SequenceBounds = bounds
 
     def decode(self, c: Case) -> bytes:
-        """Return the bytes of the sequence of the case."""
+        """Return the bytes of the sequence of the case.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The byte string.
+        """
         with c.span(Bytes.ID):
             return bytes(c.sequence(self.bounds))
 
@@ -460,7 +543,12 @@ class Piece(Protocol):
     """A piece of a pattern that decodes characters from a case."""
 
     def emit(self, c: Case, out: list[str]) -> None:
-        """Append the characters that this piece decodes from its choices to out."""
+        """Append the characters that this piece decodes from its choices to out.
+
+        Args:
+            c: The case.
+            out: The characters that the pattern decoded so far.
+        """
         ...
 
 
@@ -483,7 +571,14 @@ class Matching(Generator[str]):
         self.piece: Piece = piece
 
     def decode(self, c: Case) -> str:
-        """Return the characters that the pieces of the pattern decode."""
+        """Return the characters that the pieces of the pattern decode.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The string.
+        """
         out: list[str] = []
         with c.span(Matching.ID):
             self.piece.emit(c, out)
@@ -513,7 +608,14 @@ class Permutation(Generator[list[_T]]):
         self.values: tuple[_T, ...] = tuple(values)
 
     def decode(self, c: Case) -> list[_T]:
-        """Return the values in the order that the swaps of the case give."""
+        """Return the values in the order that the swaps of the case give.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The values in their new order.
+        """
         ordered = list(self.values)
         last = len(ordered) - 1
         with c.span(Permutation.ID):
@@ -552,7 +654,17 @@ class Filter(Generator[_T]):
         self.keep: Callable[[_T], bool] = keep
 
     def decode(self, c: Case) -> _T:
-        """Return the value of the first attempt that the predicate keeps."""
+        """Return the value of the first attempt that the predicate keeps.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The kept value.
+
+        Raises:
+            Rejected: The predicate keeps no attempt.
+        """
         mark = c.mark()
         value = self._attempt(c)
         for _ in range(1, _FILTER_ATTEMPTS):
@@ -602,7 +714,14 @@ class Mapped(Generator[_U], Generic[_T, _U]):
         self.back: Callable[[_U], _T] | None = back
 
     def decode(self, c: Case) -> _U:
-        """Return the function of the value that the source decodes."""
+        """Return the function of the value that the source decodes.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The value of the function.
+        """
         return self.f(self.of.decode(c))
 
 
@@ -630,7 +749,14 @@ class Bound(Generator[_U], Generic[_T, _U]):
         self.f: Callable[[_T], Generator[_U]] = f
 
     def decode(self, c: Case) -> _U:
-        """Return the value of the second generator."""
+        """Return the value of the second generator.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The value of the generator that the function returned.
+        """
         with c.span(Bound.ID):
             return self.f(self.of.decode(c)).decode(c)
 
@@ -654,7 +780,14 @@ class Composite(Generator[_T]):
         self.f: Callable[[Case], _T] = f
 
     def decode(self, c: Case) -> _T:
-        """Return the value of the function."""
+        """Return the value of the function.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The value that the function returns.
+        """
         with c.span(Composite.ID):
             return self.f(c)
 
@@ -708,7 +841,14 @@ class Recursive(Generator[_T]):
         self.extend: Generator[_T] = extend(Position(self))
 
     def decode(self, c: Case) -> _T:
-        """Return one recursive value. Its leaf count starts at zero."""
+        """Return one recursive value. Its leaf count starts at zero.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The value.
+        """
         counts = self._leaves.counts
         counts.append(0)
         try:
@@ -750,5 +890,12 @@ class Position(Generator[_T]):
         self.owner: Recursive[_T] = owner
 
     def decode(self, c: Case) -> _T:
-        """Decode the next position of the value of the owner."""
+        """Decode the next position of the value of the owner.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The value of the position.
+        """
         return self.owner.position(c)

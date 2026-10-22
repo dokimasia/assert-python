@@ -85,6 +85,9 @@ class Machine(Protocol[S]):
         steps checks the history of the steps against the spec after every
         step, with every call in one partition. A machine without a spec does
         not check the history.
+
+        Returns:
+            The spec, or None.
         """
         ...
 
@@ -94,6 +97,9 @@ class Machine(Protocol[S]):
 
         The actions are in order, with the simpler first. Each has a name of its
         own.
+
+        Returns:
+            The actions.
         """
         ...
 

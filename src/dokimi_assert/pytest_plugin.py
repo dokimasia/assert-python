@@ -116,6 +116,10 @@ def pytest_runtest_call(item: pytest.Item) -> Generator[None, Any, Any]:
     Args:
         item: The running test.
 
+    Yields:
+        Nothing. pluggy runs the call phase of the test at the yield and
+        sends the result back.
+
     Returns:
         The result of the wrapped call.
     """

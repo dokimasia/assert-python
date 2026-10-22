@@ -162,11 +162,19 @@ class Tree:
 
     @property
     def exhausted(self) -> bool:
-        """True when the run has tested every input of its domain."""
+        """True when the run has tested every input of its domain.
+
+        Returns:
+            True for a tree without an untested input.
+        """
         return not self.full and self.root.exhausted
 
     def walker(self) -> Walker:
-        """Return a walker for one new case."""
+        """Return a walker for one new case.
+
+        Returns:
+            The walker, at the root of the tree.
+        """
         return Walker(self)
 
 

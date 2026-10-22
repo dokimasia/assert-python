@@ -112,6 +112,9 @@ class Running:
         """The slot to which the seats of the runs of the body hand their calls.
 
         It is None for a call that is not recorded.
+
+        Returns:
+            The slot, or None.
         """
         return self._slot
 

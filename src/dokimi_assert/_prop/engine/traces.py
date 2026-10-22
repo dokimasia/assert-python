@@ -164,14 +164,22 @@ class Tracing(Provider):
         self._at += 1
 
     def next_step(self) -> Step | None:
-        """Return the next entry when it is a step entry, and None otherwise."""
+        """Return the next entry when it is a step entry, and None otherwise.
+
+        Returns:
+            The step entry, or None.
+        """
         if self._at >= len(self._entries):
             return None
         entry = self._entries[self._at]
         return entry if is_step(entry) else None
 
     def actions(self) -> list[str]:
-        """Return the actions of the step entries from the next one on, each once."""
+        """Return the actions of the step entries from the next one on, each once.
+
+        Returns:
+            The actions, in the order of their first entries.
+        """
         named = [entry.action for entry in self._entries[self._at :] if is_step(entry)]
         return list(dict.fromkeys(named))
 

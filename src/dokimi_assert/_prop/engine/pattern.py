@@ -40,7 +40,12 @@ class Literal:
         self.char: str = char
 
     def emit(self, c: Case, out: list[str]) -> None:
-        """Append the character."""
+        """Append the character.
+
+        Args:
+            c: The case. A literal makes no choice.
+            out: The characters that the pattern decoded so far.
+        """
         del c
         out.append(self.char)
 
@@ -68,7 +73,12 @@ class Class:
         self._bounds: IntegerBounds = IntegerBounds(0, self.size - 1)
 
     def emit(self, c: Case, out: list[str]) -> None:
-        """Append the member at the index that the case chooses."""
+        """Append the member at the index that the case chooses.
+
+        Args:
+            c: The case.
+            out: The characters that the pattern decoded so far.
+        """
         offset = c.integer(self._bounds)
         at = 0
         start, end = self.intervals[0]
@@ -114,7 +124,12 @@ class Sequence:
         self.items: tuple[Piece, ...] = tuple(items)
 
     def emit(self, c: Case, out: list[str]) -> None:
-        """Decode each piece in order."""
+        """Decode each piece in order.
+
+        Args:
+            c: The case.
+            out: The characters that the pattern decoded so far.
+        """
         for item in self.items:
             item.emit(c, out)
 
@@ -137,7 +152,12 @@ class Alternation:
         self.bounds: IntegerBounds = IntegerBounds(0, len(branches) - 1)
 
     def emit(self, c: Case, out: list[str]) -> None:
-        """Decode the branch that the case chooses in a span labelled alternation."""
+        """Decode the branch that the case chooses in a span labelled alternation.
+
+        Args:
+            c: The case.
+            out: The characters that the pattern decoded so far.
+        """
         with c.span(_ALTERNATION):
             self.branches[c.integer(self.bounds, 0)].emit(c, out)
 
@@ -161,7 +181,12 @@ class Repeat:
         self.sizes: Sizes = sizes
 
     def emit(self, c: Case, out: list[str]) -> None:
-        """Decode the repetitions in a span labelled repeat."""
+        """Decode the repetitions in a span labelled repeat.
+
+        Args:
+            c: The case.
+            out: The characters that the pattern decoded so far.
+        """
 
         def repetition() -> tuple[None, None]:
             self.item.emit(c, out)

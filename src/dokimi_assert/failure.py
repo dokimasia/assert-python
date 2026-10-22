@@ -62,6 +62,9 @@ class Failure:
         A declared field can contain None, as got of an equal failure over
         None does. The accessor then returns None.
 
+        Returns:
+            The value of want.
+
         Raises:
             KeyError: The assertion does not declare the field want.
         """
@@ -70,6 +73,9 @@ class Failure:
     @property
     def got(self) -> Any:
         """The value of the field got of the detail.
+
+        Returns:
+            The value of got.
 
         Raises:
             KeyError: The assertion does not declare the field got.
@@ -82,6 +88,9 @@ class Failure:
 
         It is the record of the minimal case of a counterexample, or of the
         case that the replay of a flaky run contradicted.
+
+        Returns:
+            The failure record of the case.
 
         Raises:
             KeyError: The detail does not contain a failure record in the

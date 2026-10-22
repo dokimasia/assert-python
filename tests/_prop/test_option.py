@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from typing import Any, ClassVar
 
 import pytest
@@ -15,6 +16,7 @@ from dokimi_assert._prop.option import (
     Config,
     FormOnly,
     Option,
+    around,
     cases,
     configure,
     draws,
@@ -34,6 +36,11 @@ from dokimi_assert._prop.option import (
 )
 from dokimi_assert.seat import Collector
 from helpers import refusal
+
+
+def _wrap(run: Callable[[], None]) -> None:
+    """Call run once, as a wrapper of the around option does."""
+    run()
 
 
 class TestOption:
@@ -81,6 +88,7 @@ class TestConfig:
                 workers=1,
                 hermetic=False,
                 draws=None,
+                around=None,
             ),
             "Config has the defaults of a run",
         )
@@ -112,6 +120,7 @@ class TestConfigure:
                     workers(2),
                     hermetic(),
                     draws("[]"),
+                    around(_wrap),
                 ]
             ),
             Config(
@@ -127,6 +136,7 @@ class TestConfigure:
                 workers=2,
                 hermetic=True,
                 draws="[]",
+                around=_wrap,
             ),
             "each option sets its setting",
         )
@@ -444,6 +454,28 @@ class TestDraws:
         """The array is empty."""
         check.equal(
             seat, draws("[]"), Option("draws", "[]"), "the option has the empty array"
+        )
+
+
+class TestAround:
+    """around sets the wrapper of each run of the body."""
+
+    def test_returns_the_option_of_the_wrapper(self, seat: Collector) -> None:
+        """The option has the function."""
+        check.equal(
+            seat, around(_wrap), Option("around", _wrap), "the option has the wrapper"
+        )
+
+    def test_raises_value_error_for_a_wrapper_that_is_not_callable(
+        self, seat: Collector
+    ) -> None:
+        """The error has the call."""
+        wrapper: Any = None
+        check.equal(
+            seat,
+            refusal(seat, lambda: around(wrapper)),
+            "prop: around(None) needs a callable",
+            "the error has the call",
         )
 
 

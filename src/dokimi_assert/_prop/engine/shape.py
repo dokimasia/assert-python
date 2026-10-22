@@ -268,12 +268,24 @@ class Root(Generator[Any]):
     """
 
     def __init__(self, node: Generator[Any], budget: _Budget) -> None:
-        """Return the root of a generator and the budget of its values."""
+        """Return the root of a generator and the budget of its values.
+
+        Args:
+            node: The generator of the root shape.
+            budget: The budget of the values of the shape file.
+        """
         self.node: Generator[Any] = node
         self._budget: _Budget = budget
 
     def decode(self, c: Case) -> Any:
-        """Return one value of the root shape."""
+        """Return one value of the root shape.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The value.
+        """
         return self._budget.value(lambda: self.node.decode(c))
 
 
@@ -295,14 +307,29 @@ class Ref(Generator[Any]):
         cyclic: bool,
         budget: _Budget,
     ) -> None:
-        """Return the ref of a name."""
+        """Return the ref of a name.
+
+        Args:
+            name: The name of the definition.
+            definitions: The generators of the definitions, by name.
+            cyclic: When True, the definition can refer to itself, and each
+                value of the ref counts one node of the budget.
+            budget: The budget of the values of the shape file.
+        """
         self.name: str = name
         self.definitions: Mapping[str, Generator[Any]] = definitions
         self._cyclic: bool = cyclic
         self._budget: _Budget = budget
 
     def decode(self, c: Case) -> Any:
-        """Return the value of the definition of the ref."""
+        """Return the value of the definition of the ref.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The value of the definition.
+        """
         if self._cyclic:
             self._budget.spend()
         return self.definitions[self.name].decode(c)
@@ -316,13 +343,27 @@ class OptionalShape(Generator[Any]):
     """
 
     def __init__(self, of: Generator[Any], exits: bool, budget: _Budget) -> None:
-        """Return the optional of a generator."""
+        """Return the optional of a generator.
+
+        Args:
+            of: The generator of the value.
+            exits: When True, the optional is an exit of a definition that
+                refers back, so a used budget makes it absent.
+            budget: The budget of the values of the shape file.
+        """
         self.of: Generator[Any] = of
         self._exits: bool = exits
         self._budget: _Budget = budget
 
     def decode(self, c: Case) -> Any:
-        """Return None when absent, and the decoded value when present."""
+        """Return None when absent, and the decoded value when present.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The value, or None for a presence choice of 0.
+        """
         forced = self._exits and self._budget.exhausted
         bounds = IntegerBounds(0, 0 if forced else 1)
         with c.span("optional"):
@@ -348,7 +389,16 @@ class ListShape(Generator[list[Any]]):
         exits: bool,
         budget: _Budget,
     ) -> None:
-        """Return the list of a generator."""
+        """Return the list of a generator.
+
+        Args:
+            of: The generator of the elements.
+            sizes: The sizes.
+            unique: When True, the elements are unique.
+            exits: When True, the list stops adding elements once the
+                budget of its value is used.
+            budget: The budget of the values of the shape file.
+        """
         self.of: Generator[Any] = of
         self.sizes: Sizes = sizes
         self.unique: bool = unique
@@ -356,7 +406,17 @@ class ListShape(Generator[list[Any]]):
         self._budget: _Budget = budget
 
     def decode(self, c: Case) -> list[Any]:
-        """Return the elements that the flags and the choices of the case decode to."""
+        """Return the elements that the flags and the choices of the case decode to.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The elements.
+
+        Raises:
+            Rejected: The list stops below its minimum size.
+        """
         budget = self._budget
         stop = (lambda: budget.exhausted) if self._exits else None
 
@@ -385,7 +445,16 @@ class MapShape(Generator[Pairs]):
         exits: bool,
         budget: _Budget,
     ) -> None:
-        """Return the map of a generator of keys and a generator of values."""
+        """Return the map of a generator of keys and a generator of values.
+
+        Args:
+            key: The generator of the keys.
+            of: The generator of the values.
+            sizes: The sizes.
+            exits: When True, the map stops adding entries once the budget of
+                its value is used.
+            budget: The budget of the values of the shape file.
+        """
         self.key: Generator[Any] = key
         self.of: Generator[Any] = of
         self.sizes: Sizes = sizes
@@ -393,7 +462,17 @@ class MapShape(Generator[Pairs]):
         self._budget: _Budget = budget
 
     def decode(self, c: Case) -> Pairs:
-        """Return the entries that the flags, keys and values of the case decode to."""
+        """Return the entries that the flags, keys and values of the case decode to.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The entries.
+
+        Raises:
+            Rejected: The map stops below its minimum size.
+        """
         budget = self._budget
         stop = (lambda: budget.exhausted) if self._exits else None
 
@@ -413,11 +492,22 @@ class RecordShape(Generator[Fields]):
     """
 
     def __init__(self, fields: list[tuple[str, Generator[Any]]]) -> None:
-        """Return the record of fields."""
+        """Return the record of fields.
+
+        Args:
+            fields: The fields. Each field is a name and a generator.
+        """
         self.fields: tuple[tuple[str, Generator[Any]], ...] = tuple(fields)
 
     def decode(self, c: Case) -> Fields:
-        """Return the record of the value of each field."""
+        """Return the record of the value of each field.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The record.
+        """
         values: list[tuple[str, Any]] = []
         with c.span("record"):
             for name, of in self.fields:
@@ -444,13 +534,28 @@ class EnumShape(Generator[Variant]):
         exit: int | None,
         budget: _Budget,
     ) -> None:
-        """Return the enum of variants."""
+        """Return the enum of variants.
+
+        Args:
+            variants: The variants. Each variant is a name and the generator
+                of its payload, or a name and None.
+            exit: The index of the first variant that does not refer back,
+                or None for an enum that does not refer back.
+            budget: The budget of the values of the shape file.
+        """
         self.variants: tuple[tuple[str, Generator[Any] | None], ...] = tuple(variants)
         self._exit: int | None = exit
         self._budget: _Budget = budget
 
     def decode(self, c: Case) -> Variant:
-        """Return the variant that the case chooses."""
+        """Return the variant that the case chooses.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The variant, with its payload when it has one.
+        """
         bounds = IntegerBounds(0, len(self.variants) - 1)
         if self._exit is not None and self._budget.exhausted:
             bounds = IntegerBounds(self._exit, self._exit)
@@ -507,12 +612,24 @@ class Int128Shape(Generator[int]):
     """
 
     def __init__(self, lo: int, hi: int) -> None:
-        """Return the 128-bit integers from lo to hi."""
+        """Return the 128-bit integers from lo to hi.
+
+        Args:
+            lo: The smallest value.
+            hi: The largest value.
+        """
         self.lo: int = lo
         self.hi: int = hi
 
     def decode(self, c: Case) -> int:
-        """Return the integer of the two halves."""
+        """Return the integer of the two halves.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The integer.
+        """
         lo = halves(self.lo)
         hi = halves(self.hi)
         with c.span("int"):
@@ -543,13 +660,26 @@ class InstantShape(Generator[Fields]):
     """
 
     def __init__(self, per: int, lo: Pair, hi: Pair) -> None:
-        """Return the instants from lo to hi at a unit."""
+        """Return the instants from lo to hi at a unit.
+
+        Args:
+            per: The units in a second.
+            lo: The seconds and the units of the lower bound.
+            hi: The seconds and the units of the upper bound.
+        """
         self.per: int = per
         self.lo: Pair = lo
         self.hi: Pair = hi
 
     def decode(self, c: Case) -> Fields:
-        """Return the record of the seconds and the units."""
+        """Return the record of the seconds and the units.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The record of the seconds and the units within the second.
+        """
         units = 0
         with c.span("instant"):
             seconds = c.integer(IntegerBounds(self.lo[0], self.hi[0]), None, True)
@@ -569,13 +699,26 @@ class LocalDateTimeShape(Generator[Fields]):
     """
 
     def __init__(self, per: int, lo: Pair, hi: Pair) -> None:
-        """Return the local dates and times from lo to hi at a unit."""
+        """Return the local dates and times from lo to hi at a unit.
+
+        Args:
+            per: The units in a second.
+            lo: The day and the time of day of the lower bound.
+            hi: The day and the time of day of the upper bound.
+        """
         self.per: int = per
         self.lo: Pair = lo
         self.hi: Pair = hi
 
     def decode(self, c: Case) -> Fields:
-        """Return the record of the date and the time of day."""
+        """Return the record of the date and the time of day.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The record of the date and the time of day.
+        """
         top = _SECONDS_PER_DAY * self.per - 1
         with c.span("local-date-time"):
             day = c.integer(IntegerBounds(self.lo[0], self.hi[0]), None, True)
@@ -633,11 +776,22 @@ class ZonedShape(Generator[Fields]):
     """
 
     def __init__(self, instant: InstantShape) -> None:
-        """Return the zoned instants of an instant shape."""
+        """Return the zoned instants of an instant shape.
+
+        Args:
+            instant: The shape of the instant.
+        """
         self.instant: InstantShape = instant
 
     def decode(self, c: Case) -> Fields:
-        """Return the record of the instant and the name of the zone."""
+        """Return the record of the instant and the name of the zone.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The record of the instant and the name of the zone.
+        """
         per = self.instant.per
         with c.span("zoned-date-time"):
             zone = _zone_of(c)
@@ -664,11 +818,22 @@ class WallShape(Generator[Fields]):
     """
 
     def __init__(self, local: LocalDateTimeShape) -> None:
-        """Return the wall times of a local date and time shape."""
+        """Return the wall times of a local date and time shape.
+
+        Args:
+            local: The shape of the local date and time.
+        """
         self.local: LocalDateTimeShape = local
 
     def decode(self, c: Case) -> Fields:
-        """Return the record of the local date and time and the name of the zone."""
+        """Return the record of the local date and time and the name of the zone.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The record of the local date and time and the name of the zone.
+        """
         per = self.local.per
         with c.span("wall-time"):
             zone = _zone_of(c)
@@ -694,11 +859,23 @@ class IpShape(Generator[bytes]):
     """
 
     def __init__(self, versions: tuple[Bytes, Bytes]) -> None:
-        """Return the addresses of both versions."""
+        """Return the addresses of both versions.
+
+        Args:
+            versions: The generators of the bytes of a version 4 address and
+                of a version 6 address.
+        """
         self.versions: tuple[Bytes, Bytes] = versions
 
     def decode(self, c: Case) -> bytes:
-        """Return the bytes of the address in network order."""
+        """Return the bytes of the address in network order.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The 4 or 16 bytes of the address.
+        """
         with c.span("ip-address"):
             return self.versions[c.integer(_BIT, 0)].decode(c)
 

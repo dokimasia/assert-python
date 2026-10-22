@@ -14,7 +14,7 @@ equate_nans.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from typing import Any, Literal
 
@@ -30,6 +30,8 @@ __all__ = [
     "FormOnly",
     "FormOption",
     "Option",
+    "Wrapper",
+    "around",
     "cases",
     "configure",
     "draws",
@@ -55,6 +57,10 @@ _SEED_LIMIT = 2**64
 #: time.
 DEFAULT_SHRINK_TIME = 30.0
 
+#: The wrapper of the runs of a property's body. It calls run once inside an
+#: environment that it chooses, and returns after run returns.
+Wrapper = Callable[[Callable[[], None]], object]
+
 
 @dataclass(frozen=True, slots=True)
 class Option:
@@ -78,6 +84,7 @@ class Option:
         "workers",
         "hermetic",
         "draws",
+        "around",
     ]
     value: Any = None
 
@@ -119,6 +126,7 @@ class Config:
         workers: The number of cases that run at once.
         hermetic: When True, the run ignores the variables of the engine.
         draws: The JSON array of entries that the first case follows, or None.
+        around: The wrapper of each run of the body, or None.
     """
 
     cases: int = DEFAULT_CASES
@@ -133,6 +141,7 @@ class Config:
     workers: int = 1
     hermetic: bool = False
     draws: str | None = None
+    around: Wrapper | None = None
 
 
 def configure(options: Iterable[Option]) -> Config:
@@ -402,6 +411,35 @@ def draws(entries: str) -> Option:
         The option.
     """
     return Option("draws", entries)
+
+
+def around(wrapper: Wrapper) -> Option:
+    """Run each run of the body inside wrapper.
+
+    The run calls wrapper with a function run for each run of the body. That
+    includes the case of draws, each stored, generated and replayed case,
+    each shrink candidate, each filling that explains a draw, each case of a
+    campaign and the case of each fuzz input. wrapper calls run once inside
+    an environment that it chooses, and returns after run returns. run takes
+    no argument. It returns after the body and its cleanups end, also for a
+    failing case, so wrapper does not change the verdict.
+
+    The call ends with a fault when wrapper returns without calling run,
+    calls run a second time or raises. Under workers, wrapper runs on more
+    than one thread at once.
+
+    Args:
+        wrapper: The wrapper. It takes run and calls it once.
+
+    Returns:
+        The option.
+
+    Raises:
+        ValueError: wrapper is not callable.
+    """
+    if not callable(wrapper):
+        raise ValueError(f"prop: around({wrapper!r}) needs a callable")  # pyright: ignore[reportUnreachable]
+    return Option("around", wrapper)
 
 
 def using(t: type[Any], generator: Generator[Any]) -> FormOnly:

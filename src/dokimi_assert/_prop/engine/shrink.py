@@ -553,17 +553,29 @@ class Shrinker:
 
     @property
     def best(self) -> Failure:
-        """The failure that is being shrunk."""
+        """The failure that is being shrunk.
+
+        Returns:
+            The smallest failing case so far.
+        """
         return self.failures[self._target]
 
     @property
     def nodes(self) -> tuple[Node, ...]:
-        """The choices of the best case."""
+        """The choices of the best case.
+
+        Returns:
+            The nodes of the choices, in order.
+        """
         return self.best.nodes
 
     @property
     def spans(self) -> list[Span]:
-        """The spans of the best case."""
+        """The spans of the best case.
+
+        Returns:
+            The spans, in the order of their starts.
+        """
         return self.best.execution.case.spans
 
     def _record(self, execution: Execution) -> None:

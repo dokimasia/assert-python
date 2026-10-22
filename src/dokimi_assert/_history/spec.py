@@ -46,12 +46,20 @@ class Operation(Protocol):
 
     @property
     def name(self) -> str:
-        """The operation of the call."""
+        """The operation of the call.
+
+        Returns:
+            The name of the operation.
+        """
         ...
 
     @property
     def args(self) -> tuple[Any, ...]:
-        """The arguments of the call."""
+        """The arguments of the call.
+
+        Returns:
+            The arguments, in order.
+        """
         ...
 
     @property
@@ -59,12 +67,19 @@ class Operation(Protocol):
         """True when the call completed as ok.
 
         A call whose outcome is unknown and a pending call are not known.
+
+        Returns:
+            True for a call that completed as ok.
         """
         ...
 
     @property
     def output(self) -> Any:
-        """The value that a known call returned. It is None for any other call."""
+        """The value that a known call returned. It is None for any other call.
+
+        Returns:
+            The output of a known call, or None.
+        """
         ...
 
     def returned(self, value: Any) -> bool:
@@ -136,7 +151,11 @@ class Spec(Protocol[_S]):
     """
 
     def initial(self) -> _S:
-        """Return the state before any call."""
+        """Return the state before any call.
+
+        Returns:
+            The initial state.
+        """
         ...
 
     def next(self, state: _S, op: Operation) -> Sequence[_S]:
@@ -257,7 +276,11 @@ class SubjectSpec:
         self._factory: Callable[[], Subject] = factory
 
     def initial(self) -> tuple[Operation, ...]:
-        """Return the state before any call. It is the empty tuple."""
+        """Return the state before any call. It is the empty tuple.
+
+        Returns:
+            The empty tuple.
+        """
         return ()
 
     def next(
@@ -283,20 +306,42 @@ class SubjectSpec:
         return [(*state, CallOperation(op.name, tuple(op.args), False))]
 
     def equal(self, a: tuple[Operation, ...], b: tuple[Operation, ...]) -> bool:
-        """Report whether two states have the same calls in the same order."""
+        """Report whether two states have the same calls in the same order.
+
+        Args:
+            a: A state.
+            b: Another state.
+
+        Returns:
+            True when each call of a has the name and the arguments of the
+            call of b at its index.
+        """
         return len(a) == len(b) and all(
             x.name == y.name and same_state(x.args, y.args)
             for x, y in zip(a, b, strict=True)
         )
 
     def key(self, state: tuple[Operation, ...]) -> Hashable:
-        """Return the key of a state from the name and the arguments of each call."""
+        """Return the key of a state from the name and the arguments of each call.
+
+        Args:
+            state: The calls applied so far.
+
+        Returns:
+            The key.
+        """
         return tuple((op.name, state_key(op.args)) for op in state)
 
     def cost(self, state: tuple[Operation, ...]) -> int:
         """Return the budget steps that a call of next from state costs.
 
         A step from a state of d calls applies d + 1 calls.
+
+        Args:
+            state: The calls applied so far.
+
+        Returns:
+            The number of calls that the step applies.
         """
         return len(state) + 1
 

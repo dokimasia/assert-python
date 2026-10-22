@@ -6,9 +6,11 @@ for_all, fuzz and every property form use the run.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import itertools
 import json
 import os
+import threading
 import time
 import warnings
 from collections.abc import Callable
@@ -35,6 +37,7 @@ from dokimi_assert._prop.environment import (
 )
 from dokimi_assert._prop.option import (
     Option,
+    around,
     cases,
     configure,
     draws,
@@ -679,6 +682,142 @@ class TestPropertyRun:
             records(two),
             records(one),
             "two workers record the same calls as one worker",
+        )
+
+    def test_runs_each_run_of_the_body_inside_the_wrapper_of_around(
+        self, seat: Collector
+    ) -> None:
+        """The generated case, each shrink candidate and each filling run inside it."""
+        wrapped: list[str] = []
+        ran: list[str] = []
+
+        def body(c: Case) -> None:
+            ran.append("body")
+            check.equal(c, wrapped[-1], "inside", "the body runs inside the wrapper")
+            below_five(c)
+
+        def wrapper(run: Callable[[], None]) -> None:
+            wrapped.append("inside")
+            run()
+            wrapped.append("outside")
+
+        recorder = Recorder()
+        run_on(recorder, body, around(wrapper))
+        detail = first_detail(recorder)
+        check.equal(
+            seat,
+            [
+                detail["outcome"],
+                detail["counterexample"][0].value,
+                wrapped.count("inside"),
+                wrapped.count("outside"),
+            ],
+            ["counterexample", 5, len(ran), len(ran)],
+            "the wrapper runs each run of the body once",
+        )
+
+    def test_keeps_the_verdict_of_the_body_under_a_wrapper_that_catches(
+        self, seat: Collector
+    ) -> None:
+        """The run function raises nothing for a failing case, so nothing is hidden."""
+
+        def wrapper(run: Callable[[], None]) -> None:
+            with contextlib.suppress(Exception):
+                run()
+
+        recorder = Recorder()
+        run_on(recorder, below_five, around(wrapper))
+        check.equal(
+            seat,
+            first_detail(recorder)["outcome"],
+            "counterexample",
+            "the run fails",
+        )
+
+    def test_runs_a_case_that_the_wrapper_runs_on_another_thread(
+        self, seat: Collector
+    ) -> None:
+        """A coroutine body runs on a loop of the thread of the wrapper."""
+
+        def wrapper(run: Callable[[], None]) -> None:
+            thread = threading.Thread(target=run)
+            thread.start()
+            thread.join()
+
+        async def body(c: Case) -> None:
+            await asyncio.sleep(0)
+            below_five(c)
+
+        recorder = Recorder()
+        run_on(recorder, body, around(wrapper))
+        detail = first_detail(recorder)
+        check.equal(
+            seat,
+            [detail["outcome"], detail["counterexample"][0].value],
+            ["counterexample", 5],
+            "the counterexample is 5",
+        )
+
+    def test_ends_the_call_with_a_fault_for_a_wrapper_that_does_not_call_run(
+        self, seat: Collector
+    ) -> None:
+        """A call of run after the wrapper returned runs nothing."""
+        ran: list[str] = []
+        kept: list[Callable[[], None]] = []
+
+        def body(c: Case) -> None:
+            ran.append("body")
+            any_digit(c)
+
+        recorder = Recorder()
+        run_on(recorder, body, around(kept.append))
+        kept[0]()
+        check.equal(
+            seat,
+            [recorder.message, ran],
+            ["prop.for_all: around: the wrapper returned without calling run", []],
+            "the call ends with the fault, and the body does not run",
+        )
+
+    def test_ends_the_call_with_a_fault_for_a_wrapper_that_calls_run_twice(
+        self, seat: Collector
+    ) -> None:
+        """The second call of run runs nothing."""
+        ran: list[str] = []
+
+        def body(c: Case) -> None:
+            ran.append("body")
+            any_digit(c)
+
+        def wrapper(run: Callable[[], None]) -> None:
+            run()
+            run()
+
+        recorder = Recorder()
+        run_on(recorder, body, around(wrapper))
+        check.equal(
+            seat,
+            [recorder.message, ran],
+            ["prop.for_all: around: the wrapper called run a second time", ["body"]],
+            "the call ends with the fault after one run of the body",
+        )
+
+    def test_ends_the_call_with_a_fault_for_a_wrapper_that_raises(
+        self, seat: Collector
+    ) -> None:
+        """The fault has the text of the exception."""
+
+        def wrapper(run: Callable[[], None]) -> None:
+            run()
+            raise RuntimeError("the frozen clock did not stop")
+
+        recorder = Recorder()
+        run_on(recorder, any_digit, around(wrapper))
+        check.equal(
+            seat,
+            recorder.message,
+            "prop.for_all: around: the wrapper raised: the frozen clock did not stop",
+            "the call ends with the fault",
         )
 
 

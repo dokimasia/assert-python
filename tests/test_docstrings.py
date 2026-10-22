@@ -105,20 +105,47 @@ def test_every_parameter_is_documented(where: str, name: str, node: Any) -> None
     assert not missing, f"{where}::{name} does not document {sorted(missing)}"
 
 
+#: The annotations of a function that never returns.
+NEVER_RETURNS = {"NoReturn", "Never", "typing.NoReturn", "typing.Never"}
+
+
+def _yields(node: Function) -> bool:
+    """Report whether a function is a generator: its own body yields.
+
+    A yield inside a nested function or class belongs to that one.
+    """
+    pending: list[ast.AST] = list(node.body)
+    while pending:
+        current = pending.pop()
+        if isinstance(current, ast.Yield | ast.YieldFrom):
+            return True
+        if isinstance(current, Function | ast.Lambda | ast.ClassDef):
+            continue
+        pending.extend(ast.iter_child_nodes(current))
+    return False
+
+
 @pytest.mark.parametrize(("where", "name", "node"), FUNCTIONS, ids=IDS)
 def test_a_returning_function_says_what_it_returns(
     where: str, name: str, node: Any
 ) -> None:
-    """A caller cannot use a return value nobody described."""
+    """A caller cannot use a return value nobody described.
+
+    A generator describes what it yields under Yields. A function that never
+    returns has no value to describe.
+    """
     doc = ast.get_docstring(node) or ""
     returns = node.returns
-    answers = returns is not None and not (
-        isinstance(returns, ast.Constant) and returns.value is None
+    answers = (
+        returns is not None
+        and not (isinstance(returns, ast.Constant) and returns.value is None)
+        and ast.unparse(returns) not in NEVER_RETURNS
     )
     if not answers:
         return
 
-    assert "Returns:" in doc, f"{where}::{name} returns a value it does not describe"
+    section = "Yields:" if _yields(node) else "Returns:"
+    assert section in doc, f"{where}::{name} returns a value it does not describe"
 
 
 @pytest.mark.parametrize(("where", "name", "node"), FUNCTIONS, ids=IDS)

@@ -61,7 +61,11 @@ class Source:
             self.next()
 
     def next(self) -> int:
-        """Return the next 64-bit value of the stream."""
+        """Return the next 64-bit value of the stream.
+
+        Returns:
+            The value, from 0 to 2^64 - 1.
+        """
         e = (self._a - _rotl(self._b, 7)) & MASK
         self._a = self._b ^ _rotl(self._c, 13)
         self._b = (self._c + _rotl(self._d, 37)) & MASK

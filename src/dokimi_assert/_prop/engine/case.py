@@ -72,6 +72,12 @@ class Decoder(Protocol[_T_co]):
     def decode(self, c: Case) -> _T_co:
         """Ask the case for choices, and return the value that they decode to.
 
+        Args:
+            c: The case.
+
+        Returns:
+            The value.
+
         Raises:
             Rejected: The choices do not decode to a value of the domain.
         """
@@ -185,7 +191,13 @@ class Observer(Protocol):
     """The observer of each choice that the case records. The case tree is one."""
 
     def step(self, index: int, request: Request, value: Value) -> None:
-        """Take the choice at an index, or raise a signal that ends the body."""
+        """Take the choice at an index, or raise a signal that ends the body.
+
+        Args:
+            index: The index of the choice in the case.
+            request: The request of the choice.
+            value: The value of the choice.
+        """
         ...
 
 
@@ -395,7 +407,11 @@ class Valuing(Provider):
         self._at: int = 0
 
     def valued(self) -> tuple[object] | None:
-        """Return the next given value, or None when none is left."""
+        """Return the next given value, or None when none is left.
+
+        Returns:
+            A tuple of the next value, or None.
+        """
         if self._at == len(self._values):
             return None
         self._at += 1
@@ -529,12 +545,20 @@ class Case:
 
     @property
     def provider(self) -> Provider:
-        """The provider of the values of the case. The steps of a machine use it."""
+        """The provider of the values of the case. The steps of a machine use it.
+
+        Returns:
+            The provider.
+        """
         return self._provider
 
     @property
     def max_choices(self) -> int:
-        """The largest number of choices that the case can make."""
+        """The largest number of choices that the case can make.
+
+        Returns:
+            The cap.
+        """
         return self._max_choices
 
     @property
@@ -542,6 +566,9 @@ class Case:
         """The number of runs of the body on the choices of the case.
 
         It is 1 until a call of repeat raises it.
+
+        Returns:
+            The number of runs.
         """
         return self._repeats
 
@@ -558,7 +585,11 @@ class Case:
         self._repeats = max(self._repeats, n)
 
     def where(self) -> Where:
-        """Return the label of the open draw and the place of the machine."""
+        """Return the label of the open draw and the place of the machine.
+
+        Returns:
+            The where of the next request.
+        """
         return Where(self._drawing[-1] if self._drawing else None, self.place)
 
     def choose(self, request: Request) -> Value:
@@ -711,7 +742,11 @@ class Case:
         return record
 
     def mark(self) -> Mark:
-        """Return the current point of the record for rewind."""
+        """Return the current point of the record for rewind.
+
+        Returns:
+            The mark.
+        """
         return Mark(len(self.choices), len(self.spans), len(self.draws))
 
     def rewind(self, mark: Mark) -> None:
@@ -819,7 +854,11 @@ class Case:
             self.targets[label] = score
 
     def random(self) -> int:
-        """Return an integer choice over the whole unsigned 64-bit range."""
+        """Return an integer choice over the whole unsigned 64-bit range.
+
+        Returns:
+            The integer.
+        """
         return self.integer(_RANDOM)
 
     def fail(self, identity: str, record: object = None) -> None:

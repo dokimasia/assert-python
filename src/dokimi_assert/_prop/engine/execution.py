@@ -144,12 +144,20 @@ class Execution:
 
     @property
     def runs(self) -> int:
-        """The number of runs of the body that the execution made."""
+        """The number of runs of the body that the execution made.
+
+        Returns:
+            The number of runs.
+        """
         return max(len(self.ran), 1)
 
     @property
     def cases(self) -> tuple[Case, ...]:
-        """The cases of the runs of the body in the order of the runs."""
+        """The cases of the runs of the body in the order of the runs.
+
+        Returns:
+            The cases.
+        """
         return self.ran or (self.case,)
 
 

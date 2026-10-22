@@ -57,7 +57,11 @@ class Sizes:
 
     @property
     def average(self) -> int:
-        """The average length of the collection in the random phase."""
+        """The average length of the collection in the random phase.
+
+        Returns:
+            The average length.
+        """
         return draw.average_length(self.min_size, self.max_size)
 
 
