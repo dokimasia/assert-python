@@ -1,8 +1,12 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/edge.py tests the value of each choice at each boundary."""
 
 from __future__ import annotations
 
 import math
+from typing import TYPE_CHECKING
 
 from dokimi_assert import check
 from dokimi_assert._prop.engine.case import Request
@@ -14,8 +18,10 @@ from dokimi_assert._prop.engine.choice import (
     Value,
 )
 from dokimi_assert._prop.engine.edge import BOUNDARIES, Edge
-from dokimi_assert.seat import Collector
 from helpers import no_draw
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 def take(bounds: Bounds, edge: int | None = None) -> list[Value]:

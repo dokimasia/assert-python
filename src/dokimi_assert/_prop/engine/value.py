@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """Decoded values and the equality that decides uniqueness.
 
 The generators of the engine decode to Python values: None, a bool, an int,
@@ -19,7 +22,8 @@ import json
 import math
 import uuid
 import zoneinfo
-from collections.abc import Mapping, Set
+from collections.abc import Mapping
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import Any
 
@@ -105,7 +109,10 @@ def _field(name: str, value: Any) -> str:
     return f"{json.dumps(name)}={canonical(value)}"
 
 
-def _canonical_object(value: object) -> str:
+# canonical takes one call of this function for each level of a value, and a
+# value of a recursive shape has up to 100 levels. A split of this function
+# adds a frame to each level, and such a value then passes the recursion limit.
+def _canonical_object(value: object) -> str:  # noqa: C901, PLR0911
     """Return the canonical text of a value that is not a scalar."""
     if isinstance(value, Pairs):
         entries = [f"{canonical(k)}={canonical(v)}" for k, v in value.items]
@@ -133,8 +140,8 @@ def _canonical_object(value: object) -> str:
         mapping: Mapping[Any, Any] = value
         entries = [f"{canonical(k)}={canonical(v)}" for k, v in mapping.items()]
         return f"map:{{{_sorted(entries)}}}"
-    if isinstance(value, Set):
-        elements: Set[Any] = value
+    if isinstance(value, AbstractSet):
+        elements: AbstractSet[Any] = value
         return f"set:{{{_sorted(canonical(e) for e in elements)}}}"
     if isinstance(value, _BY_REPR):
         return f"{type(value).__qualname__}:{value!r}"
@@ -162,12 +169,32 @@ def canonical(value: object) -> str:
     """
     if value is None:
         return "null"
+    if isinstance(value, (bool, int, float)):
+        return _canonical_number(value)
+    if isinstance(value, (str, bytes, bytearray)):
+        return _canonical_text(value)
+    return _canonical_object(value)
+
+
+def _canonical_number(value: float) -> str:
+    """Return the canonical text of a bool, an int or a float.
+
+    An int that is a member of an enum has the text of its type and its name.
+    """
     if isinstance(value, bool):
         return f"bool:{'true' if value else 'false'}"
     if isinstance(value, int) and not isinstance(value, enum.Enum):
         return f"int:{value}"
     if isinstance(value, float):
         return f"float:{NAN_BITS if math.isnan(value) else bits_of(value)}"
+    return _canonical_object(value)
+
+
+def _canonical_text(value: str | bytes | bytearray) -> str:
+    """Return the canonical text of a str, bytes or a bytearray.
+
+    A str that is a member of an enum has the text of its type and its name.
+    """
     if isinstance(value, str) and not isinstance(value, enum.Enum):
         return f"string:{json.dumps(value)}"
     if isinstance(value, (bytes, bytearray)):

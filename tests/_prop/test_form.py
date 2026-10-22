@@ -1,18 +1,18 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/form.py tests the run of the property forms."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
 from dokimi_assert import check
 from dokimi_assert._matcher import value
-from dokimi_assert._matcher.option import Option as Relaxation
 from dokimi_assert._matcher.seat import Mode
 from dokimi_assert._prop import generators as prop
-from dokimi_assert._prop.case import Case
 from dokimi_assert._prop.engine.generator import Mapped
 from dokimi_assert._prop.form import INPUT, PAIR, TRIPLE, Form, run_form
 from dokimi_assert._prop.option import (
@@ -29,6 +29,12 @@ from dokimi_assert._prop.option import (
 from dokimi_assert.option import by_identity, equate_empty, equate_nans
 from dokimi_assert.seat import Collector, Recorder
 from helpers import records
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from dokimi_assert._matcher.option import Option as Relaxation
+    from dokimi_assert._prop.case import Case
 
 #: A form of one input whose assertion does not take a relaxation.
 BELOW = Form("prop.below", "prop-below", False)
@@ -97,7 +103,8 @@ del unannotated.__annotations__["x"]
 
 def breaks(_: int) -> int:
     """Raise RuntimeError in the same way as a map that breaks."""
-    raise RuntimeError("the map broke")
+    msg = "the map broke"
+    raise RuntimeError(msg)
 
 
 def seen_by(seen: list[tuple[Any, ...]]) -> Callable[..., None]:
@@ -332,16 +339,20 @@ class TestRunForm:
             BELOW,
             digit,
             [DIGITS, equate_nans()],
-            "prop.below: the form does not take a relaxation, because its "
-            "assertion does not take one",
+            (
+                "prop.below: the form does not take a relaxation, because its "
+                "assertion does not take one"
+            ),
         ),
         (
             "a function without an annotation",
             BELOW,
             unannotated,
             [DIGITS],
-            "prop.below: the parameter x of the function unannotated does not have "
-            "an annotation, so the form cannot read the type of its input",
+            (
+                "prop.below: the parameter x of the function unannotated does not have "
+                "an annotation, so the form cannot read the type of its input"
+            ),
         ),
         (
             "a function without an input",
@@ -355,8 +366,10 @@ class TestRunForm:
             BELOW,
             unresolved,
             [DIGITS],
-            "prop.below: the annotations of the function unresolved do not "
-            "resolve: name 'Missing' is not defined",
+            (
+                "prop.below: the annotations of the function unresolved do not "
+                "resolve: name 'Missing' is not defined"
+            ),
         ),
         (
             "a function whose signature cannot be read",
@@ -377,40 +390,50 @@ class TestRunForm:
             BELOW,
             digit,
             [DIGITS, example(1, 2)],
-            "prop.below: example[0]: the example has 2 values, and the form "
-            "generates 1",
+            (
+                "prop.below: example[0]: the example has 2 values, and the form "
+                "generates 1"
+            ),
         ),
         (
             "examples of a form of two inputs",
             BOTH,
             sum_of,
             [DIGITS, examples(1)],
-            "prop.both: examples[0]: the examples option needs a form of one "
-            "input, and the form generates 2",
+            (
+                "prop.both: examples[0]: the examples option needs a form of one "
+                "input, and the form generates 2"
+            ),
         ),
         (
             "an example of a value that the generator does not produce",
             BOTH,
             sum_of,
             [DIGITS, example(1, 99)],
-            "prop.both: example[0][1]: the generator of the input does not "
-            "produce the value: ",
+            (
+                "prop.both: example[0][1]: the generator of the input does not "
+                "produce the value: "
+            ),
         ),
         (
             "examples of a value that the generator does not produce",
             BELOW,
             digit,
             [DIGITS, examples(1, 99)],
-            "prop.below: examples[0][1]: the generator of the input does not "
-            "produce the value: ",
+            (
+                "prop.below: examples[0][1]: the generator of the input does not "
+                "produce the value: "
+            ),
         ),
         (
             "an example of a tuple shorter than the parameters of the function",
             BELOW,
             mixed,
             [DIGITS, example((3,))],
-            "prop.below: example[0][0]: the generator of the input does not "
-            "produce the value: ",
+            (
+                "prop.below: example[0][0]: the generator of the input does not "
+                "produce the value: "
+            ),
         ),
         (
             "an example whose generator raises",
@@ -420,8 +443,10 @@ class TestRunForm:
                 using(int, Mapped(prop.integer(0, 9), breaks, lambda v: v)),
                 example(1),
             ],
-            "prop.below: example[0][0]: the generator of the input raises for the "
-            "value: the map broke",
+            (
+                "prop.below: example[0][0]: the generator of the input raises for the "
+                "value: the map broke"
+            ),
         ),
         (
             "a fault of the options of the run",

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/value.py tests decoded values and their equality."""
 
 from __future__ import annotations
@@ -7,13 +10,15 @@ import datetime
 import decimal
 import enum
 import math
-from typing import Any, ClassVar, NamedTuple
+from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple
 
 import pytest
 
 from dokimi_assert import check
 from dokimi_assert._prop.engine.value import Fields, Pairs, Variant, canonical
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 class Widget:
@@ -48,6 +53,18 @@ class Colour(enum.Enum):
 
     RED = 1
     BLUE = 2
+
+
+class Level(enum.IntEnum):
+    """An enum of the spec whose members are ints."""
+
+    LOW = 1
+
+
+class Speed(enum.StrEnum):
+    """An enum of the spec whose members are strs."""
+
+    FAST = "fast"
 
 
 def named() -> int:
@@ -220,6 +237,12 @@ class TestCanonical:
             Variant("x", 2),
         ),
         ("returns two texts for two members of an enum", Colour.RED, Colour.BLUE),
+        ("returns two texts for a member of an int enum and its int", Level.LOW, 1),
+        (
+            "returns two texts for a member of a str enum and its str",
+            Speed.FAST,
+            "fast",
+        ),
         ("returns two texts for a set and a list of the same elements", {1}, [1]),
         (
             "returns two texts for a date and a date and time",

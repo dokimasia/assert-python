@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The record of the run of a property, and its sentence.
 
 The detail of the record has the ten fields of prop-for-all: outcome,
@@ -10,22 +13,16 @@ typed literal of the type of its generator.
 from __future__ import annotations
 
 import json
-import os
+import pathlib
 import weakref
-from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
-from dokimi_assert._prop.case import Failing
 from dokimi_assert._prop.engine.case import Drawn as EngineDrawn
 from dokimi_assert._prop.engine.case import Failed, Place
 from dokimi_assert._prop.engine.case import Step as EngineStep
 from dokimi_assert._prop.engine.choice import Bounds, FloatBounds, IntegerBounds
-from dokimi_assert._prop.engine.execution import Divergence as EngineDivergence
-from dokimi_assert._prop.engine.execution import Execution
 from dokimi_assert._prop.engine.literal import plain
-from dokimi_assert._prop.engine.runner import Outcome
-from dokimi_assert._prop.engine.shrink import Explained
 from dokimi_assert._prop.engine.tokens import encode
 from dokimi_assert._prop.engine.traces import entries
 from dokimi_assert._prop.environment import REPLAY_VARIABLE
@@ -34,6 +31,15 @@ from dokimi_assert._prop.literal import drawn_literal
 from dokimi_assert._record.literal import detail as literal_of
 from dokimi_assert._record.literal import opaque
 from dokimi_assert.failure import Failure, Where, register_sentence, render
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping, Sequence
+
+    from dokimi_assert._prop.case import Failing
+    from dokimi_assert._prop.engine.execution import Divergence as EngineDivergence
+    from dokimi_assert._prop.engine.execution import Execution
+    from dokimi_assert._prop.engine.runner import Outcome
+    from dokimi_assert._prop.engine.shrink import Explained
 
 __all__ = [
     "FOR_ALL",
@@ -295,7 +301,7 @@ def _failure_json(failure: Failure) -> dict[str, Any]:
         "detail": {name: literal_of(value) for name, value in failure.detail.items()},
         "where": None
         if where is None
-        else {"file": os.path.basename(where.file), "line": where.line},
+        else {"file": pathlib.Path(where.file).name, "line": where.line},
     }
 
 
@@ -469,7 +475,7 @@ def _failure_line(what: str, failure: Failure) -> str:
     """Return the line of the record of a failed case."""
     of = f" of {failure.assertion}" if failure.assertion else ""
     where = failure.where
-    at = "" if where is None else f" at {os.path.basename(where.file)}:{where.line}"
+    at = "" if where is None else f" at {pathlib.Path(where.file).name}:{where.line}"
     return f"\n{what}{of}{at}: {render(failure)}"
 
 

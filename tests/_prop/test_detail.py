@@ -1,13 +1,16 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/detail.py tests the record and the sentence of a property run."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
 from dokimi_assert import check
+from dokimi_assert._override import override
 from dokimi_assert._prop.case import Failing
 from dokimi_assert._prop.detail import (
     FOR_ALL,
@@ -39,8 +42,12 @@ from dokimi_assert._prop.engine.shrink import Explained
 from dokimi_assert._prop.engine.tokens import encode
 from dokimi_assert._prop.identity import key_of, of_record
 from dokimi_assert.failure import Failure, Where, render
-from dokimi_assert.seat import Collector
 from helpers import integers
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from dokimi_assert.seat import Collector
 
 #: The location of the failures.
 WHERE = Where("/work/tests/test_total.py", 9)
@@ -54,10 +61,14 @@ DIGITS = Integer(IntegerBounds(0, 9))
 #: The token of a case of the choice 3.
 THREE = encode(integers(3))
 
+#: The replay token of an outcome. The specs do not decode it.
+REPLAY = "prop1:AQ"
+
 
 class Probe:
     """A value with a fixed repr and without a typed literal."""
 
+    @override
     def __repr__(self) -> str:
         """Return the text that the opaque literal contains."""
         return "Probe()"
@@ -92,7 +103,7 @@ COUNTEREXAMPLE = outcome(
     failing=failing(5, lambda c: c.note("seen 5")),
     explanation=(Explained("x", 5, False, (4,)),),
     others=(failing(3),),
-    token="prop1:AQ",
+    token=REPLAY,
 )
 
 
@@ -258,7 +269,7 @@ class TestDetailOf:
         self, seat: Collector
     ) -> None:
         """The detail of a flaky run does not have a token."""
-        d = detail_of(outcome("flaky", failing=failing(5), token="prop1:AQ"))
+        d = detail_of(outcome("flaky", failing=failing(5), token=REPLAY))
         check.equal(
             seat,
             [d["failure"], d["choices"], d["others"]],
@@ -589,16 +600,22 @@ class TestSentence:
             sentence(failure),
             "\n".join(
                 [
-                    "every total is positive: counterexample after 3 valid and 1 "
-                    "rejected cases, seed 7",
+                    (
+                        "every total is positive: counterexample after 3 valid and 1 "
+                        "rejected cases, seed 7"
+                    ),
                     "  x: 5, 4 passes",
                     f"failure of equal at test_total.py:9: {render(RECORD)}",
-                    'replay: prop.replay("prop1:AQ") or '
-                    "DOKIMI_ASSERT_PROP_REPLAY=prop1:AQ",
+                    (
+                        'replay: prop.replay("prop1:AQ") or '
+                        "DOKIMI_ASSERT_PROP_REPLAY=prop1:AQ"
+                    ),
                     f"other failure of equal at test_total.py:9: {render(RECORD)}",
                     "  x: 3",
-                    f'replay: prop.replay("{THREE}") or '
-                    f"DOKIMI_ASSERT_PROP_REPLAY={THREE}",
+                    (
+                        f'replay: prop.replay("{THREE}") or '
+                        f"DOKIMI_ASSERT_PROP_REPLAY={THREE}"
+                    ),
                     "note: seen 5",
                 ]
             ),
@@ -657,8 +674,10 @@ class TestSentence:
         (
             "renders the divergence of a request at a draw",
             EngineDivergence("request", 2, IntegerBounds(0, 9), None, "x"),
-            '\ndivergence: the request at 2 (in the draw "x"), recorded '
-            "{'kind': 'integer', 'min': 0, 'max': 9}, replayed no request",
+            (
+                '\ndivergence: the request at 2 (in the draw "x"), recorded '
+                "{'kind': 'integer', 'min': 0, 'max': 9}, replayed no request"
+            ),
         ),
         (
             "renders the divergence of a fingerprint",
@@ -668,8 +687,10 @@ class TestSentence:
         (
             "renders the divergence of a verdict",
             EngineDivergence("verdict", 3, key_of(of_record(RECORD)), None),
-            "\ndivergence: the verdict at 3, recorded equal at test_total.py:9, "
-            "replayed a pass",
+            (
+                "\ndivergence: the verdict at 3, recorded equal at test_total.py:9, "
+                "replayed a pass"
+            ),
         ),
     ]
 

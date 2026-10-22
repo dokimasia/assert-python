@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/source.py tests the random source.
 
 The stream matches the output of the C code that Bob Jenkins published in
@@ -9,14 +12,16 @@ from __future__ import annotations
 
 import json
 import pathlib
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
 from dokimi_assert import check
 from dokimi_assert._prop.engine.source import MASK, Source, case_source, mix, utf8
-from dokimi_assert.seat import Collector
 from helpers import refusal
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: The outputs of the published C code.
 ORACLE: dict[str, Any] = json.loads(

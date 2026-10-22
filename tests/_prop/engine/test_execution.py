@@ -1,6 +1,11 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/execution.py tests the call of a body and how it ends."""
 
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from dokimi_assert import check
 from dokimi_assert._prop.engine.case import MAX_CHOICES, Case, Place, Replaying
@@ -17,8 +22,10 @@ from dokimi_assert._prop.engine.execution import (
     unobserved,
 )
 from dokimi_assert._prop.engine.tree import Tree
-from dokimi_assert.seat import Collector
 from helpers import Decoding, integers
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 DIGIT = IntegerBounds(0, 9)
 BIT = IntegerBounds(0, 1)
@@ -202,7 +209,8 @@ class TestExecute:
         """The caller receives the error of the body."""
 
         def breaks(_: Case) -> None:
-            raise TypeError("the body broke")
+            msg = "the body broke"
+            raise TypeError(msg)
 
         error = check.raises(seat, lambda: run(breaks), "the error propagates")
         check.error_as(seat, error, TypeError, "the error is the TypeError of the body")

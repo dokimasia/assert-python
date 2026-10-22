@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The generators and how they decode a value from a case.
 
 The decode method of a generator asks the case for its choices in a fixed
@@ -16,11 +19,9 @@ from __future__ import annotations
 
 import threading
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Sequence
-from contextlib import AbstractContextManager
-from fractions import Fraction
-from typing import ClassVar, Generic, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, ClassVar, Generic, Protocol, TypeVar, cast
 
+from dokimi_assert._override import override
 from dokimi_assert._prop.engine import alphabet, draw
 from dokimi_assert._prop.engine.case import Case, Request
 from dokimi_assert._prop.engine.choice import (
@@ -30,6 +31,11 @@ from dokimi_assert._prop.engine.choice import (
 )
 from dokimi_assert._prop.engine.collection import ELEMENT, ENTRY, Sizes, collect
 from dokimi_assert._prop.engine.value import Pairs, canonical
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+    from contextlib import AbstractContextManager
+    from fractions import Fraction
 
 __all__ = [
     "Bool",
@@ -148,6 +154,7 @@ class Deferred(Generator[_T_co], ABC):
             A context manager. Entering it returns the picked generator.
         """
 
+    @override
     def decode(self, c: Case) -> _T_co:
         """Return the value that the picked generator decodes from the case.
 
@@ -170,16 +177,17 @@ class Integer(Generator[int]):
             duration in nanoseconds.
     """
 
-    def __init__(self, bounds: IntegerBounds, id: str = "integer") -> None:
+    def __init__(self, bounds: IntegerBounds, span_id: str = "integer") -> None:
         """Return the generator of the integers in bounds.
 
         Args:
             bounds: The bounds.
-            id: The id of the span. It is integer or duration.
+            span_id: The id of the span. It is integer or duration.
         """
         self.bounds: IntegerBounds = bounds
-        self.id: str = id
+        self.id: str = span_id
 
+    @override
     def decode(self, c: Case) -> int:
         """Return the integer that the case chooses.
 
@@ -211,6 +219,7 @@ class Float(Generator[float]):
         """
         self.bounds: FloatBounds = bounds
 
+    @override
     def decode(self, c: Case) -> float:
         """Return the float that the case chooses.
 
@@ -246,6 +255,7 @@ class Bool(Generator[bool]):
         """
         self.p: Fraction = p
 
+    @override
     def decode(self, c: Case) -> bool:
         """Return True when the case chooses 1.
 
@@ -279,6 +289,7 @@ class Just(Generator[_T]):
         """
         self.value: _T = value
 
+    @override
     def decode(self, c: Case) -> _T:
         """Return the given value.
 
@@ -311,6 +322,7 @@ class SampledFrom(Generator[_T]):
         self.values: tuple[_T, ...] = tuple(values)
         self._bounds: IntegerBounds = IntegerBounds(0, len(values) - 1)
 
+    @override
     def decode(self, c: Case) -> _T:
         """Return the value at the index that the case chooses.
 
@@ -345,6 +357,7 @@ class OneOf(Generator[_T]):
         self.of: tuple[Generator[_T], ...] = tuple(of)
         self._bounds: IntegerBounds = IntegerBounds(0, len(of) - 1)
 
+    @override
     def decode(self, c: Case) -> _T:
         """Return the value that the chosen alternative decodes.
 
@@ -380,6 +393,7 @@ class Optional(Generator[_T | None]):
         """
         self.of: Generator[_T] = of
 
+    @override
     def decode(self, c: Case) -> _T | None:
         """Return None when absent, and the decoded value when present.
 
@@ -421,6 +435,7 @@ class List(Generator[list[_T]]):
         self.sizes: Sizes = sizes
         self.unique: bool = unique
 
+    @override
     def decode(self, c: Case) -> list[_T]:
         """Return the list that the flags and the elements of the case decode to.
 
@@ -471,6 +486,7 @@ class Dict(Generator[Pairs], Generic[_K, _V]):
         self.values: Generator[_V] = values
         self.sizes: Sizes = sizes
 
+    @override
     def decode(self, c: Case) -> Pairs:
         """Return the entries that the flags, keys and values of the case decode to.
 
@@ -523,6 +539,7 @@ class Text(Generator[str]):
         )
         self.bounds: SequenceBounds = bounds
 
+    @override
     def decode(self, c: Case) -> str:
         """Return the string of the indices that the case chooses.
 
@@ -558,6 +575,7 @@ class Bytes(Generator[bytes]):
         """
         self.bounds: SequenceBounds = bounds
 
+    @override
     def decode(self, c: Case) -> bytes:
         """Return the bytes of the sequence of the case.
 
@@ -602,6 +620,7 @@ class Matching(Generator[str]):
         """
         self.piece: Piece = piece
 
+    @override
     def decode(self, c: Case) -> str:
         """Return the characters that the pieces of the pattern decode.
 
@@ -639,6 +658,7 @@ class Permutation(Generator[list[_T]]):
         """
         self.values: tuple[_T, ...] = tuple(values)
 
+    @override
     def decode(self, c: Case) -> list[_T]:
         """Return the values in the order that the swaps of the case give.
 
@@ -685,6 +705,7 @@ class Filter(Generator[_T]):
         self.of: Generator[_T] = of
         self.keep: Callable[[_T], bool] = keep
 
+    @override
     def decode(self, c: Case) -> _T:
         """Return the value of the first attempt that the predicate keeps.
 
@@ -745,6 +766,7 @@ class Mapped(Generator[_U], Generic[_T, _U]):
         self.f: Callable[[_T], _U] = f
         self.back: Callable[[_U], _T] | None = back
 
+    @override
     def decode(self, c: Case) -> _U:
         """Return the function of the value that the source decodes.
 
@@ -780,6 +802,7 @@ class Bound(Generator[_U], Generic[_T, _U]):
         self.of: Generator[_T] = of
         self.f: Callable[[_T], Generator[_U]] = f
 
+    @override
     def decode(self, c: Case) -> _U:
         """Return the value of the second generator.
 
@@ -811,6 +834,7 @@ class Composite(Generator[_T]):
         """
         self.f: Callable[[Case], _T] = f
 
+    @override
     def decode(self, c: Case) -> _T:
         """Return the value of the function.
 
@@ -872,6 +896,7 @@ class Recursive(Generator[_T]):
         self._leaves: _Leaves = _Leaves()
         self.extend: Generator[_T] = extend(Position(self))
 
+    @override
     def decode(self, c: Case) -> _T:
         """Return one recursive value. Its leaf count starts at zero.
 
@@ -921,6 +946,7 @@ class Position(Generator[_T]):
         """
         self.owner: Recursive[_T] = owner
 
+    @override
     def decode(self, c: Case) -> _T:
         """Decode the next position of the value of the owner.
 

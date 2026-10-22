@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The registrations of a test process, and the generators of types and shape files.
 
 A registration applies to the whole test process. The first run of a
@@ -17,16 +20,15 @@ until the read ends.
 
 from __future__ import annotations
 
-import collections.abc
 import inspect
 import json
 import threading
-from collections.abc import Mapping
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from contextvars import ContextVar
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from dokimi_assert._matcher.fault import FaultError
+from dokimi_assert._override import override
 from dokimi_assert._prop.convert import converter_of
 from dokimi_assert._prop.engine import literal, shape, strict_json
 from dokimi_assert._prop.engine.generator import Deferred, Generator, Mapped
@@ -39,6 +41,10 @@ from dokimi_assert._prop.reader import (
     literal_converter,
     qualified,
 )
+
+if TYPE_CHECKING:
+    import collections.abc
+    from collections.abc import Mapping
 
 __all__ = [
     "Generators",
@@ -114,6 +120,11 @@ class Generators:
         self._picked: dict[object, Generator[Any]] = {}
         self._without: dict[object, Generators] = {}
 
+    #: Generators compare by the generators that they state, and they do not
+    #: have a hash.
+    __hash__ = None  # type: ignore[assignment]
+
+    @override
     def __eq__(self, other: object) -> bool:
         """Report whether other states the same generator of each type.
 
@@ -174,7 +185,8 @@ class Generators:
                 try:
                     picked = self.read(t)
                 except FaultError as error:
-                    raise TypeError(f"prop.of: {error}") from error
+                    msg = f"prop.of: {error}"
+                    raise TypeError(msg) from error
                 self._picked[t] = picked
         return picked
 
@@ -216,6 +228,7 @@ class Picking(Deferred[_T]):
         self.t: object = t
         self.default: Generator[_T] = default
 
+    @override
     def picked(self) -> AbstractContextManager[Generator[_T]]:
         """Return the generator of the type in the current run.
 
@@ -251,6 +264,7 @@ class Within(Deferred[_T]):
         self._run: Generators = run
         self._t: object = t
 
+    @override
     @contextmanager
     def picked(self) -> collections.abc.Generator[Generator[_T], None, None]:
         """Enter the other generators of the run, and return the stated generator.
@@ -281,17 +295,18 @@ def _admit(call: str, t: object) -> None:
             has looked t up.
     """
     if _REGISTRY.closed:
-        raise RuntimeError(
-            f"prop: {call}: the first run of a property closed the registry"
-        )
+        msg = f"prop: {call}: the first run of a property closed the registry"
+        raise RuntimeError(msg)
     registered = (_REGISTRY.generators, _REGISTRY.values, _REGISTRY.variants)
     if any(t in kind for kind in registered):
-        raise RuntimeError(f"prop: {call} registers {qualified(t)} a second time")
+        msg = f"prop: {call} registers {qualified(t)} a second time"
+        raise RuntimeError(msg)
     if t in _REGISTRY.consulted:
-        raise RuntimeError(
+        msg = (
             f"prop: {call}: the generators of an earlier read of {qualified(t)} do "
             "not include the registration"
         )
+        raise RuntimeError(msg)
 
 
 def register(t: type[_T], generator: Generator[_T]) -> None:
@@ -341,30 +356,31 @@ def register_values(t: type[_T], *values: _T) -> None:
     with _LOCK:
         _admit(call, t)
         if not values:
-            raise ValueError(f"prop: {call} needs a value")
+            msg = f"prop: {call} needs a value"
+            raise ValueError(msg)
         try:
             read = derive(t, _REGISTRY, skip=t)
         except FaultError as error:
-            raise TypeError(f"prop: {call}: {error}") from error
+            msg = f"prop: {call}: {error}"
+            raise TypeError(msg) from error
         if read.external_paths:
-            raise TypeError(
+            msg = (
                 f"prop: {call}: {read.external_paths[0]}: a registered generator "
                 "generates the part, and its values do not have typed literals"
             )
+            raise TypeError(msg)
         literals: list[dict[str, Any]] = []
         keys: dict[str, int] = {}
         for i, value in enumerate(values):
             try:
                 written = literal.encode(read.converter.back(value))
             except (TypeError, ValueError) as error:
-                raise ValueError(
-                    f"prop: {call}: value {i} does not have a typed literal"
-                ) from error
+                msg = f"prop: {call}: value {i} does not have a typed literal"
+                raise ValueError(msg) from error
             key = canonical(literal.decode(written))
             if key in keys:
-                raise ValueError(
-                    f"prop: {call}: values {keys[key]} and {i} have one typed literal"
-                )
+                msg = f"prop: {call}: values {keys[key]} and {i} have one typed literal"
+                raise ValueError(msg)
             keys[key] = i
             literals.append(written)
         converter = literal_converter(values, literals)
@@ -394,19 +410,20 @@ def register_variants(t: type, *variants: type) -> None:
     with _LOCK:
         _admit(call, t)
         if not variants:
-            raise ValueError(f"prop: {call} needs a variant")
+            msg = f"prop: {call} needs a variant"
+            raise ValueError(msg)
         names: dict[str, int] = {}
         for i, variant in enumerate(variants):
             if not inspect.isclass(variant):
-                raise TypeError(
-                    f"prop: {call}: variant {i} is {variant!r}, not a class"
-                )
+                msg = f"prop: {call}: variant {i} is {variant!r}, not a class"
+                raise TypeError(msg)
             earlier = names.get(variant.__name__)
             if earlier is not None:
-                raise ValueError(
+                msg = (
                     f"prop: {call}: variants {earlier} and {i} are both named "
                     f"{variant.__name__}"
                 )
+                raise ValueError(msg)
             names[variant.__name__] = i
         _REGISTRY.variants[t] = tuple(variants)
 
@@ -447,7 +464,8 @@ def derived(t: object, using: Mapping[object, Generator[Any]]) -> Generator[Any]
         try:
             return _generator_of(derive(t, _REGISTRY, using))
         except shape.ShapeError as error:
-            raise FaultError("", str(error)) from error
+            at = ""
+            raise FaultError(at, str(error)) from error
 
 
 def of(t: type[_T]) -> Generator[_T]:
@@ -486,10 +504,29 @@ def of(t: type[_T]) -> Generator[_T]:
         try:
             default = derived(t, {})
         except FaultError as error:
-            raise TypeError(f"prop.of: {error}") from error
+            msg = f"prop.of: {error}"
+            raise TypeError(msg) from error
         picking = Picking(t, default)
         _OF[t] = picking
         return picking
+
+
+def _shaped(t: type) -> Derived:
+    """Return the read of t, whose every part has a shape.
+
+    Raises:
+        FaultError: A registered generator generates a part of t, or the
+            reader does not read a part of t.
+        ShapeError: The root shape of the read is not a valid shape.
+    """
+    read = derive(t, _REGISTRY)
+    if read.external_paths:
+        raise FaultError(
+            read.external_paths[0],
+            "a registered generator generates the part, and it does not have a shape",
+        )
+    shape.read(read.root)
+    return read
 
 
 def shape_of(t: type) -> str:
@@ -514,16 +551,10 @@ def shape_of(t: type) -> str:
     """
     with _LOCK:
         try:
-            read = derive(t, _REGISTRY)
-            if read.external_paths:
-                raise FaultError(
-                    read.external_paths[0],
-                    "a registered generator generates the part, and it does not "
-                    "have a shape",
-                )
-            shape.read(read.root)
+            read = _shaped(t)
         except (FaultError, shape.ShapeError) as error:
-            raise TypeError(f"prop.shape_of: {error}") from error
+            msg = f"prop.shape_of: {error}"
+            raise TypeError(msg) from error
     document = {**read.root, "source": {"language": "python", "type": qualified(t)}}
     return json.dumps(document, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
 
@@ -549,14 +580,15 @@ def of_shape(text: str) -> Generator[Any]:
     try:
         document = strict_json.parse(text, _SHAPE_DEPTH)
     except strict_json.JsonError as error:
-        raise shape.ShapeError(
-            f"prop.of_shape: the text is not a shape file: {error}"
-        ) from error
+        msg = f"prop.of_shape: the text is not a shape file: {error}"
+        raise shape.ShapeError(msg) from error
     if not isinstance(document, dict):
-        raise shape.ShapeError("prop.of_shape: the text is not a JSON object")
+        msg = "prop.of_shape: the text is not a JSON object"
+        raise shape.ShapeError(msg)
     engine = shape.read(document)
     try:
         converter = converter_of(document)
     except FaultError as error:
-        raise shape.ShapeError(f"prop.of_shape: {error}") from error
+        msg = f"prop.of_shape: {error}"
+        raise shape.ShapeError(msg) from error
     return Mapped(engine, converter.to, converter.back)

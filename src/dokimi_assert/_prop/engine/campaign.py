@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The exploration of a property for a span of time instead of a number of cases.
 
 A campaign first runs the traces, the examples and the stored cases in the
@@ -31,10 +34,10 @@ The definition leaves these odds to each library.
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
-from typing import TypeVar, cast
+from typing import TYPE_CHECKING, TypeVar, cast
 
+from dokimi_assert._override import override
 from dokimi_assert._prop.engine import draw
 from dokimi_assert._prop.engine.case import (
     Generating,
@@ -70,6 +73,9 @@ from dokimi_assert._prop.engine.runner import (
     shortfall_of,
 )
 from dokimi_assert._prop.engine.source import Source, case_source
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
 
 __all__ = ["campaign"]
 
@@ -162,6 +168,7 @@ class _Mutating(Provider):
         self._choices: list[Choice] = choices
         self._source: Source = source
 
+    @override
     def value(self, request: Request, index: int) -> Value:
         """Return the choice at index fitted to the request, or a fresh draw.
 

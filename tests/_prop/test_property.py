@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/property.py tests the run of a property.
 
 for_all, fuzz and every property form use the run.
@@ -9,18 +12,14 @@ import asyncio
 import contextlib
 import itertools
 import json
-import os
 import threading
 import time
-from collections.abc import Callable
-from pathlib import Path
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
 from dokimi_assert import check
 from dokimi_assert._matcher.fault import FaultError
-from dokimi_assert._matcher.seat import Seat
 from dokimi_assert._matcher.verdict import Running
 from dokimi_assert._prop.case import Case, FaultSignal, on_engine
 from dokimi_assert._prop.detail import FOR_ALL
@@ -53,6 +52,12 @@ from dokimi_assert._prop.registry import of
 from dokimi_assert.failure import Where
 from dokimi_assert.seat import Collector, Recorder, Standard
 from helpers import UNENFORCED, records, refusal, run_python
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
+
+    from dokimi_assert._matcher.seat import Seat
 
 #: The variable that a mutation run sets in every process that it instruments.
 MUTANT = "DOKIMI_MUTATE_MUTANT"
@@ -159,8 +164,8 @@ def in_a_running_loop(call: Callable[[], object]) -> None:
 def stored_by_a_failure(directory: Path) -> str:
     """Write the entry of a failure of below_five into a store, and return its name."""
     run_on(Recorder(), below_five, store(str(directory)))
-    [name] = os.listdir(directory)
-    return name
+    [entry] = directory.iterdir()
+    return entry.name
 
 
 class TestCall:
@@ -206,8 +211,10 @@ class TestPropertyOf:
             [
                 0,
                 "",
-                "prop: register(__main__.Late): the first run of a property closed "
-                "the registry\n",
+                (
+                    "prop: register(__main__.Late): the first run of a property closed "
+                    "the registry\n"
+                ),
             ],
             "the registration raises RuntimeError",
         )
@@ -487,7 +494,7 @@ class TestPropertyRun:
         """The variable of a mutation run is set."""
         monkeypatch.setenv(MUTANT, "1")
         run_on(Recorder(), below_five, store(str(tmp_path)))
-        check.is_empty(seat, os.listdir(tmp_path), "the store is empty")
+        check.is_empty(seat, list(tmp_path.iterdir()), "the store is empty")
 
     def test_does_not_write_an_entry_for_a_counterexample_of_an_example_of_values(
         self, seat: Collector, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -500,7 +507,7 @@ class TestPropertyRun:
         prop.run(recorder, Running.begin(recorder, WHERE), below_five)
         check.equal(
             seat,
-            [first_detail(recorder)["outcome"], os.listdir(tmp_path)],
+            [first_detail(recorder)["outcome"], list(tmp_path.iterdir())],
             ["counterexample", []],
             "the run fails without an entry",
         )
@@ -535,10 +542,14 @@ class TestPropertyRun:
             seat,
             texts,
             [
-                f"prop.for_all: {tmp_path / 'later.json'}: the entry is of a later "
-                "format, so the run skips it",
-                f"prop.for_all: {tmp_path / name}: the stored case decodes to other "
-                "values than it records, and the run tested those",
+                (
+                    f"prop.for_all: {tmp_path / 'later.json'}: the entry is of a later "
+                    "format, so the run skips it"
+                ),
+                (
+                    f"prop.for_all: {tmp_path / name}: the stored case decodes to "
+                    "other values than it records, and the run tested those"
+                ),
             ],
             "the run notes both entries",
         )
@@ -582,7 +593,7 @@ class TestPropertyRun:
         )
         check.equal(
             seat,
-            [first_detail(recorder)["outcome"], len(os.listdir(tmp_path))],
+            [first_detail(recorder)["outcome"], len(list(tmp_path.iterdir()))],
             ["counterexample", 1],
             "the campaign writes the failure once",
         )
@@ -591,20 +602,26 @@ class TestPropertyRun:
         (
             "a draw whose label differs from the label of its entry",
             '[{"label": "y", "value": {"type": "int", "value": 1}}]',
-            'prop.for_all: draws[0].label: the draw labelled "x" takes the entry '
-            'labelled "y"',
+            (
+                'prop.for_all: draws[0].label: the draw labelled "x" takes the entry '
+                'labelled "y"'
+            ),
         ),
         (
             "a draw that meets a step entry",
             '[{"step": "put"}]',
-            'prop.for_all: draws[0].label: the draw labelled "x" takes the step '
-            'entry of "put"',
+            (
+                'prop.for_all: draws[0].label: the draw labelled "x" takes the step '
+                'entry of "put"'
+            ),
         ),
         (
             "a draw whose generator does not produce the value of its entry",
             '[{"label": "x", "value": {"type": "int", "value": 99}}]',
-            'prop.for_all: draws[0].value: the generator of the draw labelled "x" '
-            "does not produce the value of the entry",
+            (
+                'prop.for_all: draws[0].value: the generator of the draw labelled "x" '
+                "does not produce the value of the entry"
+            ),
         ),
     ]
 
@@ -850,7 +867,8 @@ class TestPropertyRun:
 
         def wrapper(run: Callable[[], None]) -> None:
             run()
-            raise RuntimeError("the frozen clock did not stop")
+            msg = "the frozen clock did not stop"
+            raise RuntimeError(msg)
 
         recorder = Recorder()
         run_on(recorder, any_digit, around(wrapper))
@@ -1003,7 +1021,7 @@ class TestPropertyInput:
         detail = first_detail(recorder)
         check.equal(
             seat,
-            [detail["outcome"], detail["cases"], len(os.listdir(tmp_path))],
+            [detail["outcome"], detail["cases"], len(list(tmp_path.iterdir()))],
             ["counterexample", 0, 1],
             "the store has the shrunk input",
         )

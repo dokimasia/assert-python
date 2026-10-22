@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The draws of a generated case from its random source.
 
 The definition fixes the order in which every draw consumes the source. The
@@ -10,8 +13,7 @@ and a range of one element consume nothing.
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
-from fractions import Fraction
+from typing import TYPE_CHECKING
 
 from dokimi_assert._prop.engine.choice import (
     FloatBounds,
@@ -19,13 +21,19 @@ from dokimi_assert._prop.engine.choice import (
     SequenceBounds,
 )
 from dokimi_assert._prop.engine.float import (
+    BINARY64,
     from_bits,
     from_bits32,
     next_down,
     next_up,
     same_float,
 )
-from dokimi_assert._prop.engine.source import Source
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from fractions import Fraction
+
+    from dokimi_assert._prop.engine.source import Source
 
 __all__ = [
     "REUSE_ODDS",
@@ -338,7 +346,7 @@ def _from_parts(source: Source, bounds: FloatBounds) -> float:
         | (exponent << mantissa_bits)
         | mantissa
     )
-    value = from_bits(bits) if bounds.width == 64 else from_bits32(bits)
+    value = from_bits(bits) if bounds.width == BINARY64 else from_bits32(bits)
     if math.isnan(value):
         return math.nan if bounds.allow_nan else bounds.target
     if value < bounds.lo:

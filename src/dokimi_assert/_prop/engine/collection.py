@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The decoding of a collection one element at a time.
 
 Every collection decodes the same way. A list, a dict and a repetition in a
@@ -13,11 +16,13 @@ or entry in a dict. A deletion of that span deletes the element whole.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 from dokimi_assert._prop.engine import draw
 from dokimi_assert._prop.engine.case import Case, Rejected, Request
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 __all__ = ["ELEMENT", "ENTRY", "Sizes", "collect", "more"]
 
@@ -51,7 +56,8 @@ class Sizes:
             ValueError: min_size is negative, or max_size is below it.
         """
         if min_size < 0 or (max_size is not None and max_size < min_size):
-            raise ValueError(f"prop: sizes [{min_size}, {max_size}] are empty")
+            msg = f"prop: sizes [{min_size}, {max_size}] are empty"
+            raise ValueError(msg)
         self.min_size: int = min_size
         self.max_size: int | None = max_size
 

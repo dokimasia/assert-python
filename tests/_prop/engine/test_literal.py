@@ -1,9 +1,12 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/literal.py tests the decoding and encoding of literals."""
 
 from __future__ import annotations
 
 import math
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
@@ -17,8 +20,10 @@ from dokimi_assert._prop.engine.literal import (
     plain,
 )
 from dokimi_assert._prop.engine.value import Fields, Pairs, Variant, canonical
-from dokimi_assert.seat import Collector
 from helpers import refusal
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: The largest integer that every language decodes exactly from a JSON number.
 SAFE = 2**53 - 1

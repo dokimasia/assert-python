@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The replay token that encodes the choice values of one case as a printable string.
 
 A token is prop1: followed by the unpadded base64url encoding of the choice
@@ -22,10 +25,13 @@ import base64
 import json
 import math
 import re
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from dokimi_assert._prop.engine.choice import Choice
 from dokimi_assert._prop.engine.float import NAN_BITS, bits_of, from_bits
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 __all__ = ["PREFIX", "decode", "encode"]
 
@@ -53,12 +59,17 @@ _ELEMENT_LIMIT = 2**32 - 1
 #: The characters of base64url.
 _BASE64URL = re.compile(r"[A-Za-z0-9_-]*")
 
+#: The bits of a byte of LEB128 that carry the number, and the bit that marks
+#: a byte that another byte follows.
+_PAYLOAD = 0x7F
+_CONTINUED = 0x80
+
 
 def _append_number(data: bytearray, number: int) -> None:
     """Append a number of 0 or more in unsigned LEB128."""
     rest = number
-    while rest > 0x7F:
-        data.append((rest & 0x7F) | 0x80)
+    while rest > _PAYLOAD:
+        data.append((rest & _PAYLOAD) | _CONTINUED)
         rest >>= 7
     data.append(rest)
 
@@ -109,7 +120,8 @@ class _Reader:
     def _byte(self) -> int:
         """Return the next byte."""
         if self._at == len(self._data):
-            raise ValueError("prop: a token ends inside a choice")
+            msg = "prop: a token ends inside a choice"
+            raise ValueError(msg)
         byte = self._data[self._at]
         self._at += 1
         return byte
@@ -123,14 +135,14 @@ class _Reader:
         shift = 0
         while True:
             byte = self._byte()
-            number |= (byte & 0x7F) << shift
+            number |= (byte & _PAYLOAD) << shift
             if number >= _NUMBER_LIMIT:
-                raise ValueError("prop: a token has a number of 2^64 or more")
-            if byte < 0x80:
+                msg = "prop: a token has a number of 2^64 or more"
+                raise ValueError(msg)
+            if byte < _CONTINUED:
                 if byte == 0 and shift > 0:
-                    raise ValueError(
-                        "prop: a token has a number with a superfluous byte"
-                    )
+                    msg = "prop: a token has a number with a superfluous byte"
+                    raise ValueError(msg)
                 return number
             shift += 7
 
@@ -142,7 +154,8 @@ class _Reader:
         if tag == _TAG_NEGATIVE:
             magnitude = self.number()
             if magnitude == 0 or magnitude > _NEGATIVE_LIMIT:
-                raise ValueError(f"prop: a token has the negative of {magnitude}")
+                msg = f"prop: a token has the negative of {magnitude}"
+                raise ValueError(msg)
             return Choice("integer", -magnitude)
         if tag == _TAG_FLOAT:
             bits = 0
@@ -150,13 +163,15 @@ class _Reader:
                 bits |= self._byte() << (8 * i)
             value = from_bits(bits)
             if math.isnan(value) and bits != NAN_BITS:
-                raise ValueError("prop: a token has a NaN without the canonical bits")
+                msg = "prop: a token has a NaN without the canonical bits"
+                raise ValueError(msg)
             return Choice("float", value)
         if tag == _TAG_SEQUENCE:
             length = self.number()
             elements = [min(self.number(), _ELEMENT_LIMIT) for _ in range(length)]
             return Choice("sequence", tuple(elements))
-        raise ValueError(f"prop: a token has the unknown tag {tag}")
+        msg = f"prop: a token has the unknown tag {tag}"
+        raise ValueError(msg)
 
 
 def _unpadded(token: str, text: str) -> bytes:
@@ -197,9 +212,8 @@ def decode(token: str) -> list[Choice]:
             more, or a negative integer below -2^63.
     """
     if not token.startswith(PREFIX):
-        raise ValueError(
-            f"prop: the token {json.dumps(token)} does not start with {PREFIX}"
-        )
+        msg = f"prop: the token {json.dumps(token)} does not start with {PREFIX}"
+        raise ValueError(msg)
     reader = _Reader(_unpadded(token, token[len(PREFIX) :]))
     choices: list[Choice] = []
     while not reader.done():

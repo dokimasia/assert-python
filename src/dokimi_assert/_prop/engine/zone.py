@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The zone list and the offset changes of its zones from the zone table.
 
 The zone shapes sample the list, and the zoned-date-time and wall-time shapes

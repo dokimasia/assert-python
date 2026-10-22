@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/convert.py tests the conversion of the values of shapes."""
 
 from __future__ import annotations
@@ -5,7 +8,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from ipaddress import IPv4Address, IPv6Address
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -36,8 +39,10 @@ from dokimi_assert._prop.convert import (
 from dokimi_assert._prop.engine.inverse import CannotInvertError
 from dokimi_assert._prop.engine.value import Fields, Pairs, canonical
 from dokimi_assert._prop.engine.value import Variant as Neutral
-from dokimi_assert.seat import Collector
 from helpers import refusal
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: A zone of the definition.
 AMSTERDAM = ZoneInfo("Europe/Amsterdam")

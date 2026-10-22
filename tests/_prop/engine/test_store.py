@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/store.py tests store entries.
 
 The pinned name is the name that the reference implementation of the
@@ -7,7 +10,7 @@ definition computes.
 from __future__ import annotations
 
 import json
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
@@ -15,8 +18,10 @@ from dokimi_assert import check
 from dokimi_assert._prop.engine.source import mix
 from dokimi_assert._prop.engine.store import MAX_DEPTH, Failure, entry, name, read
 from dokimi_assert._prop.engine.tokens import encode
-from dokimi_assert.seat import Collector
 from helpers import integers, values_of
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: The contract of the property whose entries the cases read.
 CONTRACT = "decoding undoes encoding"

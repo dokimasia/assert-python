@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The directory of the store of a property, and the files in it.
 
 The store of a test is testdata/prop/<path>/<test> below the working
@@ -17,14 +20,16 @@ from __future__ import annotations
 import json
 import os
 import pathlib
-from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert._matcher.seat import named_test
 from dokimi_assert._prop.engine.choice import Choice
 from dokimi_assert._prop.engine.store import read
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 __all__ = [
     "Loaded",
@@ -111,7 +116,7 @@ def _below(root: tuple[str, ...], seat: object) -> str:
     test.
     """
     path = named_test(seat)
-    return "" if path is None else os.path.join(*root, *map(_escaped, path))
+    return "" if path is None else str(pathlib.Path(*root, *map(_escaped, path)))
 
 
 def store_of(seat: object, given: str | None) -> str:
@@ -250,9 +255,10 @@ def save(directory: str, name: str, entry: Mapping[str, Any]) -> bool:
         OSError: The file system cannot keep the entry.
         ValueError: The name contains a null character.
     """
-    os.makedirs(directory, exist_ok=True)
+    store = pathlib.Path(directory)
+    store.mkdir(parents=True, exist_ok=True)
     try:
-        with open(os.path.join(directory, name), "x", encoding="utf-8") as handle:
+        with (store / name).open("x", encoding="utf-8") as handle:
             handle.write(json.dumps(entry, indent=2) + "\n")
     except FileExistsError:
         return False

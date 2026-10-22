@@ -1,17 +1,24 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The assertion that a body passes for every case that a run generates."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from dokimi_assert._matcher.fault import FaultError
-from dokimi_assert._matcher.seat import Seat
 from dokimi_assert._matcher.verdict import Running
-from dokimi_assert._prop.case import Case
 from dokimi_assert._prop.detail import FOR_ALL
 from dokimi_assert._prop.option import Option, configure
 from dokimi_assert._prop.property import Call, Property
 from dokimi_assert.failure import call_site
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from dokimi_assert._matcher.seat import Seat
+    from dokimi_assert._prop.case import Case
 
 __all__ = ["for_all"]
 

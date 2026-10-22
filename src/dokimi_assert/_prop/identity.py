@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The identity of a failure. The shrinker keeps a failure by its identity.
 
 - A failure record of an assertion with a call site is kept by its
@@ -17,7 +20,7 @@ of an identity.
 from __future__ import annotations
 
 import json
-import os
+import pathlib
 from dataclasses import dataclass
 
 from dokimi_assert.failure import Failure, Where, site_in
@@ -137,7 +140,7 @@ def text_of(identity: Identity) -> str:
         The text.
     """
     where = identity.where
-    at = "" if where is None else f" at {os.path.basename(where.file)}:{where.line}"
+    at = "" if where is None else f" at {pathlib.Path(where.file).name}:{where.line}"
     if identity.error is not None:
         return f"a {identity.error} raised{at}"
     if identity.assertion is None:
@@ -167,6 +170,6 @@ def entry_of(identity: Identity) -> dict[str, str | int]:
     if identity.error is not None:
         keys["error"] = identity.error
     if identity.where is not None:
-        keys["file"] = os.path.basename(identity.where.file)
+        keys["file"] = pathlib.Path(identity.where.file).name
         keys["line"] = identity.where.line
     return keys

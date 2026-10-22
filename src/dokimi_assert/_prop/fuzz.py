@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """A property whose cases a fuzzer decodes from its byte inputs.
 
 pytest does not have a fuzzer. Under pytest, fuzz replays the stored cases of
@@ -10,17 +13,20 @@ installs.
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from dokimi_assert._matcher.fault import FaultError, of_operation
-from dokimi_assert._matcher.seat import Seat
 from dokimi_assert._matcher.verdict import Running
-from dokimi_assert._prop.case import Case
 from dokimi_assert._prop.detail import FOR_ALL
 from dokimi_assert._prop.directory import seeds, seeds_of
 from dokimi_assert._prop.option import Option, configure
 from dokimi_assert._prop.property import Call, Property
 from dokimi_assert.failure import call_site
 from dokimi_assert.seat import Standard
+
+if TYPE_CHECKING:
+    from dokimi_assert._matcher.seat import Seat
+    from dokimi_assert._prop.case import Case
 
 __all__ = ["Target", "fuzz"]
 

@@ -1,21 +1,27 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/values.py tests the values of a generator for a seed."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
 from dokimi_assert import check, prop
 from dokimi_assert._prop.registry import Generators, scope
 from dokimi_assert.option import equate_empty
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 def refuse(_: int) -> int:
     """Raise the error of a conversion that refuses every value."""
-    raise LookupError("the conversion refuses the value")
+    msg = "the conversion refuses the value"
+    raise LookupError(msg)
 
 
 @dataclass(frozen=True)
@@ -172,8 +178,10 @@ class TestValues:
             (type(error), str(error)),
             (
                 ValueError,
-                "prop: values(generator, 42, 2) stops after the generator rejects "
-                "21 cases for 2 values",
+                (
+                    "prop: values(generator, 42, 2) stops after the generator rejects "
+                    "21 cases for 2 values"
+                ),
             ),
             "the error counts the rejected cases",
         )
@@ -189,8 +197,10 @@ class TestValues:
             "raises value error for a count that is a bool",
             42,
             True,
-            "prop: values(generator, 42, True) needs a count that is an int of 0 "
-            "or more",
+            (
+                "prop: values(generator, 42, True) needs a count that is an int of 0 "
+                "or more"
+            ),
         ),
         (
             "raises value error for a negative seed",
@@ -202,8 +212,10 @@ class TestValues:
             "raises value error for a seed of 2 to the 64",
             2**64,
             3,
-            "prop: values(generator, 18446744073709551616, 3) needs a seed that is "
-            "an int in [0, 2^64)",
+            (
+                "prop: values(generator, 18446744073709551616, 3) needs a seed that is "
+                "an int in [0, 2^64)"
+            ),
         ),
         (
             "raises value error for a seed that is a float",
@@ -268,8 +280,10 @@ class TestValues:
             (type(error), str(error)),
             (
                 ValueError,
-                "prop: values(generator, 42, 3) takes the options of using alone, "
-                f"not {want_kind}",
+                (
+                    "prop: values(generator, 42, 3) takes the options of using alone, "
+                    f"not {want_kind}"
+                ),
             ),
             "the error names the option",
         )

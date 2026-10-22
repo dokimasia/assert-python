@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/campaign.py tests a run that explores for a span of time.
 
 A campaign keeps the cases that show new behaviour. Every campaign of the
@@ -7,7 +10,7 @@ reading. A budget of n + 1 then runs n cases after the known ones.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from dokimi_assert import check
 from dokimi_assert._prop.engine.campaign import campaign
@@ -24,8 +27,12 @@ from dokimi_assert._prop.engine.generator import Bytes, Float, Integer, List
 from dokimi_assert._prop.engine.runner import Outcome, Requirement, Settings, Values
 from dokimi_assert._prop.engine.source import case_source
 from dokimi_assert._prop.engine.traces import Draw
-from dokimi_assert.seat import Collector
 from helpers import integers
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from dokimi_assert.seat import Collector
 
 SEED = 7
 WIDE = Integer(IntegerBounds(0, 1_000_000_000))

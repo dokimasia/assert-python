@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/draw.py tests what each draw consumes and returns.
 
 The pinned draws are the draws of the reference implementation of the
@@ -9,7 +12,7 @@ from __future__ import annotations
 import math
 from collections import Counter
 from fractions import Fraction
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import pytest
 
@@ -38,7 +41,9 @@ from dokimi_assert._prop.engine.draw import (
 )
 from dokimi_assert._prop.engine.float import bits_of, from_bits32, representable
 from dokimi_assert._prop.engine.source import Source
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: The number of draws that a property check of a draw makes. With this many
 #: draws, every branch of the draw runs.

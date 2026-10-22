@@ -1,8 +1,11 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/identity.py tests the identity of the failure of a property."""
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import pytest
 
@@ -17,7 +20,9 @@ from dokimi_assert._prop.identity import (
     text_of,
 )
 from dokimi_assert.failure import Failure, Where
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: A location of a failure.
 WHERE = Where("/work/tests/test_order.py", 12)
@@ -28,7 +33,8 @@ FALLBACK = Where("/work/tests/test_call.py", 3)
 
 def broken() -> None:
     """Raise TypeError, as the code under test of a body does."""
-    raise TypeError("bad")
+    msg = "bad"
+    raise TypeError(msg)
 
 
 class TestOfRecord:
@@ -80,7 +86,7 @@ class TestOfError:
             of_error(caught.value, FALLBACK),
             Identity(
                 error="TypeError",
-                where=Where(__file__, broken.__code__.co_firstlineno + 2),
+                where=Where(__file__, broken.__code__.co_firstlineno + 3),
             ),
             "the identity has the class and the frame",
         )

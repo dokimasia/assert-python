@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The generators of the property engine.
 
 Each generator has a domain, and it decodes a value of the domain from the
@@ -89,7 +92,8 @@ def _checked(call: str, make: Callable[[], _T]) -> _T:
         return make()
     except ValueError as error:
         reason = str(error).removeprefix("prop: ")
-        raise ValueError(f"prop: {call}: {reason}") from error
+        msg = f"prop: {call}: {reason}"
+        raise ValueError(msg) from error
 
 
 def _sizes(call: str, min_size: int, max_size: int | None) -> Sizes:
@@ -100,7 +104,8 @@ def _sizes(call: str, min_size: int, max_size: int | None) -> Sizes:
     """
     text = f"{call}(min_size={min_size!r}, max_size={max_size!r})"
     if type(min_size) is not int or not (max_size is None or type(max_size) is int):
-        raise ValueError(f"prop: {text} needs sizes that are ints")
+        msg = f"prop: {text} needs sizes that are ints"
+        raise ValueError(msg)
     return _checked(text, lambda: Sizes(min_size, max_size))
 
 
@@ -124,7 +129,8 @@ def integer(lo: int, hi: int) -> Generator[int]:
     """
     call = f"integer({lo!r}, {hi!r})"
     if type(lo) is not int or type(hi) is not int:
-        raise ValueError(f"prop: {call} needs two ints")
+        msg = f"prop: {call} needs two ints"
+        raise ValueError(msg)
     return Integer(_checked(call, lambda: IntegerBounds(lo, hi)))
 
 
@@ -157,7 +163,8 @@ def float(
     """
     call = f"float({lo!r}, {hi!r})"
     if type(lo) not in (int, builtins.float) or type(hi) not in (int, builtins.float):
-        raise ValueError(f"prop: {call} needs two numbers")
+        msg = f"prop: {call} needs two numbers"
+        raise ValueError(msg)
     low = builtins.float(lo)
     high = builtins.float(hi)
     return Float(_checked(call, lambda: FloatBounds(low, high, allow_nan, width)))
@@ -178,7 +185,8 @@ def boolean(p: Fraction | int = _HALF) -> Generator[bool]:
         ValueError: p is not a Fraction or an int from 0 to 1.
     """
     if isinstance(p, bool) or not isinstance(p, numbers.Rational) or not 0 <= p <= 1:
-        raise ValueError(f"prop: boolean({p!r}) needs a Fraction or an int from 0 to 1")
+        msg = f"prop: boolean({p!r}) needs a Fraction or an int from 0 to 1"
+        raise ValueError(msg)
     return Bool(Fraction(p))
 
 
@@ -212,7 +220,8 @@ def sampled_from(*values: _T) -> Generator[_T]:
         ValueError: values is empty.
     """
     if not values:
-        raise ValueError("prop: sampled_from() needs a value")
+        msg = "prop: sampled_from() needs a value"
+        raise ValueError(msg)
     return SampledFrom(values)
 
 
@@ -233,7 +242,8 @@ def one_of(*generators: Generator[_T]) -> Generator[_T]:
         ValueError: generators is empty.
     """
     if not generators:
-        raise ValueError("prop: one_of() needs a generator")
+        msg = "prop: one_of() needs a generator"
+        raise ValueError(msg)
     return OneOf(generators)
 
 
@@ -352,11 +362,14 @@ def string(
     call = f"string(alphabet={alphabet!r})"
     characters = builtins.list(alphabet)
     if not characters:
-        raise ValueError(f"prop: {call}: the alphabet is empty")
+        msg = f"prop: {call}: the alphabet is empty"
+        raise ValueError(msg)
     if len(set(characters)) != len(characters):
-        raise ValueError(f"prop: {call}: the alphabet repeats a character")
+        msg = f"prop: {call}: the alphabet repeats a character"
+        raise ValueError(msg)
     if any(default_alphabet.index_of(char) is None for char in characters):
-        raise ValueError(f"prop: {call}: the alphabet contains a lone surrogate")
+        msg = f"prop: {call}: the alphabet contains a lone surrogate"
+        raise ValueError(msg)
     return Text(
         characters, SequenceBounds(len(characters), sizes.min_size, sizes.max_size)
     )
@@ -403,11 +416,11 @@ def duration(lo: int, hi: int) -> Generator[int]:
     """
     call = f"duration({lo!r}, {hi!r})"
     if type(lo) is not int or type(hi) is not int:
-        raise ValueError(f"prop: {call} needs two ints")
+        msg = f"prop: {call} needs two ints"
+        raise ValueError(msg)
     if not INT64_MIN <= lo <= hi <= INT64_MAX:
-        raise ValueError(
-            f"prop: {call} needs bounds in order inside the signed 64-bit range"
-        )
+        msg = f"prop: {call} needs bounds in order inside the signed 64-bit range"
+        raise ValueError(msg)
     return Integer(IntegerBounds(lo, hi), "duration")
 
 
@@ -474,9 +487,8 @@ def recursive(
         ValueError: max_leaves is not an int of 1 or more.
     """
     if type(max_leaves) is not int or max_leaves < 1:
-        raise ValueError(
-            f"prop: recursive(max_leaves={max_leaves!r}) needs an int of 1 or more"
-        )
+        msg = f"prop: recursive(max_leaves={max_leaves!r}) needs an int of 1 or more"
+        raise ValueError(msg)
     return Recursive(base, max_leaves, extend)
 
 

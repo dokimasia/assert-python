@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The environment variables that set the defaults of every property of a test run.
 
 A hermetic run does not read them. An unset variable and an empty variable do

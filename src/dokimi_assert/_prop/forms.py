@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The property forms.
 
 Each form runs an assertion on every case of a run in the same way as for_all
@@ -21,14 +24,17 @@ form. A form whose assertion takes relaxations takes them too.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dokimi_assert._matcher import behaviour, errors, order, relation, value
 from dokimi_assert._matcher import raises as raising
 from dokimi_assert._matcher.seat import Mode, Seat
 from dokimi_assert._prop.form import INPUT, PAIR, TRIPLE, Form, run_form
-from dokimi_assert._prop.option import FormOption
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable, Sequence
+
+    from dokimi_assert._prop.option import FormOption
 
 __all__ = [
     "FORM_IDS",
@@ -78,13 +84,13 @@ _MODE = Mode.FATAL
 
 def _form(
     name: str,
-    id: str,
+    assertion: str,
     relaxed: bool,
     labels: tuple[str, ...] = INPUT,
     skip: int = 0,
 ) -> Form:
-    """Return the form of the assertion id. Its Python name is name."""
-    return Form(f"prop.{name}", f"prop-{id}", relaxed, labels, skip)
+    """Return the form of an assertion. Its Python name is name."""
+    return Form(f"prop.{name}", f"prop-{assertion}", relaxed, labels, skip)
 
 
 #: The forms, by their Python names.

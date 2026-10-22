@@ -1,6 +1,11 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/markers.py tests the constraints of prop for typing.Annotated."""
 
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from dokimi_assert import check
 from dokimi_assert._prop.markers import (
@@ -14,7 +19,9 @@ from dokimi_assert._prop.markers import (
     Version,
     Width,
 )
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 class TestWidth:

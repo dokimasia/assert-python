@@ -1,8 +1,11 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/stored.py tests the entries of the store of a property."""
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
@@ -23,8 +26,10 @@ from dokimi_assert._prop.identity import key_of, of_record
 from dokimi_assert._prop.stored import differs, entry_of
 from dokimi_assert._record.call import DEFINITION
 from dokimi_assert.failure import Failure, Where
-from dokimi_assert.seat import Collector
 from helpers import integers
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: The location of the failure of the executions.
 WHERE = Where("/work/tests/test_total.py", 9)

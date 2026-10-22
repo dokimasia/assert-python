@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/tree.py tests the case tree.
 
 The raises assertion does not catch Repeated and Diverged, because they
@@ -7,6 +10,7 @@ derive from BaseException. The spec takes them with pytest.raises.
 from __future__ import annotations
 
 import math
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -26,8 +30,10 @@ from dokimi_assert._prop.engine.tree import (
     Repeated,
     Tree,
 )
-from dokimi_assert.seat import Collector
 from helpers import no_draw
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 BIT = IntegerBounds(0, 1)
 DIGIT = IntegerBounds(0, 9)

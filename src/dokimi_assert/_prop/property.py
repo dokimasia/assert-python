@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The property run that for_all, fuzz and every property form use.
 
 A property takes its settings from its options and from the environment. It
@@ -20,12 +23,12 @@ the fillings that explain it pick the same generators.
 from __future__ import annotations
 
 import json
-import os
+import pathlib
 import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from dokimi_assert._matcher.fault import FaultError, of_operation
 from dokimi_assert._matcher.loop import Loop
@@ -39,7 +42,6 @@ from dokimi_assert._prop.engine.bridge import Bridging
 from dokimi_assert._prop.engine.campaign import campaign
 from dokimi_assert._prop.engine.case import Case as EngineCase
 from dokimi_assert._prop.engine.case import Step
-from dokimi_assert._prop.engine.choice import Choice
 from dokimi_assert._prop.engine.execution import Body, Execution, Observer, Phase
 from dokimi_assert._prop.engine.execution import execute as execute_engine
 from dokimi_assert._prop.engine.runner import (
@@ -54,11 +56,14 @@ from dokimi_assert._prop.engine.runner import (
 from dokimi_assert._prop.engine.store import MAX_DEPTH
 from dokimi_assert._prop.engine.traces import Draw, Entry, TraceError
 from dokimi_assert._prop.environment import budget_of, mutated, seed_of, token_of
-from dokimi_assert._prop.option import Config, Wrapper
 from dokimi_assert._prop.registry import Generators, close, scope
 from dokimi_assert._prop.stored import differs, entry_of
 from dokimi_assert._record.calls import Slot, cut, own
 from dokimi_assert.failure import Where
+
+if TYPE_CHECKING:
+    from dokimi_assert._prop.engine.choice import Choice
+    from dokimi_assert._prop.option import Config, Wrapper
 
 __all__ = ["Call", "Property", "PropertyBody"]
 
@@ -107,8 +112,9 @@ def _step_of(entry: Mapping[str, Any], at: str) -> Step:
     """
     client = entry.get("client")
     if client is not None and not (type(client) is int and client >= 0):
+        at = f"{at}.client"
         raise FaultError(
-            f"{at}.client",
+            at,
             f"the client {json.dumps(client)} is not an int of 0 or more",
         )
     return Step(entry["step"], client, entry.get("drain") is True)
@@ -146,9 +152,8 @@ def _entries_of(text: str) -> tuple[Entry, ...]:
         try:
             value = literal.decode(entry["value"])
         except literal.LiteralError as error:
-            raise FaultError(
-                f"{at}.value", "the value is not a typed literal", error
-            ) from error
+            at = f"{at}.value"
+            raise FaultError(at, "the value is not a typed literal", error) from error
         entries.append(Draw(entry["label"], value))
     return tuple(entries)
 
@@ -393,12 +398,7 @@ class Property:
                 cases = self._adapt(seat, running.slot, body, loop)
                 observer = _observer_of(running.slot)
                 if self._replay is not None:
-                    settings = replace(self._settings, replay=self._replay)
-                    outcome = self._drive(
-                        running, lambda: run(cases, settings, observer)
-                    )
-                    if outcome is not None:
-                        self._report(running, outcome)
+                    self._run_replay(running, cases, observer)
                     return
                 loaded = self._load(running)
                 if loaded is None:
@@ -424,6 +424,13 @@ class Property:
                 concluded(outcome)
             for fault in [*self._store_faults(loaded, outcome), *saved]:
                 _note(seat, self.call.op, fault)
+            self._report(running, outcome)
+
+    def _run_replay(self, running: Running, cases: Body, observer: Observer) -> None:
+        """Run the case of the replay token, and report its outcome to running."""
+        settings = replace(self._settings, replay=self._replay)
+        outcome = self._drive(running, lambda: run(cases, settings, observer))
+        if outcome is not None:
             self._report(running, outcome)
 
     def replay_stored(self, seat: Seat, running: Running, body: PropertyBody) -> None:
@@ -665,7 +672,7 @@ class Property:
         """
         faults = [
             FaultError(
-                os.path.join(self._directory, name),
+                str(pathlib.Path(self._directory, name)),
                 "the entry is of a later format, so the run skips it",
             )
             for name in loaded.skipped
@@ -674,7 +681,7 @@ class Property:
             if differs(entry.counterexample, execution):
                 faults.append(
                     FaultError(
-                        os.path.join(self._directory, entry.name),
+                        str(pathlib.Path(self._directory, entry.name)),
                         "the stored case decodes to other values than it records, "
                         "and the run tested those",
                     )

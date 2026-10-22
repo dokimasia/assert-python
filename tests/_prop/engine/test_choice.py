@@ -1,9 +1,12 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/choice.py tests the bounds, targets and keys of choices."""
 
 from __future__ import annotations
 
 import math
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
@@ -26,8 +29,10 @@ from dokimi_assert._prop.engine.float import (
     from_bits32,
     same_float,
 )
-from dokimi_assert.seat import Collector
 from helpers import refusal
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: The smallest positive value of width 32.
 TINY32 = from_bits32(1)
@@ -160,15 +165,19 @@ class TestIntegerBounds:
             "raises value error for bounds that span both ranges",
             -1,
             UINT64_MAX,
-            f"prop: integer bounds [-1, {UINT64_MAX}] are inside neither the signed "
-            "nor the unsigned 64-bit range",
+            (
+                f"prop: integer bounds [-1, {UINT64_MAX}] are inside neither the "
+                "signed nor the unsigned 64-bit range"
+            ),
         ),
         (
             "raises value error for bounds below the signed range",
             INT64_MIN - 1,
             0,
-            f"prop: integer bounds [{INT64_MIN - 1}, 0] are inside neither the "
-            "signed nor the unsigned 64-bit range",
+            (
+                f"prop: integer bounds [{INT64_MIN - 1}, 0] are inside neither the "
+                "signed nor the unsigned 64-bit range"
+            ),
         ),
     ]
 
@@ -461,7 +470,7 @@ class TestFloatBoundsKey:
         bounds = FloatBounds(-INF, INF, True)
         ordered = [0.0, -0.0, 1.0, -1.0, 2.0, 2.0**53, 0.5, -0.5, 1.5, 0.25]
         ordered += [INF, -INF, math.nan]
-        got = sorted(reversed(ordered), key=bounds.key)
+        got = sorted(ordered, key=bounds.key)
         check.equal(
             seat,
             [bits_of(x) for x in got],

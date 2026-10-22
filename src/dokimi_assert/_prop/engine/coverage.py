@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The coverage test of a label against a required share of the cases.
 
 The Wilson score interval of the share of the label decides a requirement.
@@ -68,7 +71,8 @@ def verdict(k: int, n: int, share: float, last: bool, exact: bool) -> Verdict:
         ValueError: n is below 1, or k is outside [0, n].
     """
     if n < 1 or not 0 <= k <= n:
-        raise ValueError(f"prop: {k} of {n} is not a share")
+        msg = f"prop: {k} of {n} is not a share"
+        raise ValueError(msg)
     if not exact:
         if _bound(k, n, -_Z) >= _TOLERANCE * share:
             return "met"

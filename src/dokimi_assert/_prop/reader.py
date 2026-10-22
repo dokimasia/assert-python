@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The reader of Python types into shapes and the converters of their values.
 
 The reader reads a type through typing.get_type_hints. It follows the table
@@ -52,7 +55,6 @@ import math
 import types
 import typing
 import uuid
-from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -66,6 +68,7 @@ from dokimi_assert._prop.convert import (
     Converter,
     date_converter,
     decimal_converter,
+    deferred_converter,
     duration_converter,
     instant_converter,
     ip_converter,
@@ -82,6 +85,9 @@ from dokimi_assert._prop.engine.generator import Generator
 from dokimi_assert._prop.engine.value import Fields, Pairs, canonical
 from dokimi_assert._prop.engine.value import Variant as Neutral
 from dokimi_assert._record.literal import encode
+
+if typing.TYPE_CHECKING:
+    from collections.abc import Callable, Mapping, Sequence
 
 __all__ = [
     "Derived",
@@ -336,14 +342,6 @@ class _SelfReference:
     recursive: bool = False
 
 
-def _deferred(cell: list[Converter]) -> Converter:
-    """Return a converter that delegates to the converter in a cell.
-
-    The read fills the cell when the read of the class ends.
-    """
-    return Converter(lambda value: cell[0].to(value), lambda value: cell[0].back(value))
-
-
 #: The origins of a union. A | B has one origin, and typing gives a union of
 #: special forms another origin before Python 3.14.
 _UNIONS = (types.UnionType, typing.get_origin(Literal[0] | None))
@@ -384,6 +382,11 @@ def _hints(t: type, at: str) -> dict[str, Any]:
         raise FaultError(
             at, f"the annotations of {t.__qualname__} do not resolve: {error}"
         ) from error
+
+
+#: The arguments of a tuple of any length: the type of its items and the
+#: ellipsis.
+_VARIADIC_ARGS = 2
 
 
 class _Reader:
@@ -448,9 +451,19 @@ class _Reader:
         if reference is not None:
             constraints.check_taken("a type that refers to itself", at)
             reference.recursive = reference.recursive or t in self._open
-            return {"shape": "ref", "name": reference.name}, _deferred(reference.cell)
+            node = {"shape": "ref", "name": reference.name}
+            return node, deferred_converter(reference.cell)
         if not isinstance(t, type):
             return self._form(t, constraints, at)
+        return self._read_class(t, constraints, at)
+
+    def _read_class(
+        self, t: type, constraints: _Constraints, at: str
+    ) -> tuple[Node, Converter]:
+        """Return the shape of a class, or a ref to it when it refers to itself.
+
+        The shape of a class that refers to itself becomes a definition.
+        """
         reference = _SelfReference(qualified(t))
         self._open[t] = reference
         try:
@@ -462,7 +475,9 @@ class _Reader:
         reference.cell.append(converter)
         self.definitions[reference.name] = node
         self._defined[t] = reference
-        return {"shape": "ref", "name": reference.name}, _deferred(reference.cell)
+        return {"shape": "ref", "name": reference.name}, deferred_converter(
+            reference.cell
+        )
 
     def _lookup(self, t: object) -> Generator[Any] | None:
         """Return the generator that register gives a type, and record the lookup."""
@@ -487,6 +502,19 @@ class _Reader:
         members = _union_members(t)
         if members is not None:
             return self._union(members, constraints, at)
+        return self._generic(t, constraints, at)
+
+    def _generic(
+        self, t: object, constraints: _Constraints, at: str
+    ) -> tuple[Node, Converter]:
+        """Return the shape of a Literal, or of a generic list, tuple, set or dict.
+
+        A set can be a frozenset.
+
+        Raises:
+            FaultError: The reader does not read the type, or a constraint
+                does not apply.
+        """
         origin = typing.get_origin(t)
         args = typing.get_args(t)
         if origin is Literal:
@@ -494,7 +522,7 @@ class _Reader:
             return _literal_of(list(args), at)
         if origin is list:
             return self._list(args[0], constraints, at, list)
-        if origin is tuple and len(args) == 2 and args[1] is ...:
+        if origin is tuple and len(args) == _VARIADIC_ARGS and args[1] is ...:
             return self._list(args[0], constraints, at, tuple)
         if origin is tuple:
             constraints.check_taken("a tuple of fields", at)
@@ -618,6 +646,15 @@ class _Reader:
         constraints.check_taken(t.__qualname__, at)
         if scalar is not None:
             return scalar
+        return self._record_class(t, at)
+
+    def _record_class(self, t: type, at: str) -> tuple[Node, Converter]:
+        """Return the shape of a dataclass, a NamedTuple or a TypedDict.
+
+        Raises:
+            FaultError: The class is none of them, or the TypedDict has a key
+                that is not required.
+        """
         named: Any = t
         if dataclasses.is_dataclass(t):
             hints = _hints(t, at)
@@ -687,22 +724,25 @@ def _scalar(
         node: Node = {"shape": "bytes"}
         _sizes(node, constraints.take("min_size"), constraints.take("max_size"))
         return node, _built(t)
-    if issubclass(t, datetime):
-        return _datetime_shape(constraints, at)
-    if t is date:
-        node = {"shape": "date"}
-        _bounds(node, constraints, _date_bound(at))
-        return node, date_converter()
     return _time_scalar(t, constraints, at)
 
 
 def _time_scalar(
     t: type, constraints: _Constraints, at: str
 ) -> tuple[Node, Converter] | None:
-    """Return the shape of a time, a zone, a UUID, an address or a Decimal class."""
+    """Return the shape of a datetime, a date, a time or a timedelta class.
+
+    For any other class, the result is the shape of a domain class, or None.
+    """
+    if issubclass(t, datetime):
+        return _datetime_shape(constraints, at)
+    if t is date:
+        node: Node = {"shape": "date"}
+        _bounds(node, constraints, _date_bound(at))
+        return node, date_converter()
     if t is time:
         unit = _unit(constraints, at)
-        node: Node = {"shape": "time-of-day", "unit": unit}
+        node = {"shape": "time-of-day", "unit": unit}
         _bounds(node, constraints, _time_bound(unit, at))
         return node, time_converter(unit)
     if t is timedelta:
@@ -710,6 +750,13 @@ def _time_scalar(
         node = {"shape": "duration", "unit": unit}
         _bounds(node, constraints, _duration_bound(unit, at))
         return node, duration_converter(unit)
+    return _domain_scalar(t, constraints, at)
+
+
+def _domain_scalar(
+    t: type, constraints: _Constraints, at: str
+) -> tuple[Node, Converter] | None:
+    """Return the shape of a timezone, ZoneInfo, UUID, address or Decimal class."""
     if t is timezone:
         node = {"shape": "offset"}
         _bounds(node, constraints, _offset_bound(at))

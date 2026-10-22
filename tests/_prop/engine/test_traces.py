@@ -1,9 +1,11 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/traces.py tests the traces of cases and their provider."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from dokimi_assert import check
 from dokimi_assert._prop.engine.case import Case, Replaying, Step
@@ -16,8 +18,12 @@ from dokimi_assert._prop.engine.traces import (
     entries,
     is_step,
 )
-from dokimi_assert.seat import Collector
 from helpers import integers, values_of
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from dokimi_assert.seat import Collector
 
 #: The generator that most draws use.
 DIGIT = Integer(IntegerBounds(0, 9))
@@ -151,7 +157,8 @@ class TestTracingDrawing:
         """The map raises TypeError."""
 
         def broke(_: int) -> int:
-            raise TypeError("the map broke")
+            msg = "the map broke"
+            raise TypeError(msg)
 
         c = Case(Tracing([Draw("x", 1)]))
         error = check.raises(

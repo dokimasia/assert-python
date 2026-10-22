@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The four edge cases. Each case has every value at one boundary.
 
 A choice that decides structure takes the edge of its request. A collection
@@ -20,6 +23,7 @@ from __future__ import annotations
 
 from typing import Literal
 
+from dokimi_assert._override import override
 from dokimi_assert._prop.engine.case import Provider, Request
 from dokimi_assert._prop.engine.choice import (
     FloatBounds,
@@ -85,6 +89,7 @@ class Edge(Provider):
         """
         self._boundary: Boundary = boundary
 
+    @override
     def value(self, request: Request, index: int) -> Value:
         """Return the edge of the request, or its value at the boundary.
 

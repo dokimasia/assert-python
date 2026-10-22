@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The shortlex order of the choice sequences that the shrinker compares.
 
 A sequence is smaller than another when it is shorter, or equally long and
@@ -8,11 +11,14 @@ an integer before a float and a float before a sequence.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
-from dokimi_assert._prop.engine.choice import Bounds, Value
 from dokimi_assert._prop.engine.float import Key, float_key
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from dokimi_assert._prop.engine.choice import Bounds, Value
 
 __all__ = ["choice_key", "shortlex"]
 

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The run of the property forms.
 
 A form runs its assertion on each case of a run in the same way as for_all
@@ -16,15 +19,12 @@ import dataclasses
 import inspect
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert._matcher.option import Option as Relaxation
-from dokimi_assert._matcher.seat import Seat
 from dokimi_assert._matcher.verdict import Running
 from dokimi_assert._prop.case import Case
-from dokimi_assert._prop.engine.choice import Choice
-from dokimi_assert._prop.engine.generator import Generator
 from dokimi_assert._prop.engine.inverse import (
     CannotInvertError,
     NoInverseError,
@@ -35,6 +35,11 @@ from dokimi_assert._prop.option import FormOnly, FormOption, Option, configure
 from dokimi_assert._prop.property import Call, Property
 from dokimi_assert._prop.registry import Generators, scope
 from dokimi_assert.failure import call_site
+
+if TYPE_CHECKING:
+    from dokimi_assert._matcher.seat import Seat
+    from dokimi_assert._prop.engine.choice import Choice
+    from dokimi_assert._prop.engine.generator import Generator
 
 __all__ = ["INPUT", "PAIR", "TRIPLE", "Check", "Form", "run_form"]
 
@@ -117,21 +122,25 @@ def _parameters(function: Callable[..., Any], skip: int) -> list[inspect.Paramet
     try:
         signature = inspect.signature(function, eval_str=True)
     except NameError as error:
+        at = ""
         raise FaultError(
-            "", f"the annotations of the function {name} do not resolve", error
+            at, f"the annotations of the function {name} do not resolve", error
         ) from error
     except (TypeError, ValueError) as error:
+        at = ""
         raise FaultError(
-            "", f"the signature of the function {name} cannot be read", error
+            at, f"the signature of the function {name} cannot be read", error
         ) from error
     positional = [p for p in signature.parameters.values() if p.kind in _POSITIONAL]
     parameters = positional[skip:]
     if not parameters:
-        raise FaultError("", f"the function {name} does not take an input")
+        at = ""
+        raise FaultError(at, f"the function {name} does not take an input")
     for parameter in parameters:
         if parameter.annotation is inspect.Parameter.empty:
+            at = ""
             raise FaultError(
-                "",
+                at,
                 f"the parameter {parameter.name} of the function {name} does not "
                 "have an annotation, so the form cannot read the type of its input",
             )
@@ -284,13 +293,15 @@ def run_form(
     running = Running.begin(seat, where)
     call = Call(form.op, form.id, msg, where, pinned=True)
     by_kind = _sorted(options)
+    if by_kind.relaxations and not form.relaxed:
+        refused = FaultError(
+            "",
+            "the form does not take a relaxation, because its assertion does not "
+            "take one",
+        )
+        Property.fault(running, call, refused)
+        return
     try:
-        if by_kind.relaxations and not form.relaxed:
-            raise FaultError(
-                "",
-                "the form does not take a relaxation, because its assertion does "
-                "not take one",
-            )
         config = configure(by_kind.run)
         with scope(config.using):
             generator, record = _input_of(form, function, config.using)

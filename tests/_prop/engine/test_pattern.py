@@ -1,8 +1,11 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/pattern.py tests the pieces of a pattern."""
 
 from __future__ import annotations
 
-from typing import ClassVar, cast
+from typing import TYPE_CHECKING, ClassVar, cast
 
 import pytest
 
@@ -23,8 +26,10 @@ from dokimi_assert._prop.engine.pattern import (
     piece,
 )
 from dokimi_assert._prop.engine.source import Source
-from dokimi_assert.seat import Collector
 from helpers import integers, refusal
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: The number of seeds per pattern of the check that generated strings match.
 SEEDS = 200

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The format, the name and the verdict of a store entry.
 
 The store keeps the minimal failing case of each identity in a directory of
@@ -204,6 +207,10 @@ def _identity_value(key: str, value: object) -> bool:
     return key != "file" or ("/" not in value and "\\" not in value)
 
 
+#: The months of a year.
+_MONTHS = 12
+
+
 def _is_date(found: object) -> bool:
     """Report whether found is a date of the calendar from 0001-01-01 to 9999-12-31."""
     match = _DATE.fullmatch(found) if isinstance(found, str) else None
@@ -212,7 +219,7 @@ def _is_date(found: object) -> bool:
     year, month, day = int(match[1]), int(match[2]), int(match[3])
     leap = (year % 4 == 0 and year % 100 != 0) or year % 400 == 0
     lengths = (31, 29 if leap else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
-    return year >= 1 and 1 <= month <= 12 and 1 <= day <= lengths[month - 1]
+    return year >= 1 and 1 <= month <= _MONTHS and 1 <= day <= lengths[month - 1]
 
 
 def _is_draw(draw: object) -> bool:
@@ -251,15 +258,18 @@ def _parse_entry(text: str) -> tuple[str, list[Choice]]:
     fields: dict[str, object] = document if isinstance(document, dict) else {}
     version = fields.get("store")
     if not isinstance(version, int) or isinstance(version, bool) or version < _FORMAT:
-        raise JsonError("prop: store is not a format")
+        msg = "prop: store is not a format"
+        raise JsonError(msg)
     if version > _FORMAT:
         raise _LaterError
     if _keys_of(fields) != _FIELDS or not _well_formed(fields):
-        raise JsonError("prop: the fields of the entry are not those of its format")
+        msg = "prop: the fields of the entry are not those of its format"
+        raise JsonError(msg)
     token = str(fields["choices"])
     started = _TOKEN.match(token)
     if started is None:
-        raise JsonError("prop: the token does not have a version")
+        msg = "prop: the token does not have a version"
+        raise JsonError(msg)
     if int(started[1]) > _TOKEN_VERSION:
         raise _LaterError
     return str(fields["property"]), decode(token)

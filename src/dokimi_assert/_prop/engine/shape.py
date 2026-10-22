@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The decoding of the values that a shape file describes.
 
 A shape is a JSON object that describes the values of a type in the same way
@@ -74,8 +77,9 @@ import sys
 import threading
 from collections.abc import Callable, Mapping
 from fractions import Fraction
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
+from dokimi_assert._override import override
 from dokimi_assert._prop.engine import alphabet, draw, literal
 from dokimi_assert._prop.engine.case import Case, Request
 from dokimi_assert._prop.engine.choice import (
@@ -87,7 +91,6 @@ from dokimi_assert._prop.engine.choice import (
     SequenceBounds,
 )
 from dokimi_assert._prop.engine.collection import ELEMENT, ENTRY, Sizes, collect
-from dokimi_assert._prop.engine.float import Width
 from dokimi_assert._prop.engine.generator import (
     Bool,
     Bytes,
@@ -101,6 +104,9 @@ from dokimi_assert._prop.engine.generator import (
 from dokimi_assert._prop.engine.pattern import piece
 from dokimi_assert._prop.engine.value import Fields, Pairs, Variant, canonical
 from dokimi_assert._prop.engine.zone import ZONES, Zone
+
+if TYPE_CHECKING:
+    from dokimi_assert._prop.engine.float import Width
 
 __all__ = [
     "EnumShape",
@@ -147,8 +153,10 @@ _MAX_OFFSET = 64_800
 _NEAR_CHANGE = Fraction(1, 4)
 _AFTER_CHANGE = Fraction(1, 2)
 
-#: The widths of the int shape and the width of each half of a 128-bit integer.
+#: The widths of the int shape, the width of a 128-bit integer and the width
+#: of each half of it.
 _INT_WIDTHS = frozenset({8, 16, 32, 64, 128})
+_INT128 = 128
 _HALF = 64
 
 #: The number of bytes of an address of each IP version and of a UUID.
@@ -195,6 +203,10 @@ _KEYS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
 
 #: The keys that only the root of a shape file can have.
 _ROOT_KEYS = frozenset({"definitions", "source"})
+
+#: The parts of a field of a record and of a variant of an enum: a name and a
+#: shape.
+_NAMED_PARTS = 2
 
 #: The patterns of a date, a time of day, a date and time, and a decimal bound.
 #: The reader matches each pattern against a whole text.
@@ -277,6 +289,7 @@ class Root(Generator[Any]):
         self.node: Generator[Any] = node
         self._budget: _Budget = budget
 
+    @override
     def decode(self, c: Case) -> Any:
         """Return one value of the root shape.
 
@@ -321,6 +334,7 @@ class Ref(Generator[Any]):
         self._cyclic: bool = cyclic
         self._budget: _Budget = budget
 
+    @override
     def decode(self, c: Case) -> Any:
         """Return the value of the definition of the ref.
 
@@ -355,6 +369,7 @@ class OptionalShape(Generator[Any]):
         self._exits: bool = exits
         self._budget: _Budget = budget
 
+    @override
     def decode(self, c: Case) -> Any:
         """Return None when absent, and the decoded value when present.
 
@@ -405,6 +420,7 @@ class ListShape(Generator[list[Any]]):
         self._exits: bool = exits
         self._budget: _Budget = budget
 
+    @override
     def decode(self, c: Case) -> list[Any]:
         """Return the elements that the flags and the choices of the case decode to.
 
@@ -461,6 +477,7 @@ class MapShape(Generator[Pairs]):
         self._exits: bool = exits
         self._budget: _Budget = budget
 
+    @override
     def decode(self, c: Case) -> Pairs:
         """Return the entries that the flags, keys and values of the case decode to.
 
@@ -499,6 +516,7 @@ class RecordShape(Generator[Fields]):
         """
         self.fields: tuple[tuple[str, Generator[Any]], ...] = tuple(fields)
 
+    @override
     def decode(self, c: Case) -> Fields:
         """Return the record of the value of each field.
 
@@ -531,7 +549,7 @@ class EnumShape(Generator[Variant]):
     def __init__(
         self,
         variants: list[tuple[str, Generator[Any] | None]],
-        exit: int | None,
+        exit_index: int | None,
         budget: _Budget,
     ) -> None:
         """Return the enum of variants.
@@ -539,14 +557,15 @@ class EnumShape(Generator[Variant]):
         Args:
             variants: The variants. Each variant is a name and the generator
                 of its payload, or a name and None.
-            exit: The index of the first variant that does not refer back,
+            exit_index: The index of the first variant that does not refer back,
                 or None for an enum that does not refer back.
             budget: The budget of the values of the shape file.
         """
         self.variants: tuple[tuple[str, Generator[Any] | None], ...] = tuple(variants)
-        self._exit: int | None = exit
+        self._exit: int | None = exit_index
         self._budget: _Budget = budget
 
+    @override
     def decode(self, c: Case) -> Variant:
         """Return the variant that the case chooses.
 
@@ -621,6 +640,7 @@ class Int128Shape(Generator[int]):
         self.lo: int = lo
         self.hi: int = hi
 
+    @override
     def decode(self, c: Case) -> int:
         """Return the integer of the two halves.
 
@@ -671,6 +691,7 @@ class InstantShape(Generator[Fields]):
         self.lo: Pair = lo
         self.hi: Pair = hi
 
+    @override
     def decode(self, c: Case) -> Fields:
         """Return the record of the seconds and the units.
 
@@ -710,6 +731,7 @@ class LocalDateTimeShape(Generator[Fields]):
         self.lo: Pair = lo
         self.hi: Pair = hi
 
+    @override
     def decode(self, c: Case) -> Fields:
         """Return the record of the date and the time of day.
 
@@ -783,6 +805,7 @@ class ZonedShape(Generator[Fields]):
         """
         self.instant: InstantShape = instant
 
+    @override
     def decode(self, c: Case) -> Fields:
         """Return the record of the instant and the name of the zone.
 
@@ -825,6 +848,7 @@ class WallShape(Generator[Fields]):
         """
         self.local: LocalDateTimeShape = local
 
+    @override
     def decode(self, c: Case) -> Fields:
         """Return the record of the local date and time and the name of the zone.
 
@@ -867,6 +891,7 @@ class IpShape(Generator[bytes]):
         """
         self.versions: tuple[Bytes, Bytes] = versions
 
+    @override
     def decode(self, c: Case) -> bytes:
         """Return the bytes of the address in network order.
 
@@ -890,9 +915,8 @@ def _int_parameter(node: Node, key: str, where: str) -> int:
     try:
         return literal.integer(node.get(key))
     except literal.LiteralError:
-        raise ShapeError(
-            f"prop: {where}.{key} is {_shown(node.get(key))}, not an integer"
-        ) from None
+        msg = f"prop: {where}.{key} is {_shown(node.get(key))}, not an integer"
+        raise ShapeError(msg) from None
 
 
 def _count_parameter(node: Node, key: str, where: str) -> int | None:
@@ -901,7 +925,8 @@ def _count_parameter(node: Node, key: str, where: str) -> int | None:
         return None
     value = _int_parameter(node, key, where)
     if value < 0:
-        raise ShapeError(f"prop: {where}.{key} is {value}, below 0")
+        msg = f"prop: {where}.{key} is {value}, below 0"
+        raise ShapeError(msg)
     return value
 
 
@@ -915,7 +940,8 @@ def _sizes_of(node: Node, where: str) -> Sizes:
     hi = _count_parameter(node, "max_size", where)
     low = 0 if lo is None else lo
     if hi is not None and hi < low:
-        raise ShapeError(f"prop: {where}: sizes [{low}, {hi}] are empty")
+        msg = f"prop: {where}: sizes [{low}, {hi}] are empty"
+        raise ShapeError(msg)
     return Sizes(low, hi)
 
 
@@ -924,9 +950,8 @@ def _unit_of(node: Node, where: str) -> int:
     unit = node.get("unit")
     per = _UNITS.get(unit) if isinstance(unit, str) else None
     if per is None:
-        raise ShapeError(
-            f"prop: {where}.unit is {_shown(unit)}, not one of ms, ns, s, us"
-        )
+        msg = f"prop: {where}.unit is {_shown(unit)}, not one of ms, ns, s, us"
+        raise ShapeError(msg)
     return per
 
 
@@ -937,9 +962,8 @@ def _fraction_units(digits: str | None, per: int, where: str) -> int:
     scale: int = 10 ** len(digits)
     scaled = int(digits) * per
     if scaled % scale != 0:
-        raise ShapeError(
-            f"prop: {where} has a bound with a fraction finer than its unit"
-        )
+        msg = f"prop: {where} has a bound with a fraction finer than its unit"
+        raise ShapeError(msg)
     return scaled // scale
 
 
@@ -951,31 +975,43 @@ def _leap(year: int) -> bool:
 #: The days of each month of a year that is not a leap year.
 _MONTH_DAYS = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
 
+#: The number of February, the month of the leap day.
+_FEBRUARY = 2
+
+#: The last year of a date bound.
+_LAST_YEAR = 9999
+
 
 def _day_of(year: str, month: str, day: str, where: str) -> int:
     """Return the days since 1970-01-01 of a proleptic Gregorian date."""
     y, m, d = int(year), int(month), int(day)
     length = 0
-    if 1 <= m <= 12:
-        length = 29 if m == 2 and _leap(y) else _MONTH_DAYS[m - 1]
-    if y < 1 or y > 9999 or d < 1 or d > length:
-        raise ShapeError(f"prop: {where} bound {year}-{month}-{day} is not a date")
+    if 1 <= m <= len(_MONTH_DAYS):
+        length = 29 if m == _FEBRUARY and _leap(y) else _MONTH_DAYS[m - 1]
+    if y < 1 or y > _LAST_YEAR or d < 1 or d > length:
+        msg = f"prop: {where} bound {year}-{month}-{day} is not a date"
+        raise ShapeError(msg)
     # The days from 1970-01-01 of a civil date, by counting eras of 400 years.
-    shifted = y - 1 if m <= 2 else y
+    shifted = y - 1 if m <= _FEBRUARY else y
     era = shifted // 400
     year_of_era = shifted - era * 400
-    day_of_year = (153 * (m - 3 if m > 2 else m + 9) + 2) // 5 + d - 1
+    day_of_year = (153 * (m - 3 if m > _FEBRUARY else m + 9) + 2) // 5 + d - 1
     day_of_era = year_of_era * 365 + year_of_era // 4 - year_of_era // 100 + day_of_year
     return era * 146_097 + day_of_era - 719_468
+
+
+#: The hours of a day, the minutes of an hour and the seconds of a minute.
+_HOURS_PER_DAY = 24
+_MINUTES_PER_HOUR = 60
+_SECONDS_PER_MINUTE = 60
 
 
 def _time_of(hour: str, minute: str, second: str, where: str) -> int:
     """Return the seconds since midnight of a time of day."""
     h, m, s = int(hour), int(minute), int(second)
-    if h > 23 or m > 59 or s > 59:
-        raise ShapeError(
-            f"prop: {where} bound {hour}:{minute}:{second} is not a time of day"
-        )
+    if h >= _HOURS_PER_DAY or m >= _MINUTES_PER_HOUR or s >= _SECONDS_PER_MINUTE:
+        msg = f"prop: {where} bound {hour}:{minute}:{second} is not a time of day"
+        raise ShapeError(msg)
     return h * 3600 + m * 60 + s
 
 
@@ -993,10 +1029,11 @@ def _range_of(
     lo = fallback[0] if node.get("min") is None else parse(node.get("min"))
     hi = fallback[1] if node.get("max") is None else parse(node.get("max"))
     if not fallback[0] <= lo <= hi <= fallback[1]:
-        raise ShapeError(
+        msg = (
             f"prop: {where} bounds [{lo}, {hi}] are empty or outside "
             f"[{fallback[0]}, {fallback[1]}]"
         )
+        raise ShapeError(msg)
     return lo, hi
 
 
@@ -1021,10 +1058,11 @@ def _pair_bounds(
     lo = fallback[0] if node.get("min") is None else parse(node.get("min"))
     hi = fallback[1] if node.get("max") is None else parse(node.get("max"))
     if not fallback[0] <= lo <= hi <= fallback[1]:
-        raise ShapeError(
+        msg = (
             f"prop: {where} bounds {lo[0]},{lo[1]} to {hi[0]},{hi[1]} are empty or "
             "out of range"
         )
+        raise ShapeError(msg)
     return lo, hi
 
 
@@ -1056,17 +1094,18 @@ def _alphabet_of(node: Node, where: str) -> tuple[list[str] | None, int]:
     if characters is None:
         return None, alphabet.SIZE
     if not isinstance(characters, str) or characters == "":
-        raise ShapeError(
+        msg = (
             f"prop: {where}.alphabet is {_shown(characters)}, not a string of at "
             "least one character"
         )
+        raise ShapeError(msg)
     chars = list(characters)
     if len(set(chars)) != len(chars):
-        raise ShapeError(f"prop: {where}.alphabet repeats a character")
+        msg = f"prop: {where}.alphabet repeats a character"
+        raise ShapeError(msg)
     if any(alphabet.index_of(char) is None for char in chars):
-        raise ShapeError(
-            f"prop: {where}.alphabet has a lone surrogate instead of a character"
-        )
+        msg = f"prop: {where}.alphabet has a lone surrogate instead of a character"
+        raise ShapeError(msg)
     return chars, len(chars)
 
 
@@ -1074,19 +1113,18 @@ def _pairs_of(node: Node, key: str, where: str) -> list[tuple[str, object]]:
     """Return the pairs of a name and a value. Each name is unique and not empty."""
     items = node.get(key)
     if not isinstance(items, list) or not items:
-        raise ShapeError(f"prop: {where}.{key} is {_shown(items)}, not a list of pairs")
+        msg = f"prop: {where}.{key} is {_shown(items)}, not a list of pairs"
+        raise ShapeError(msg)
     pairs: list[tuple[str, object]] = []
     for item in cast("list[object]", items):
         pair = cast("list[object]", item) if isinstance(item, list) else []
-        name = pair[0] if len(pair) == 2 else None
+        name = pair[0] if len(pair) == _NAMED_PARTS else None
         if not isinstance(name, str):
-            raise ShapeError(
-                f"prop: {where}.{key} has {_shown(item)}, not a name and a shape"
-            )
+            msg = f"prop: {where}.{key} has {_shown(item)}, not a name and a shape"
+            raise ShapeError(msg)
         if name == "" or any(known == name for known, _ in pairs):
-            raise ShapeError(
-                f"prop: {where}.{key} has an empty or repeated name {_shown(name)}"
-            )
+            msg = f"prop: {where}.{key} has an empty or repeated name {_shown(name)}"
+            raise ShapeError(msg)
         pairs.append((name, pair[1]))
     return pairs
 
@@ -1114,12 +1152,12 @@ class _Reader:
         """Check the definitions, build them, and return the generator of the root."""
         definitions = self._document.get("definitions", {})
         if not isinstance(definitions, dict):
-            raise ShapeError("prop: definitions is not a map of names to shapes")
+            msg = "prop: definitions is not a map of names to shapes"
+            raise ShapeError(msg)
         for name, node in cast("dict[str, object]", definitions).items():
             if not isinstance(node, dict):
-                raise ShapeError(
-                    f"prop: definitions.{name} is {_shown(node)}, not a shape"
-                )
+                msg = f"prop: definitions.{name} is {_shown(node)}, not a shape"
+                raise ShapeError(msg)
             self._sources[name] = cast("Node", node)
         source = self._document.get("source")
         named: Node = cast("Node", source) if isinstance(source, dict) else {}
@@ -1127,9 +1165,8 @@ class _Reader:
             named.get("type"), str
         )
         if source is not None and not stated:
-            raise ShapeError(
-                f"prop: source is {_shown(source)}, not a language and a type"
-            )
+            msg = f"prop: source is {_shown(source)}, not a language and a type"
+            raise ShapeError(msg)
         self.cyclic = self._cyclic_names()
         self._finite()
         for name, generator in self._externals.items():
@@ -1172,9 +1209,8 @@ class _Reader:
         ]
         for target in targets:
             if target not in self._sources and target not in self._externals:
-                raise ShapeError(
-                    f"prop: a ref to {_shown(target)} does not have a definition"
-                )
+                msg = f"prop: a ref to {_shown(target)} does not have a definition"
+                raise ShapeError(msg)
         paths = _closure(graph)
         return frozenset(name for name, named in paths.items() if name in named)
 
@@ -1217,7 +1253,7 @@ class _Reader:
         listed = cast("list[object]", variants) if isinstance(variants, list) else []
         for index, variant in enumerate(listed):
             pair = cast("list[object]", variant) if isinstance(variant, list) else []
-            payload = pair[1] if len(pair) == 2 else None
+            payload = pair[1] if len(pair) == _NAMED_PARTS else None
             if not self.refers_back(payload):
                 return index
         return None
@@ -1230,47 +1266,47 @@ class _Reader:
         must = _closure(self._graph(True))
         for name in sorted(self.cyclic):
             if name in must.get(name, set()):
-                raise ShapeError(
+                msg = (
                     f"prop: definitions.{name} does not have a finite value, "
                     "because it refers to itself without passing through an "
                     "optional, a list, a set, a map or an enum that can exit"
                 )
+                raise ShapeError(msg)
 
     def build(self, node: Node, where: str, root: bool = False) -> Generator[Any]:
         """Return the generator of one shape."""
         kind = node.get("shape")
         keys = _KEYS.get(kind) if isinstance(kind, str) else None
         if keys is None:
-            raise ShapeError(
-                f"prop: {where}.shape is {_shown(kind)}, not the id of a shape"
-            )
+            msg = f"prop: {where}.shape is {_shown(kind)}, not the id of a shape"
+            raise ShapeError(msg)
         required, optional = keys
         stated = [
             key for key in node if key != "shape" and not (root and key in _ROOT_KEYS)
         ]
         missing = sorted(key for key in required if key not in stated)
         if missing:
-            raise ShapeError(
-                f"prop: {where}.{missing[0]} is missing from the {kind} shape"
-            )
+            msg = f"prop: {where}.{missing[0]} is missing from the {kind} shape"
+            raise ShapeError(msg)
         extra = sorted(
             key for key in stated if key not in required and key not in optional
         )
         if extra:
-            raise ShapeError(
-                f"prop: {where}.{extra[0]} does not apply to the {kind} shape"
-            )
+            msg = f"prop: {where}.{extra[0]} does not apply to the {kind} shape"
+            raise ShapeError(msg)
         try:
             return _BUILDERS[cast("str", kind)](self, node, where)
         except ShapeError:
             raise
         except ValueError as error:
-            raise ShapeError(f"prop: {where}: {error}") from error
+            msg = f"prop: {where}: {error}"
+            raise ShapeError(msg) from error
 
     def child(self, node: object, where: str) -> Generator[Any]:
         """Return the generator of a shape nested in another."""
         if not isinstance(node, dict):
-            raise ShapeError(f"prop: {where} is {_shown(node)}, not a shape")
+            msg = f"prop: {where} is {_shown(node)}, not a shape"
+            raise ShapeError(msg)
         return self.build(cast("Node", node), where)
 
 
@@ -1279,17 +1315,19 @@ def _int_shape(reader: _Reader, node: Node, where: str) -> Generator[Any]:
     del reader
     width = _int_parameter(node, "width", where)
     if width not in _INT_WIDTHS:
-        raise ShapeError(f"prop: {where}.width is {width}, not 8, 16, 32, 64 or 128")
+        msg = f"prop: {where}.width is {width}, not 8, 16, 32, 64 or 128"
+        raise ShapeError(msg)
     signed = node.get("signed")
     if not isinstance(signed, bool):
-        raise ShapeError(f"prop: {where}.signed is {_shown(signed)}, not true or false")
+        msg = f"prop: {where}.signed is {_shown(signed)}, not true or false"
+        raise ShapeError(msg)
     widest = (
         (-(1 << (width - 1)), (1 << (width - 1)) - 1)
         if signed
         else (0, (1 << width) - 1)
     )
     lo, hi = _range_of(node, where, widest, literal.integer)
-    if width == 128:
+    if width == _INT128:
         return Int128Shape(lo, hi)
     return Integer(IntegerBounds(lo, hi))
 
@@ -1300,21 +1338,20 @@ def _float_shape(reader: _Reader, node: Node, where: str) -> Generator[Any]:
     stated = _int_parameter(node, "width", where)
     width = _FLOAT_WIDTHS.get(stated)
     if width is None:
-        raise ShapeError(f"prop: {where}.width is {stated}, not 32 or 64")
+        msg = f"prop: {where}.width is {stated}, not 32 or 64"
+        raise ShapeError(msg)
     allow_nan = node.get("allow_nan", False)
     infinite = node.get("allow_infinity", False)
     for key, flag in (("allow_nan", allow_nan), ("allow_infinity", infinite)):
         if not isinstance(flag, bool):
-            raise ShapeError(
-                f"prop: {where}.{key} is {_shown(flag)}, not true or false"
-            )
+            msg = f"prop: {where}.{key} is {_shown(flag)}, not true or false"
+            raise ShapeError(msg)
     edge = math.inf if infinite else _FLOAT_MAX[width]
     lo = -edge if node.get("min") is None else literal.number(node.get("min"))
     hi = edge if node.get("max") is None else literal.number(node.get("max"))
     if infinite and math.isfinite(lo) and math.isfinite(hi):
-        raise ShapeError(
-            f"prop: {where} allows the infinities, but both of its bounds are finite"
-        )
+        msg = f"prop: {where} allows the infinities, but both of its bounds are finite"
+        raise ShapeError(msg)
     return Float(FloatBounds(lo, hi, allow_nan, width))
 
 
@@ -1333,12 +1370,14 @@ def _string_shape(reader: _Reader, node: Node, where: str) -> Generator[Any]:
     del reader
     if "pattern" in node:
         if any(key in node for key in ("alphabet", "min_size", "max_size")):
-            raise ShapeError(
+            msg = (
                 f"prop: {where} has a pattern, so it cannot have an alphabet or a size"
             )
+            raise ShapeError(msg)
         text = node["pattern"]
         if not isinstance(text, str):
-            raise ShapeError(f"prop: {where}.pattern is {_shown(text)}, not a string")
+            msg = f"prop: {where}.pattern is {_shown(text)}, not a string"
+            raise ShapeError(msg)
         return Matching(piece(text))
     characters, size = _alphabet_of(node, where)
     sizes = _sizes_of(node, where)
@@ -1359,7 +1398,8 @@ def _list_shape(reader: _Reader, node: Node, where: str) -> Generator[Any]:
     if kind == "fixed-list":
         size = _count_parameter(node, "size", where)
         if size is None:
-            raise ShapeError(f"prop: {where}.size is null, not an integer")
+            msg = f"prop: {where}.size is null, not an integer"
+            raise ShapeError(msg)
         sizes = Sizes(size, size)
     else:
         sizes = _sizes_of(node, where)
@@ -1397,8 +1437,8 @@ def _enum_shape(reader: _Reader, node: Node, where: str) -> Generator[Any]:
         (name, None if of is None else reader.child(of, f"{where}.{name}"))
         for name, of in _pairs_of(node, "variants", where)
     ]
-    exit = reader.exit_variant(node) if reader.refers_back(node) else None
-    return EnumShape(variants, exit, reader.budget)
+    exit_index = reader.exit_variant(node) if reader.refers_back(node) else None
+    return EnumShape(variants, exit_index, reader.budget)
 
 
 def _literal_shape(reader: _Reader, node: Node, where: str) -> Generator[Any]:
@@ -1406,9 +1446,8 @@ def _literal_shape(reader: _Reader, node: Node, where: str) -> Generator[Any]:
     del reader
     values = node.get("values")
     if not isinstance(values, list) or not values:
-        raise ShapeError(
-            f"prop: {where}.values is {_shown(values)}, not a list of literals"
-        )
+        msg = f"prop: {where}.values is {_shown(values)}, not a list of literals"
+        raise ShapeError(msg)
     return SampledFrom(
         [literal.decode(value) for value in cast("list[object]", values)]
     )
@@ -1435,7 +1474,8 @@ def _ip_shape(reader: _Reader, node: Node, where: str) -> Generator[Any]:
     if isinstance(version, (int, float)) and not isinstance(version, bool):
         count = _ADDRESS_BYTES.get(version)
     if count is None:
-        raise ShapeError(f"prop: {where}.version is {_shown(version)}, not 4 or 6")
+        msg = f"prop: {where}.version is {_shown(version)}, not 4 or 6"
+        raise ShapeError(msg)
     return _fixed_bytes(count)
 
 
@@ -1451,7 +1491,8 @@ def _decimal_bound(
     if text is None:
         return None
     if not isinstance(text, str) or not _DECIMAL.fullmatch(text):
-        raise ShapeError(f"prop: {where}.{key} is {_shown(text)}, not a decimal")
+        msg = f"prop: {where}.{key} is {_shown(text)}, not a decimal"
+        raise ShapeError(msg)
     whole, _, fraction = text.partition(".")
     scale: int = 10 ** len(fraction)
     numerator = int(whole + fraction) * factor
@@ -1467,7 +1508,8 @@ def _decimal_shape(reader: _Reader, node: Node, where: str) -> Generator[Any]:
     del reader
     scale = _count_parameter(node, "scale", where)
     if scale is None:
-        raise ShapeError(f"prop: {where}.scale is null, not an integer")
+        msg = f"prop: {where}.scale is null, not an integer"
+        raise ShapeError(msg)
     factor: int = 10**scale
     unscaled = {
         "min": _decimal_bound(node, "min", where, factor, True),
@@ -1485,9 +1527,8 @@ def _instant_of(node: Node, where: str) -> InstantShape:
     def parse(text: object) -> Pair:
         found = _DATE_TIME.fullmatch(text) if isinstance(text, str) else None
         if found is None or found[8] != "Z":
-            raise ShapeError(
-                f"prop: {where} bound {_shown(text)} is not an instant in UTC"
-            )
+            msg = f"prop: {where} bound {_shown(text)} is not an instant in UTC"
+            raise ShapeError(msg)
         days = _day_of(found[1], found[2], found[3], where)
         seconds = days * _SECONDS_PER_DAY + _time_of(
             found[4], found[5], found[6], where
@@ -1506,7 +1547,8 @@ def _date_shape(reader: _Reader, node: Node, where: str) -> Generator[Any]:
     def parse(text: object) -> int:
         found = _DATE.fullmatch(text) if isinstance(text, str) else None
         if found is None:
-            raise ShapeError(f"prop: {where} bound {_shown(text)} is not a date")
+            msg = f"prop: {where} bound {_shown(text)} is not a date"
+            raise ShapeError(msg)
         return _day_of(found[1], found[2], found[3], where)
 
     return Integer(_bounded(node, where, (_FIRST_DAY, _LAST_DAY), parse))
@@ -1520,7 +1562,8 @@ def _time_of_day_shape(reader: _Reader, node: Node, where: str) -> Generator[Any
     def parse(text: object) -> int:
         found = _TIME.fullmatch(text) if isinstance(text, str) else None
         if found is None:
-            raise ShapeError(f"prop: {where} bound {_shown(text)} is not a time of day")
+            msg = f"prop: {where} bound {_shown(text)} is not a time of day"
+            raise ShapeError(msg)
         seconds = _time_of(found[1], found[2], found[3], where)
         return seconds * per + _fraction_units(found[4], per, where)
 
@@ -1535,9 +1578,8 @@ def _local_of(node: Node, where: str) -> LocalDateTimeShape:
     def parse(text: object) -> Pair:
         found = _DATE_TIME.fullmatch(text) if isinstance(text, str) else None
         if found is None or found[8] != "":
-            raise ShapeError(
-                f"prop: {where} bound {_shown(text)} is not a local date and time"
-            )
+            msg = f"prop: {where} bound {_shown(text)} is not a local date and time"
+            raise ShapeError(msg)
         days = _day_of(found[1], found[2], found[3], where)
         seconds = _time_of(found[4], found[5], found[6], where)
         return days, seconds * per + _fraction_units(found[7], per, where)
@@ -1659,5 +1701,6 @@ def read(
             without a finite value.
     """
     if not isinstance(document, dict):
-        raise ShapeError(f"prop: {_shown(document)} is not a shape")
+        msg = f"prop: {_shown(document)} is not a shape"
+        raise ShapeError(msg)
     return _Reader(cast("Node", document), externals or {}).root()

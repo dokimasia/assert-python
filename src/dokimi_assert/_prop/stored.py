@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The entries that a property writes to its store and checks on a replay.
 
 A property writes one entry for each failure of a counterexample. The entry
@@ -12,17 +15,20 @@ values, and the property notes the difference.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
-from dokimi_assert._prop.case import Failing
 from dokimi_assert._prop.engine import literal, store
-from dokimi_assert._prop.engine.case import Drawn, Failed
-from dokimi_assert._prop.engine.execution import Execution
 from dokimi_assert._prop.engine.value import canonical
 from dokimi_assert._prop.identity import entry_of as identity_entry
 from dokimi_assert._prop.literal import drawn_literal
 from dokimi_assert._record.call import DEFINITION
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
+    from dokimi_assert._prop.case import Failing
+    from dokimi_assert._prop.engine.case import Drawn, Failed
+    from dokimi_assert._prop.engine.execution import Execution
 
 __all__ = ["differs", "entry_of"]
 

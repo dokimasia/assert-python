@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The record of the choices and the spans of one call of a body.
 
 A generator never reads the random source itself. It asks the case for a
@@ -18,11 +21,12 @@ from BaseException, so a body that catches Exception does not catch them.
 from __future__ import annotations
 
 import copy
-from collections.abc import Callable, Generator
+from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar, cast
 
+from dokimi_assert._override import override
 from dokimi_assert._prop.engine import draw as draws
 from dokimi_assert._prop.engine.choice import (
     UINT64_MAX,
@@ -34,6 +38,9 @@ from dokimi_assert._prop.engine.choice import (
     choice_of,
 )
 from dokimi_assert._prop.engine.source import Source
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 __all__ = [
     "MAX_CHOICES",
@@ -284,6 +291,7 @@ class Generating(Provider):
         self._source: Source = source
         self._earlier: dict[Bounds, list[tuple[int, Value]]] = {}
 
+    @override
     def value(self, request: Request, index: int) -> Value:
         """Return the draw of the request from the source, or an earlier value.
 
@@ -333,6 +341,7 @@ class Trailing(Generating):
         super().__init__(source)
         self.states: list[Source] = [copy.copy(source)]
 
+    @override
     def value(self, request: Request, index: int) -> Value:
         """Return the value that Generating returns, and keep the state.
 
@@ -374,6 +383,7 @@ class Replaying(Provider):
         """
         self._choices: list[Choice] | tuple[Choice, ...] = choices
 
+    @override
     def value(self, request: Request, index: int) -> Value:
         """Return the recorded value at an index, fitted to the request.
 
@@ -406,6 +416,7 @@ class Valuing(Provider):
         self._values: list[object] | tuple[object, ...] = values
         self._at: int = 0
 
+    @override
     def valued(self) -> tuple[object] | None:
         """Return the next given value, or None when none is left.
 

@@ -1,10 +1,12 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/option.py tests the options of a property and a property form."""
 
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
@@ -35,8 +37,12 @@ from dokimi_assert._prop.option import (
     workers,
 )
 from dokimi_assert._prop.registry import Generators
-from dokimi_assert.seat import Collector
 from helpers import refusal
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from dokimi_assert.seat import Collector
 
 
 def _wrap(run: Callable[[], None]) -> None:

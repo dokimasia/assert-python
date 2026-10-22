@@ -1,10 +1,13 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/bridge.py tests the decoding of fuzzer bytes into a case."""
 
 from __future__ import annotations
 
 import math
 import struct
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from dokimi_assert import check
 from dokimi_assert._prop.engine.bridge import Bridging
@@ -16,8 +19,10 @@ from dokimi_assert._prop.engine.choice import (
     SequenceBounds,
     Value,
 )
-from dokimi_assert.seat import Collector
 from helpers import no_draw
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 def values(data: bytes, *bounds: Bounds) -> list[Value]:

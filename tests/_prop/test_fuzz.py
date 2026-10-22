@@ -1,15 +1,15 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/fuzz.py tests a property whose cases a fuzzer decodes."""
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING
 
 from dokimi_assert import check
 from dokimi_assert._matcher.seat import name_test
-from dokimi_assert._prop.case import Case
 from dokimi_assert._prop.engine.choice import SequenceBounds
 from dokimi_assert._prop.engine.generator import Bytes
 from dokimi_assert._prop.environment import PROFILE_VARIABLE
@@ -18,6 +18,11 @@ from dokimi_assert._prop.fuzz import fuzz
 from dokimi_assert._prop.option import hermetic, seed, store
 from dokimi_assert.seat import Collector, Recorder
 from helpers import records
+
+if TYPE_CHECKING:
+    import pytest
+
+    from dokimi_assert._prop.case import Case
 
 #: The variable that a mutation run sets in every process that it instruments.
 MUTANT = "DOKIMI_MUTATE_MUTANT"
@@ -163,7 +168,7 @@ class TestFuzz:
         check.has_prefix(
             seat,
             recorder.message,
-            f"prop.fuzz: {os.path.join('testdata', 'fuzz', *PARSES)}: the seed "
+            f"prop.fuzz: {Path('testdata', 'fuzz', *PARSES)}: the seed "
             "files cannot be read: ",
             "the fault has the path and the reason",
         )

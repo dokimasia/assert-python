@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/runner.py tests the phases, counts and outcomes of a run.
 
 The reference implementation of the definition computed the counts of this
@@ -7,7 +10,7 @@ spec on the same bodies and seeds.
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
@@ -48,8 +51,10 @@ from dokimi_assert._prop.engine.runner import (
 from dokimi_assert._prop.engine.source import case_source
 from dokimi_assert._prop.engine.tokens import decode
 from dokimi_assert._prop.engine.traces import Draw, TraceError
-from dokimi_assert.seat import Collector
 from helpers import integers, refusal
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 SEED = 7
 DIGIT = Integer(IntegerBounds(0, 9))

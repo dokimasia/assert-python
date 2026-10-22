@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The options of a property, and the options that only a property form takes.
 
 Each option is one setting of a run of for_all, fuzz or a property form.
@@ -18,14 +21,16 @@ from __future__ import annotations
 import math
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from dokimi_assert._matcher.option import Option as Relaxation
 from dokimi_assert._prop.engine.case import MAX_CHOICES
-from dokimi_assert._prop.engine.generator import Generator
 from dokimi_assert._prop.engine.runner import DEFAULT_CASES, Requirement
 from dokimi_assert._prop.engine.shrink import DEFAULT_BUDGET
 from dokimi_assert._prop.registry import Generators
+
+if TYPE_CHECKING:
+    from dokimi_assert._prop.engine.generator import Generator
 
 __all__ = [
     "DEFAULT_SHRINK_TIME",
@@ -184,7 +189,8 @@ def _counted(call: str, n: int, minimum: int) -> int:
         ValueError: n is not an int of minimum or more.
     """
     if type(n) is not int or n < minimum:
-        raise ValueError(f"prop: {call}({n!r}) needs an int of {minimum} or more")
+        msg = f"prop: {call}({n!r}) needs an int of {minimum} or more"
+        raise ValueError(msg)
     return n
 
 
@@ -228,7 +234,8 @@ def seed(s: int) -> Option:
         ValueError: s is not an int in [0, 2^64).
     """
     if type(s) is not int or not 0 <= s < _SEED_LIMIT:
-        raise ValueError(f"prop: seed({s!r}) needs an int in [0, 2^64)")
+        msg = f"prop: seed({s!r}) needs an int in [0, 2^64)"
+        raise ValueError(msg)
     return Option("seed", s)
 
 
@@ -267,9 +274,8 @@ def require(label: str, share: float) -> Option:
         ValueError: share is not a number from 0 to 1.
     """
     if type(share) not in (int, float) or not 0 <= share <= 1:
-        raise ValueError(
-            f"prop: require({label!r}, {share!r}) needs a share from 0 to 1"
-        )
+        msg = f"prop: require({label!r}, {share!r}) needs a share from 0 to 1"
+        raise ValueError(msg)
     return Option("require", Requirement(label, share))
 
 
@@ -309,9 +315,8 @@ def shrink_time(seconds: float) -> Option:
         ValueError: seconds is not a finite number of 0 or more.
     """
     if type(seconds) not in (int, float) or not 0 <= seconds < math.inf:
-        raise ValueError(
-            f"prop: shrink_time({seconds!r}) needs a finite number of 0 or more"
-        )
+        msg = f"prop: shrink_time({seconds!r}) needs a finite number of 0 or more"
+        raise ValueError(msg)
     return Option("shrink-time", seconds)
 
 
@@ -448,7 +453,9 @@ def around(wrapper: Wrapper) -> Option:
         ValueError: wrapper is not callable.
     """
     if not callable(wrapper):
-        raise ValueError(f"prop: around({wrapper!r}) needs a callable")  # pyright: ignore[reportUnreachable]
+        msg = f"prop: around({wrapper!r}) needs a callable"  # type: ignore[unreachable]
+        # Every option refuses an argument with ValueError.
+        raise ValueError(msg)  # noqa: TRY004  # pyright: ignore[reportUnreachable]
     return Option("around", wrapper)
 
 

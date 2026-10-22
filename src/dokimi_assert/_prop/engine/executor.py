@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The executors of a run on one worker and of a run on more than one.
 
 Serial runs each case on the thread of the runner when the runner calls for
@@ -22,10 +25,9 @@ from __future__ import annotations
 
 import threading
 from collections import deque
-from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from dokimi_assert._prop.engine.case import (
     Case,
@@ -44,7 +46,11 @@ from dokimi_assert._prop.engine.execution import (
     finish,
 )
 from dokimi_assert._prop.engine.source import Source, case_source
-from dokimi_assert._prop.engine.tree import Tree
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from dokimi_assert._prop.engine.tree import Tree
 
 __all__ = ["Ahead", "Generated", "Serial"]
 

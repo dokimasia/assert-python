@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The Python values of shapes, and their conversion back to neutral values.
 
 The engine decodes a shape to a neutral value. The function to of a converter
@@ -105,6 +108,29 @@ def _same(value: Any) -> Any:
 IDENTITY = Converter(_same, _same)
 
 
+def deferred_converter(cell: list[Converter]) -> Converter:
+    """Return a converter that delegates to the converter in a cell.
+
+    The read of a recursive definition fills the cell after it returns this
+    converter, so each conversion reads the cell when it runs.
+
+    Args:
+        cell: The cell that the read fills with the converter of the
+            definition.
+
+    Returns:
+        The converter.
+    """
+
+    def to(value: Any) -> Any:
+        return cell[0].to(value)
+
+    def back(value: Any) -> Any:
+        return cell[0].back(value)
+
+    return Converter(to, back)
+
+
 @dataclass(frozen=True, slots=True)
 class Variant:
     """A variant of an enum and its payload.
@@ -138,10 +164,11 @@ class WallTime:
 
 
 #: The epoch of the date and time shapes. The shapes count their instants and
-#: their days from it.
+#: their days from it, and the time-of-day shapes count their units from its
+#: midnight without a zone.
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 _EPOCH_DAY = date(1970, 1, 1)
-_MIDNIGHT = datetime(1970, 1, 1)
+_MIDNIGHT = datetime.combine(_EPOCH_DAY, time())
 
 #: The microseconds of one unit of a time shape at each unit above ns.
 _MICROSECONDS = {"s": 1_000_000, "ms": 1_000, "us": 1}
@@ -172,7 +199,8 @@ def _whole(micros: int, unit: str, value: object) -> int:
     """
     units, rest = divmod(micros, _MICROSECONDS[unit])
     if rest:
-        raise CannotInvertError(f"prop: {value!r} is finer than the unit {unit}")
+        msg = f"prop: {value!r} is finer than the unit {unit}"
+        raise CannotInvertError(msg)
     return units
 
 
@@ -387,7 +415,7 @@ def zone_converter(at: str) -> Converter:
     """
     for name in sorted(_ZONE_NAMES):
         zone_of(name, at)
-    return Converter(lambda value: ZoneInfo(value), _zone_name)
+    return Converter(ZoneInfo, _zone_name)
 
 
 def zoned_converter(unit: str, at: str) -> Converter:
@@ -501,13 +529,13 @@ def decimal_converter(scale: int) -> Converter:
         if magnitude == 0:
             return 0
         if shift > len(str(2**63)):
-            raise CannotInvertError(f"prop: {value!r} is outside the 64-bit range")
+            msg = f"prop: {value!r} is outside the 64-bit range"
+            raise CannotInvertError(msg)
         if shift < 0:
             magnitude, rest = divmod(magnitude, 10**-shift)
             if rest:
-                raise CannotInvertError(
-                    f"prop: {value!r} has more digits than the scale of {scale}"
-                )
+                msg = f"prop: {value!r} has more digits than the scale of {scale}"
+                raise CannotInvertError(msg)
         else:
             magnitude *= 10**shift
         return -magnitude if sign else magnitude
@@ -571,9 +599,7 @@ class _Walker:
         if built is not None:
             return built
         cell: list[Converter] = []
-        lazy = Converter(
-            lambda value: cell[0].to(value), lambda value: cell[0].back(value)
-        )
+        lazy = deferred_converter(cell)
         self._built[name] = lazy
         cell.append(self.convert(self._definitions[name], _joined(at, name)))
         return lazy
@@ -631,6 +657,16 @@ class _Walker:
             )
         if kind == "optional":
             return _optional_converter(self.convert(node["of"], at))
+        return self._named(kind, node, at)
+
+    def _named(self, kind: str, node: Mapping[str, Any], at: str) -> Converter:
+        """Return the converter of a record, an enum, a literal, a ref or a scalar.
+
+        A domain shape is a scalar.
+
+        Raises:
+            FaultError: The shape does not have a Python value.
+        """
         if kind == "record":
             return _fields_converter(
                 [
@@ -652,34 +688,29 @@ class _Walker:
         return _domain_converter(kind, node, at)
 
 
+#: The converter of each domain shape, from the shape and its path.
+_DOMAINS: dict[str, Callable[[Mapping[str, Any], str], Converter]] = {
+    "uuid": lambda *_: uuid_converter(),
+    "ip-address": lambda *_: ip_converter(),
+    "decimal": lambda node, _: decimal_converter(cast("int", node["scale"])),
+    "instant": lambda node, _: instant_converter(cast("str", node.get("unit"))),
+    "date": lambda *_: date_converter(),
+    "time-of-day": lambda node, _: time_converter(cast("str", node.get("unit"))),
+    "local-date-time": lambda node, _: local_converter(cast("str", node.get("unit"))),
+    "duration": lambda node, _: duration_converter(cast("str", node.get("unit"))),
+    "offset": lambda *_: offset_converter(),
+    "zone": lambda _, at: zone_converter(at),
+    "zoned-date-time": lambda node, at: zoned_converter(
+        cast("str", node.get("unit")), at
+    ),
+    "wall-time": lambda node, at: _wall_converter(cast("str", node.get("unit")), at),
+}
+
+
 def _domain_converter(kind: str, node: Mapping[str, Any], at: str) -> Converter:
     """Return the converter of a scalar or a domain shape."""
-    unit = node.get("unit")
-    if kind == "uuid":
-        return uuid_converter()
-    if kind == "ip-address":
-        return ip_converter()
-    if kind == "decimal":
-        return decimal_converter(cast("int", node["scale"]))
-    if kind == "instant":
-        return instant_converter(cast("str", unit))
-    if kind == "date":
-        return date_converter()
-    if kind == "time-of-day":
-        return time_converter(cast("str", unit))
-    if kind == "local-date-time":
-        return local_converter(cast("str", unit))
-    if kind == "duration":
-        return duration_converter(cast("str", unit))
-    if kind == "offset":
-        return offset_converter()
-    if kind == "zone":
-        return zone_converter(at)
-    if kind == "zoned-date-time":
-        return zoned_converter(cast("str", unit), at)
-    if kind == "wall-time":
-        return _wall_converter(cast("str", unit), at)
-    return IDENTITY
+    build = _DOMAINS.get(kind)
+    return IDENTITY if build is None else build(node, at)
 
 
 def _list_converter(of: Converter) -> Converter:

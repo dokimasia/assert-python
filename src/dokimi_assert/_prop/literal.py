@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The typed literal of a drawn value in the type that its generator decodes.
 
 The type of a draw is the type of its generator, so an integral float is
@@ -172,7 +175,10 @@ def _typed(generator: object, value: object) -> Literal | None:
     return None
 
 
-def drawn_literal(generator: object, value: object) -> Literal | None:
+# drawn_literal takes one call for each level of a value, and a value of a
+# recursive shape has up to 100 levels. A split of this function adds a frame
+# to each level, and such a value then passes the recursion limit.
+def drawn_literal(generator: object, value: object) -> Literal | None:  # noqa: PLR0911
     """Return the typed literal of a value that a generator decoded.
 
     The literal has the type that the generator decodes.

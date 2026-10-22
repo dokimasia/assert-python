@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The typed literals of decoded values.
 
 The vectors of the definition give each value as a typed literal. decode
@@ -31,10 +34,12 @@ from __future__ import annotations
 import json
 import math
 import re
-from collections.abc import Mapping
-from typing import Any, TypeGuard
+from typing import TYPE_CHECKING, Any, TypeGuard
 
 from dokimi_assert._prop.engine.value import Fields, Pairs, Variant, canonical
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
 
 __all__ = ["LiteralError", "decode", "encode", "integer", "number", "plain"]
 
@@ -67,12 +72,16 @@ def _is_int(value: object) -> TypeGuard[int]:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+#: The values of a pair.
+_PAIR = 2
+
+
 def _is_pair(entry: object) -> TypeGuard[list[Any]]:
     """Report whether an entry is a JSON array of two values."""
     if not isinstance(entry, list):
         return False
     stated: list[object] = entry
-    return len(stated) == 2
+    return len(stated) == _PAIR
 
 
 def integer(value: object) -> int:
@@ -92,18 +101,17 @@ def integer(value: object) -> int:
     """
     if _is_int(value):
         if abs(value) > _SAFE_INTEGER:
-            raise LiteralError(
-                f"prop: {value} is not a safe integer, so it must be a string"
-            )
+            msg = f"prop: {value} is not a safe integer, so it must be a string"
+            raise LiteralError(msg)
         return value
     if isinstance(value, str) and _DECIMAL.fullmatch(value):
         parsed = int(value)
         if abs(parsed) <= _SAFE_INTEGER or str(parsed) != value:
-            raise LiteralError(
-                f"prop: {_shown(value)} is not a canonical large integer"
-            )
+            msg = f"prop: {_shown(value)} is not a canonical large integer"
+            raise LiteralError(msg)
         return parsed
-    raise LiteralError(f"prop: {_shown(value)} is not an integer")
+    msg = f"prop: {_shown(value)} is not an integer"
+    raise LiteralError(msg)
 
 
 def number(value: object) -> float:
@@ -130,7 +138,8 @@ def number(value: object) -> float:
             return math.inf if value > 0 else -math.inf
     if isinstance(value, str) and value in _NON_FINITE:
         return _NON_FINITE[value]
-    raise LiteralError(f"prop: {_shown(value)} is not a float")
+    msg = f"prop: {_shown(value)} is not a float"
+    raise LiteralError(msg)
 
 
 def _scalar(kind: object, value: object) -> object:
@@ -143,13 +152,15 @@ def _scalar(kind: object, value: object) -> object:
         return number(value)
     if kind == "string" and isinstance(value, str):
         return value
-    raise LiteralError(f"prop: {_shown(value)} is not a literal of type {_shown(kind)}")
+    msg = f"prop: {_shown(value)} is not a literal of type {_shown(kind)}"
+    raise LiteralError(msg)
 
 
 def _bytes_of(value: object) -> bytes:
     """Return the bytes of lowercase hexadecimal text."""
     if not isinstance(value, str) or not _HEX.fullmatch(value):
-        raise LiteralError(f"prop: {_shown(value)} is not lowercase hexadecimal")
+        msg = f"prop: {_shown(value)} is not lowercase hexadecimal"
+        raise LiteralError(msg)
     return bytes.fromhex(value)
 
 
@@ -158,9 +169,8 @@ def _absent(literal: Mapping[str, Any]) -> bool:
     if "value" not in literal or literal["value"] is not None:
         return False
     if literal.get("of") not in _SCALARS:
-        raise LiteralError(
-            f"prop: the absent value of {_shown(literal)} does not have a scalar type"
-        )
+        msg = f"prop: the absent value of {_shown(literal)} does not have a scalar type"
+        raise LiteralError(msg)
     return True
 
 
@@ -172,13 +182,15 @@ def _list_of(literal: Mapping[str, Any]) -> list[object] | None:
     if "items" in literal:
         items = literal["items"]
         if not isinstance(items, list):
-            raise LiteralError(f"prop: items is {_shown(items)}, not a list")
+            msg = f"prop: items is {_shown(items)}, not a list"
+            raise LiteralError(msg)
         return [decode(item) for item in items]
     if _absent(literal):
         return None
     values = literal.get("value")
     if not isinstance(values, list):
-        raise LiteralError(f"prop: {_shown(literal)} does not have a list as its value")
+        msg = f"prop: {_shown(literal)} does not have a list as its value"
+        raise LiteralError(msg)
     of = literal.get("of")
     return [_scalar(of, element) for element in values]
 
@@ -192,17 +204,18 @@ def _map_of(literal: Mapping[str, Any]) -> Pairs | None:
     if "entries" in literal:
         entries = literal["entries"]
         if not isinstance(entries, list) or not all(map(_is_pair, entries)):
-            raise LiteralError(
-                f"prop: entries is {_shown(entries)}, not key and value pairs"
-            )
+            msg = f"prop: entries is {_shown(entries)}, not key and value pairs"
+            raise LiteralError(msg)
         return Pairs(tuple((decode(k), decode(v)) for k, v in entries))
     if literal.get("key") != "string":
-        raise LiteralError(f"prop: {_shown(literal)} is not a map with string keys")
+        msg = f"prop: {_shown(literal)} is not a map with string keys"
+        raise LiteralError(msg)
     if _absent(literal):
         return None
     values = literal.get("value")
     if not isinstance(values, dict):
-        raise LiteralError(f"prop: {_shown(literal)} is not a map with string keys")
+        msg = f"prop: {_shown(literal)} is not a map with string keys"
+        raise LiteralError(msg)
     of = literal.get("of")
     return Pairs(tuple((k, _scalar(of, v)) for k, v in values.items()))
 
@@ -216,12 +229,12 @@ def _record_of(literal: Mapping[str, Any]) -> Fields:
     """Return the record of a literal with pairs of a name and a value."""
     fields = literal.get("fields")
     if not isinstance(fields, list) or not all(map(_named, fields)):
-        raise LiteralError(
-            f"prop: fields is {_shown(fields)}, not name and value pairs"
-        )
+        msg = f"prop: fields is {_shown(fields)}, not name and value pairs"
+        raise LiteralError(msg)
     names = [name for name, _ in fields]
     if len(set(names)) != len(names):
-        raise LiteralError(f"prop: the field names {_shown(names)} repeat a name")
+        msg = f"prop: the field names {_shown(names)} repeat a name"
+        raise LiteralError(msg)
     return Fields(tuple((name, decode(value)) for name, value in fields))
 
 
@@ -232,9 +245,8 @@ def _variant_of(literal: Mapping[str, Any]) -> Variant:
     """
     name = literal.get("name")
     if not isinstance(name, str) or name == "":
-        raise LiteralError(
-            f"prop: {_shown(literal)} does not have the name of a variant"
-        )
+        msg = f"prop: {_shown(literal)} does not have the name of a variant"
+        raise LiteralError(msg)
     if "payload" in literal:
         return Variant(name, decode(literal["payload"]))
     return Variant(name)
@@ -244,15 +256,27 @@ def _reference_of(literal: Mapping[str, Any]) -> object:
     """Return the value that a reference refers to."""
     ident = literal.get("id")
     if not isinstance(ident, str) or ident == "":
-        raise LiteralError(f"prop: {_shown(literal)} does not have an id")
+        msg = f"prop: {_shown(literal)} does not have an id"
+        raise LiteralError(msg)
     value: object = literal.get("value")
     if isinstance(value, dict):
         stated: dict[str, object] = value
         if stated.get("type") == "null":
-            raise LiteralError(
+            msg = (
                 f"prop: the reference {_shown(ident)} refers to null, not to an object"
             )
+            raise LiteralError(msg)
     return decode(value)
+
+
+#: The decoder of each type of a literal that contains values, by its name.
+_CONTAINERS: dict[str, Callable[[Mapping[str, Any]], object]] = {
+    "list": _list_of,
+    "map": _map_of,
+    "record": _record_of,
+    "variant": _variant_of,
+    "reference": _reference_of,
+}
 
 
 def decode(literal: object) -> object:
@@ -268,23 +292,17 @@ def decode(literal: object) -> object:
         LiteralError: The encoding does not define the literal.
     """
     if not isinstance(literal, dict):
-        raise LiteralError(f"prop: {_shown(literal)} is not a typed literal")
+        msg = f"prop: {_shown(literal)} is not a typed literal"
+        raise LiteralError(msg)
     form: dict[str, Any] = literal
     kind = form.get("type")
     if kind == "null":
         return None
     if kind == "bytes":
         return _bytes_of(form.get("value"))
-    if kind == "list":
-        return _list_of(form)
-    if kind == "map":
-        return _map_of(form)
-    if kind == "record":
-        return _record_of(form)
-    if kind == "variant":
-        return _variant_of(form)
-    if kind == "reference":
-        return _reference_of(form)
+    container = _CONTAINERS.get(kind) if isinstance(kind, str) else None
+    if container is not None:
+        return container(form)
     return _scalar(kind, form.get("value"))
 
 
@@ -324,7 +342,10 @@ def plain(value: object) -> object:
     return value
 
 
-def encode(value: object) -> dict[str, Any]:
+# encode takes one call for each level of a value, and a value of a recursive
+# shape has up to 100 levels. A split of this function adds a frame to each
+# level, and such a value then passes the recursion limit.
+def encode(value: object) -> dict[str, Any]:  # noqa: PLR0911
     """Return the canonical typed literal of a decoded value.
 
     Args:
@@ -360,5 +381,6 @@ def encode(value: object) -> dict[str, Any]:
         return {"type": "variant", "name": value.name}
     scalar = _scalar_kind(value)
     if scalar is None:
-        raise TypeError(f"prop: {canonical(value)} is not a decoded value")
+        msg = f"prop: {canonical(value)} is not a decoded value"
+        raise TypeError(msg)
     return {"type": scalar, "value": plain(value)}

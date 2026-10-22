@@ -1,8 +1,11 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/alphabet.py tests the default alphabet of a string."""
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import pytest
 
@@ -14,7 +17,9 @@ from dokimi_assert._prop.engine.alphabet import (
     indices,
     merge,
 )
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: The index of DEL. DEL is the first code point after the printable
 #: characters and the controls below space.

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """A trace is the list of the draws and the machine steps of a case.
 
 A trace has its entries in request order. A draw entry has a label and a
@@ -24,14 +27,18 @@ before any case runs.
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, NoReturn, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, NoReturn, TypeGuard, cast
 
+from dokimi_assert._override import override
 from dokimi_assert._prop.engine.case import Case, Decoder, Provider, Request, Step
 from dokimi_assert._prop.engine.choice import Choice, Value
-from dokimi_assert._prop.engine.generator import Generator
 from dokimi_assert._prop.engine.inverse import inverse_of
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from dokimi_assert._prop.engine.generator import Generator
 
 __all__ = ["Draw", "Entry", "TraceError", "Tracing", "entries", "is_step"]
 
@@ -126,6 +133,7 @@ class Tracing(Provider):
         self._at: int = 0
         self._queue: deque[Choice] = deque()
 
+    @override
     def value(self, request: Request, index: int) -> Value:
         """Return the next prepared value fitted to the request, or its target.
 
@@ -141,6 +149,7 @@ class Tracing(Provider):
             return request.bounds.target
         return request.bounds.coerce(self._queue.popleft())
 
+    @override
     def drawing(self, generator: Decoder[Any], label: str) -> None:
         """Prepare the choices of the next entry for a draw under a label.
 

@@ -1,13 +1,14 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/forall.py tests the assertion that a body passes for every case."""
 
 from __future__ import annotations
 
 import asyncio
-
-import pytest
+from typing import TYPE_CHECKING
 
 from dokimi_assert import check
-from dokimi_assert._prop.case import Case
 from dokimi_assert._prop.detail import FOR_ALL
 from dokimi_assert._prop.engine.choice import IntegerBounds
 from dokimi_assert._prop.engine.generator import Integer
@@ -16,6 +17,11 @@ from dokimi_assert._prop.forall import for_all
 from dokimi_assert._prop.option import hermetic, seed, store
 from dokimi_assert.seat import Collector, Recorder, Standard
 from helpers import records
+
+if TYPE_CHECKING:
+    import pytest
+
+    from dokimi_assert._prop.case import Case
 
 #: A generator of one digit.
 DIGITS = Integer(IntegerBounds(0, 9))

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/generators.py tests the generators of the property engine."""
 
 from __future__ import annotations
@@ -5,7 +8,7 @@ from __future__ import annotations
 import math
 from collections.abc import Callable
 from fractions import Fraction
-from typing import Any, ClassVar, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
 
 import pytest
 
@@ -14,11 +17,13 @@ from dokimi_assert._prop import generators as prop
 from dokimi_assert._prop.engine.case import Case as Engine
 from dokimi_assert._prop.engine.case import Replaying
 from dokimi_assert._prop.engine.choice import Choice
-from dokimi_assert._prop.engine.generator import Generator
 from dokimi_assert._prop.engine.inverse import invert
 from dokimi_assert._prop.engine.value import Pairs
-from dokimi_assert.seat import Collector
 from helpers import integers, refusal
+
+if TYPE_CHECKING:
+    from dokimi_assert._prop.engine.generator import Generator
+    from dokimi_assert.seat import Collector
 
 _T = TypeVar("_T")
 
@@ -94,8 +99,10 @@ class TestInteger:
         (
             "bounds beyond both 64-bit ranges",
             lambda: prop.integer(-1, 2**64 - 1),
-            f"prop: integer(-1, {2**64 - 1}): integer bounds [-1, {2**64 - 1}] are "
-            "inside neither the signed nor the unsigned 64-bit range",
+            (
+                f"prop: integer(-1, {2**64 - 1}): integer bounds [-1, {2**64 - 1}] are "
+                "inside neither the signed nor the unsigned 64-bit range"
+            ),
         ),
     ]
 
@@ -486,14 +493,18 @@ class TestDuration:
         (
             "bounds out of order",
             lambda: prop.duration(TWO_DAYS, -SECOND),
-            f"prop: duration({TWO_DAYS}, {-SECOND}) needs bounds in order inside "
-            "the signed 64-bit range",
+            (
+                f"prop: duration({TWO_DAYS}, {-SECOND}) needs bounds in order inside "
+                "the signed 64-bit range"
+            ),
         ),
         (
             "a bound beyond 2^63 - 1 nanoseconds",
             lambda: prop.duration(0, 2**63),
-            f"prop: duration(0, {2**63}) needs bounds in order inside the signed "
-            "64-bit range",
+            (
+                f"prop: duration(0, {2**63}) needs bounds in order inside the signed "
+                "64-bit range"
+            ),
         ),
     ]
 
@@ -554,7 +565,7 @@ class TestRecursive:
     ) -> None:
         """The first position takes the base."""
         base = cast("Generator[Any]", DIGITS)
-        generator = prop.recursive(base, lambda inner: prop.list(inner))
+        generator = prop.recursive(base, prop.list)
         check.equal(
             seat, decoded(generator, *ints(0, 6)), 6, "the value is a leaf of the base"
         )

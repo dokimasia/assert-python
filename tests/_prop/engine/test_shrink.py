@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/shrink.py tests the replay, the shrink and the explanation.
 
 The reference implementation of the definition computed the pinned results of
@@ -10,7 +13,7 @@ from __future__ import annotations
 
 import math
 import time
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
@@ -50,8 +53,10 @@ from dokimi_assert._prop.engine.shrink import (
     nodes_of,
 )
 from dokimi_assert._prop.engine.value import canonical
-from dokimi_assert.seat import Collector
 from helpers import Decoding, Picked, integers
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 DIGIT = Integer(IntegerBounds(0, 9))
 WIDE = Integer(IntegerBounds(0, 1_000_000_000))
@@ -1185,7 +1190,8 @@ class TestShrinkerShrinkAll:
             nonlocal calls
             calls += 1
             if calls > 1:
-                raise TypeError("the body broke")
+                msg = "the body broke"
+                raise TypeError(msg)
             c.draw(WIDE, "n")
             c.fail("first")
 
@@ -1432,7 +1438,8 @@ class TestExplain:
             nonlocal decodes
             decodes += 1
             if decodes > 1:
-                raise TypeError("the decode broke")
+                msg = "the decode broke"
+                raise TypeError(msg)
             return value
 
         mapped = Mapped(WIDE, brittle)

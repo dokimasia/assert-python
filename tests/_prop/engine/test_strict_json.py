@@ -1,15 +1,20 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/strict_json.py tests the strict JSON of a store file."""
 
 from __future__ import annotations
 
 import sys
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
 from dokimi_assert import check
 from dokimi_assert._prop.engine.strict_json import JsonError, parse
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 class TestJsonError:
@@ -113,9 +118,11 @@ class TestParse:
         (
             "raises json error for an integer past the digit limit of int",
             "-" + "1" * (sys.get_int_max_str_digits() + 1),
-            "prop: an integer of the JSON has "
-            f"{sys.get_int_max_str_digits() + 1} digits, and int allows "
-            f"{sys.get_int_max_str_digits()}",
+            (
+                "prop: an integer of the JSON has "
+                f"{sys.get_int_max_str_digits() + 1} digits, and int allows "
+                f"{sys.get_int_max_str_digits()}"
+            ),
         ),
     ]
 

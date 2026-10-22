@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/inverse.py tests generators that run backwards.
 
 The choices of a generated value replay to that value. When more than one
@@ -7,7 +10,7 @@ sequence of choices decodes to a value, the inverse takes the first.
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import pytest
 
@@ -52,8 +55,10 @@ from dokimi_assert._prop.engine.shape import read
 from dokimi_assert._prop.engine.source import case_source
 from dokimi_assert._prop.engine.value import Fields, Pairs, Variant, canonical
 from dokimi_assert._prop.engine.zone import ZONES
-from dokimi_assert.seat import Collector
 from helpers import Picked
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: The number of cases of each generator in the round trip.
 CASES = 60
@@ -762,7 +767,8 @@ class TestInvert:
 
         def parsed(text: str) -> int:
             if not text.isdigit():
-                raise ValueError(f"{text} is not a digit")
+                msg = f"{text} is not a digit"
+                raise ValueError(msg)
             return int(text)
 
         check.equal(
@@ -778,7 +784,8 @@ class TestInvert:
         """The error of the inverse propagates."""
 
         def strict(_: str) -> int:
-            raise CannotInvertError("prop: the map refuses it")
+            msg = "prop: the map refuses it"
+            raise CannotInvertError(msg)
 
         check.equal(
             seat,
@@ -857,8 +864,10 @@ class TestInvert:
             seat,
             refused(seat, OneOf([DIGIT, IDENTITY]), 11),
             (
-                "prop: no alternative produces int:11, and one of them does not "
-                "have an inverse",
+                (
+                    "prop: no alternative produces int:11, and one of them does not "
+                    "have an inverse"
+                ),
                 True,
             ),
             "the error is a NoInverseError",
@@ -872,8 +881,10 @@ class TestInvert:
             seat,
             refused(seat, tree(IDENTITY), "x"),
             (
-                'prop: neither the base nor the extension produces string:"x", and '
-                "one of them does not have an inverse",
+                (
+                    'prop: neither the base nor the extension produces string:"x", and '
+                    "one of them does not have an inverse"
+                ),
                 True,
             ),
             "the error is a NoInverseError",
@@ -895,7 +906,8 @@ class TestInvert:
         """The error of the map propagates."""
 
         def broke(_: int) -> int:
-            raise TypeError("the map broke")
+            msg = "the map broke"
+            raise TypeError(msg)
 
         error = check.raises(
             seat, lambda: invert(Mapped(DIGIT, broke, int), 1), "the map raises"
@@ -908,7 +920,8 @@ class TestInvert:
         """The error of the branch propagates."""
 
         def broke(_: int) -> int:
-            raise TypeError("the map broke")
+            msg = "the map broke"
+            raise TypeError(msg)
 
         broken = OneOf([Mapped(DIGIT, broke, int)])
         error = check.raises(seat, lambda: invert(broken, 1), "the branch raises")
@@ -925,7 +938,8 @@ class TestInvert:
         def flaky(value: int) -> int:
             calls[0] += 1
             if calls[0] > 1:
-                raise ArithmeticError("the second call broke")
+                msg = "the second call broke"
+                raise ArithmeticError(msg)
             return value
 
         error = check.raises(
@@ -970,7 +984,8 @@ class TestInverseOf:
         """The error of the map propagates."""
 
         def broke(_: int) -> int:
-            raise TypeError("the map broke")
+            msg = "the map broke"
+            raise TypeError(msg)
 
         error = check.raises(
             seat, lambda: inverse_of(Mapped(DIGIT, broke, int), 1), "the map raises"

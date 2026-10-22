@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The values of a generator for a seed, outside a property.
 
 A benchmark takes its inputs from a generator, so every run measures the
@@ -8,13 +11,15 @@ them, so the benchmark and the property draw from one domain.
 
 from __future__ import annotations
 
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 from dokimi_assert._prop.engine.case import Case, Generating, Rejected
-from dokimi_assert._prop.engine.generator import Generator
 from dokimi_assert._prop.engine.source import case_source
 from dokimi_assert._prop.option import Option, configure
 from dokimi_assert._prop.registry import scope
+
+if TYPE_CHECKING:
+    from dokimi_assert._prop.engine.generator import Generator
 
 __all__ = ["values"]
 
@@ -71,15 +76,16 @@ def values(generator: Generator[_T], seed: int, n: int, *options: Option) -> lis
     """
     call = f"values(generator, {seed!r}, {n!r})"
     if type(n) is not int or n < 0:
-        raise ValueError(f"prop: {call} needs a count that is an int of 0 or more")
+        msg = f"prop: {call} needs a count that is an int of 0 or more"
+        raise ValueError(msg)
     if type(seed) is not int or not 0 <= seed < _SEED_LIMIT:
-        raise ValueError(f"prop: {call} needs a seed that is an int in [0, 2^64)")
+        msg = f"prop: {call} needs a seed that is an int in [0, 2^64)"
+        raise ValueError(msg)
     for option in options:
-        if not isinstance(option, Option) or option.kind != "using":  # pyright: ignore[reportUnnecessaryIsInstance]
+        if not isinstance(option, Option) or option.kind != "using":  # type: ignore[redundant-expr]  # pyright: ignore[reportUnnecessaryIsInstance]
             kind = getattr(option, "kind", type(option).__name__)
-            raise ValueError(
-                f"prop: {call} takes the options of using alone, not {kind}"
-            )
+            msg = f"prop: {call} takes the options of using alone, not {kind}"
+            raise ValueError(msg)
     out: list[_T] = []
     rejected = 0
     index = 0
@@ -92,8 +98,9 @@ def values(generator: Generator[_T], seed: int, n: int, *options: Option) -> lis
             except Rejected:
                 rejected += 1
                 if rejected > _REJECTIONS_PER_VALUE * n:
-                    raise ValueError(
+                    msg = (
                         f"prop: {call} stops after the generator rejects {rejected} "
                         f"cases for {n} values"
-                    ) from None
+                    )
+                    raise ValueError(msg) from None
     return out

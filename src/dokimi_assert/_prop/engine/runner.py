@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The phases, the counts and the outcome of a run.
 
 The runner calls a body once per case in four phases. It stops at the first
@@ -198,13 +201,11 @@ class Settings:
             ValueError: cases or workers is below 1.
         """
         if self.cases < 1:
-            raise ValueError(
-                f"prop: a run of {self.cases} cases does not test anything"
-            )
+            msg = f"prop: a run of {self.cases} cases does not test anything"
+            raise ValueError(msg)
         if self.workers < 1:
-            raise ValueError(
-                f"prop: a run on {self.workers} workers does not run anything"
-            )
+            msg = f"prop: a run on {self.workers} workers does not run anything"
+            raise ValueError(msg)
 
 
 @dataclass(frozen=True, slots=True)

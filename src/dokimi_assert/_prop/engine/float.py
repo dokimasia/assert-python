@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The bits, the neighbours and the sort key of the values of a float choice.
 
 A float choice has a width of 32 or 64 bits. A value of width 32 is a float
@@ -12,6 +15,7 @@ import struct
 from typing import Literal
 
 __all__ = [
+    "BINARY64",
     "INTEGRAL_LIMIT",
     "NAN_BITS",
     "Key",
@@ -30,6 +34,9 @@ __all__ = [
 
 #: The widths of a float choice.
 Width = Literal[32, 64]
+
+#: The width of binary64, the format of a Python float.
+BINARY64: Width = 64
 
 #: A sort key. Python compares two keys element by element. A prefix sorts
 #: before a longer key.
@@ -131,7 +138,7 @@ def representable(x: float, width: Width) -> bool:
     Returns:
         True when x is a value of the width.
     """
-    return width == 64 or math.isnan(x) or fround(x) == x
+    return width == BINARY64 or math.isnan(x) or fround(x) == x
 
 
 def next_up(x: float, width: Width) -> float:
@@ -149,7 +156,7 @@ def next_up(x: float, width: Width) -> float:
     """
     if math.isnan(x) or x == math.inf:
         return x
-    if width == 64:
+    if width == BINARY64:
         return math.nextafter(x, math.inf)
     if x == 0:
         return from_bits32(1)
@@ -172,7 +179,7 @@ def next_down(x: float, width: Width) -> float:
 
 def _ceil_width(x: float, width: Width) -> float:
     """Return the smallest value of the width that is x or more."""
-    if width == 64:
+    if width == BINARY64:
         return x
     rounded = fround(x)
     return rounded if rounded >= x else next_up(rounded, width)

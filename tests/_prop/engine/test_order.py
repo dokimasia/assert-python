@@ -1,16 +1,21 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/order.py tests the shortlex order of choice sequences."""
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import pytest
 
 from dokimi_assert import check
 from dokimi_assert._prop.engine.choice import FloatBounds, IntegerBounds, SequenceBounds
-from dokimi_assert._prop.engine.float import Key
 from dokimi_assert._prop.engine.order import choice_key, shortlex
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert._prop.engine.float import Key
+    from dokimi_assert.seat import Collector
 
 
 class TestChoiceKey:

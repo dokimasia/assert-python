@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The case tree is a trie of the choice sequences that a run generated.
 
 A node is one choice request with its bounds, and an edge is the value that
@@ -25,9 +28,8 @@ report an exhausted domain after that.
 from __future__ import annotations
 
 import math
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
-from dokimi_assert._prop.engine.case import Request
 from dokimi_assert._prop.engine.choice import (
     Bounds,
     FloatBounds,
@@ -35,6 +37,9 @@ from dokimi_assert._prop.engine.choice import (
     Value,
 )
 from dokimi_assert._prop.engine.float import NAN_BITS, bits_of
+
+if TYPE_CHECKING:
+    from dokimi_assert._prop.engine.case import Request
 
 __all__ = ["NODE_LIMIT", "Diverged", "Ending", "Repeated", "Tree", "Walker"]
 

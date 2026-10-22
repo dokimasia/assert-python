@@ -1,8 +1,11 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/environment.py tests the variables of the property engine."""
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import pytest
 
@@ -21,8 +24,10 @@ from dokimi_assert._prop.environment import (
     seed_of,
     token_of,
 )
-from dokimi_assert.seat import Collector
 from helpers import refusal
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: The variable that a mutation run sets in every process that it instruments.
 MUTANT = "DOKIMI_MUTATE_MUTANT"

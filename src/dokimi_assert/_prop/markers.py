@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The constraints of prop for the constraints that annotated-types does not have.
 
 A caller adds a constraint as an argument of typing.Annotated, as with the

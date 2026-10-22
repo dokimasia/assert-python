@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """A case is one call of the body of a property and the seat of its assertions.
 
 A case keeps each failure record in call order, and its first record is the
@@ -22,22 +25,25 @@ import traceback
 import weakref
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import NoReturn, TypeVar, cast
+from typing import TYPE_CHECKING, NoReturn, TypeVar, cast
 
 from dokimi_assert._history.history import History
-from dokimi_assert._matcher.fault import FaultError
-from dokimi_assert._matcher.loop import Loop
 from dokimi_assert._matcher.seat import Seat, clock_of
 from dokimi_assert._matcher.verdict import fault_text, note_fault
+from dokimi_assert._override import override
 from dokimi_assert._prop.engine.case import Case as Engine
 from dokimi_assert._prop.engine.case import Decoder, Failed, Rejected
 from dokimi_assert._prop.engine.traces import TraceError
 from dokimi_assert._prop.engine.tree import Diverged, Repeated
 from dokimi_assert._prop.identity import Identity, key_of, of_error, of_record
 from dokimi_assert._record.calls import Slot, own, run
-from dokimi_assert.clock import Clock
 from dokimi_assert.failure import Failure, Where, call_site
 from dokimi_assert.seat import Standard
+
+if TYPE_CHECKING:
+    from dokimi_assert._matcher.fault import FaultError
+    from dokimi_assert._matcher.loop import Loop
+    from dokimi_assert.clock import Clock
 
 __all__ = [
     "Case",
@@ -214,6 +220,7 @@ class _Random(random.Random):
         super().__init__()
         self._value: Callable[[], int] = value
 
+    @override
     def seed(self, a: object = None, version: int = 2) -> None:
         """Do nothing, because the choices of the case are the source.
 
@@ -223,10 +230,12 @@ class _Random(random.Random):
         """
         del a, version
 
+    @override
     def random(self) -> float:
         """Return a float in [0, 1) from the high 53 bits of one choice."""
         return (self._value() >> 11) * _UNIT
 
+    @override
     def getrandbits(self, k: int, /) -> int:
         """Return k random bits from the high bits of ceil(k / 64) choices.
 
@@ -240,23 +249,25 @@ class _Random(random.Random):
             ValueError: k is negative.
         """
         if k < 0:
-            raise ValueError("number of bits must be non-negative")
+            msg = "number of bits must be non-negative"
+            raise ValueError(msg)
         words = -(-k // 64)
         bits = 0
         for _ in range(words):
             bits = (bits << 64) | self._value()
         return bits >> (64 * words - k)
 
+    @override
     def getstate(self) -> NoReturn:
         """Refuse, because the choices of the case are the state of the source.
 
         Raises:
             NotImplementedError: Always.
         """
-        raise NotImplementedError(
-            "prop: the random source of a case does not have a state"
-        )
+        msg = "prop: the random source of a case does not have a state"
+        raise NotImplementedError(msg)
 
+    @override
     def setstate(self, state: object) -> NoReturn:
         """Refuse, because the choices of the case are the state of the source.
 
@@ -267,9 +278,8 @@ class _Random(random.Random):
             NotImplementedError: Always.
         """
         del state
-        raise NotImplementedError(
-            "prop: the random source of a case does not have a state"
-        )
+        msg = "prop: the random source of a case does not have a state"
+        raise NotImplementedError(msg)
 
 
 class Case:

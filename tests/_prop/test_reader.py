@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/reader.py tests the read of Python types into shapes."""
 
 from __future__ import annotations
@@ -9,6 +12,7 @@ from datetime import UTC, date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from ipaddress import IPv4Address, IPv6Address
 from typing import (
+    TYPE_CHECKING,
     Annotated,
     Any,
     ClassVar,
@@ -26,7 +30,6 @@ import pytest
 
 from dokimi_assert import check
 from dokimi_assert._matcher.fault import FaultError
-from dokimi_assert._prop.convert import Converter
 from dokimi_assert._prop.engine.choice import IntegerBounds
 from dokimi_assert._prop.engine.float import next_down
 from dokimi_assert._prop.engine.generator import Integer
@@ -52,8 +55,11 @@ from dokimi_assert._prop.reader import (
     literal_converter,
     qualified,
 )
-from dokimi_assert.seat import Collector
 from helpers import refusal
+
+if TYPE_CHECKING:
+    from dokimi_assert._prop.convert import Converter
+    from dokimi_assert.seat import Collector
 
 #: The shapes of the scalars that the cases refer to.
 INT: Node = {"shape": "int", "width": 64, "signed": True}
@@ -133,6 +139,8 @@ class Paid(int):
 class Refunded(str):
     """A variant of a reason."""
 
+    __slots__ = ()
+
 
 class Colour(enum.Enum):
     """An Enum of two members."""
@@ -167,6 +175,8 @@ class Draft(TypedDict, total=False):
 
 class Status(str):
     """A text type whose values come from a registration."""
+
+    __slots__ = ()
 
 
 class Shape:
@@ -798,20 +808,26 @@ class TestDerive:
         (
             "refuses a datetime without Timezone",
             datetime,
-            "datetime: a datetime needs the constraint Timezone, because a value of "
-            "the type datetime can have a zone or not",
+            (
+                "datetime: a datetime needs the constraint Timezone, because a value "
+                "of the type datetime can have a zone or not"
+            ),
         ),
         (
             "refuses a Timezone of one zone",
             Annotated[datetime, at.Timezone("Europe/Amsterdam")],
-            "datetime: the reader maps Timezone of None, timezone.utc and ..., not "
-            "'Europe/Amsterdam'",
+            (
+                "datetime: the reader maps Timezone of None, timezone.utc and ..., not "
+                "'Europe/Amsterdam'"
+            ),
         ),
         (
             "refuses a time at nanoseconds",
             Annotated[time, Unit("ns")],
-            "time: a datetime, a time and a timedelta do not have values at ns, "
-            "because their resolution is one microsecond",
+            (
+                "time: a datetime, a time and a timedelta do not have values at ns, "
+                "because their resolution is one microsecond"
+            ),
         ),
         (
             "refuses a unit that the definition does not have",
@@ -821,8 +837,10 @@ class TestDerive:
         (
             "refuses a Decimal without Scale",
             Decimal,
-            "Decimal: a Decimal needs the constraint Scale, because a default scale "
-            "does not suit most domains",
+            (
+                "Decimal: a Decimal needs the constraint Scale, because a default "
+                "scale does not suit most domains"
+            ),
         ),
         (
             "refuses an int of a width without a shape",
@@ -842,14 +860,18 @@ class TestDerive:
         (
             "refuses a constraint of annotated-types that the reader does not map",
             Annotated[int, at.MultipleOf(2)],
-            "int: MultipleOf(multiple_of=2) is not a constraint of prop or of "
-            "annotated-types that the reader maps",
+            (
+                "int: MultipleOf(multiple_of=2) is not a constraint of prop or of "
+                "annotated-types that the reader maps"
+            ),
         ),
         (
             "refuses an argument of Annotated that is not a constraint",
             Annotated[int, "the count"],
-            "int: 'the count' is not a constraint of prop or of annotated-types that "
-            "the reader maps",
+            (
+                "int: 'the count' is not a constraint of prop or of annotated-types "
+                "that the reader maps"
+            ),
         ),
         (
             "refuses a bound of an int that is not an int",
@@ -884,49 +906,63 @@ class TestDerive:
         (
             "refuses an exclusive bound of a date at the last day",
             Annotated[date, at.Gt(date.max)],
-            "date: the bound datetime.date(9999, 12, 31) does not have a neighbour in "
-            "the years 1 to 9999",
+            (
+                "date: the bound datetime.date(9999, 12, 31) does not have a neighbour "
+                "in the years 1 to 9999"
+            ),
         ),
         (
             "refuses a bound of a time with a zone",
             Annotated[time, at.Ge(time(1, tzinfo=UTC))],
-            "time: the bound datetime.time(1, 0, tzinfo=datetime.timezone.utc) is not "
-            "a time without a zone",
+            (
+                "time: the bound datetime.time(1, 0, tzinfo=datetime.timezone.utc) is "
+                "not a time without a zone"
+            ),
         ),
         (
             "refuses an exclusive bound of a time at the last microsecond",
             Annotated[time, at.Gt(time(23, 59, 59, 999_999))],
-            "time: the bound datetime.time(23, 59, 59, 999999) does not have a "
-            "neighbour in the same day",
+            (
+                "time: the bound datetime.time(23, 59, 59, 999999) does not have a "
+                "neighbour in the same day"
+            ),
         ),
         (
             "refuses a bound of a local-date-time with a zone",
             Annotated[
                 datetime, at.Timezone(None), at.Ge(datetime(2000, 1, 1, tzinfo=UTC))
             ],
-            "datetime: the bound datetime.datetime(2000, 1, 1, 0, 0, "
-            "tzinfo=datetime.timezone.utc) is not a datetime without a zone",
+            (
+                "datetime: the bound datetime.datetime(2000, 1, 1, 0, 0, "
+                "tzinfo=datetime.timezone.utc) is not a datetime without a zone"
+            ),
         ),
         (
             "refuses an exclusive bound of a local-date-time at the last instant",
             Annotated[datetime, at.Timezone(None), at.Gt(datetime.max)],
-            "datetime: the bound datetime.datetime(9999, 12, 31, 23, 59, 59, 999999) "
-            "does not have a neighbour in the years 1 to 9999",
+            (
+                "datetime: the bound datetime.datetime(9999, 12, 31, 23, 59, 59, "
+                "999999) does not have a neighbour in the years 1 to 9999"
+            ),
         ),
         (
             "refuses a bound of an instant without a zone",
             Annotated[datetime, at.Timezone(UTC), at.Le(datetime(2000, 1, 1))],
-            "datetime: the bound datetime.datetime(2000, 1, 1, 0, 0) is not a "
-            "datetime with a zone",
+            (
+                "datetime: the bound datetime.datetime(2000, 1, 1, 0, 0) is not a "
+                "datetime with a zone"
+            ),
         ),
         (
             "refuses an exclusive bound of an instant at the last instant",
             Annotated[
                 datetime, at.Timezone(UTC), at.Gt(datetime.max.replace(tzinfo=UTC))
             ],
-            "datetime: the bound datetime.datetime(9999, 12, 31, 23, 59, 59, 999999, "
-            "tzinfo=datetime.timezone.utc) does not have a neighbour in the years 1 "
-            "to 9999",
+            (
+                "datetime: the bound datetime.datetime(9999, 12, 31, 23, 59, 59, "
+                "999999, tzinfo=datetime.timezone.utc) does not have a neighbour in "
+                "the years 1 to 9999"
+            ),
         ),
         (
             "refuses a bound of a duration that is not a timedelta",
@@ -936,8 +972,10 @@ class TestDerive:
         (
             "refuses a bound of a duration finer than its unit",
             Annotated[timedelta, Unit("ms"), at.Ge(timedelta(microseconds=1))],
-            "timedelta: the bound datetime.timedelta(microseconds=1) is not a whole "
-            "number of the unit ms",
+            (
+                "timedelta: the bound datetime.timedelta(microseconds=1) is not a "
+                "whole number of the unit ms"
+            ),
         ),
         (
             "refuses a bound of an offset that is not a timedelta",
@@ -947,14 +985,18 @@ class TestDerive:
         (
             "refuses a bound of an offset finer than a second",
             Annotated[timezone, at.Ge(timedelta(microseconds=1))],
-            "timezone: the bound datetime.timedelta(microseconds=1) is not a whole "
-            "number of seconds",
+            (
+                "timezone: the bound datetime.timedelta(microseconds=1) is not a whole "
+                "number of seconds"
+            ),
         ),
         (
             "refuses a Literal of a value without a typed literal",
             cast("Any", Literal)[chr(0xD800)],
-            f"{cast('Any', Literal)[chr(0xD800)]!r}: the value '\\ud800' does not "
-            "have a typed literal",
+            (
+                f"{cast('Any', Literal)[chr(0xD800)]!r}: the value '\\ud800' does not "
+                "have a typed literal"
+            ),
         ),
         (
             "refuses an IPv4Address of version 6",
@@ -984,8 +1026,10 @@ class TestDerive:
         (
             "refuses a union with a member that is not a class",
             int | list[int],
-            "int | list[int]: the variant list[int] is not a class, so it does not "
-            "have a name",
+            (
+                "int | list[int]: the variant list[int] is not a class, so it does not "
+                "have a name"
+            ),
         ),
         (
             "refuses a set of values that are not hashable",
@@ -995,14 +1039,18 @@ class TestDerive:
         (
             "refuses a dict with keys of a tuple of a list",
             dict[tuple[int, list[int]], int],
-            "dict[tuple[int, list[int]], int].key: the values of tuple[int, "
-            "list[int]] are not hashable",
+            (
+                "dict[tuple[int, list[int]], int].key: the values of tuple[int, "
+                "list[int]] are not hashable"
+            ),
         ),
         (
             "refuses a dict with keys of a union of a list",
             dict[int | list[int], int],
-            "dict[int | list[int], int].key: the values of int | list[int] are not "
-            "hashable",
+            (
+                "dict[int | list[int], int].key: the values of int | list[int] are not "
+                "hashable"
+            ),
         ),
     ]
 

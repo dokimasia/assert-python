@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/collection.py tests the decoding of a collection.
 
 The raises assertion does not catch Rejected, because Rejected derives from
@@ -6,8 +9,7 @@ BaseException. The spec takes it with pytest.raises.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import pytest
 
@@ -29,8 +31,12 @@ from dokimi_assert._prop.engine.collection import (
 )
 from dokimi_assert._prop.engine.edge import Edge
 from dokimi_assert._prop.engine.source import Source
-from dokimi_assert.seat import Collector
 from helpers import integers, refusal
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from dokimi_assert.seat import Collector
 
 #: The number of discards in a row that stop a collection in the definition.
 DISCARD_LIMIT = 10

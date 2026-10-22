@@ -1,8 +1,10 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/directory.py tests the store of a property and its files."""
 
 from __future__ import annotations
 
-import os
 import pathlib
 from typing import Any
 
@@ -124,17 +126,19 @@ class TestStoreOf:
         check.equal(
             seat,
             store_of(named, None),
-            os.path.join(
-                "testdata",
-                "prop",
-                "tests",
-                "test_a.py",
-                "TestSuite",
-                "c%3A%5Cd%2A%22%3Cx%3E%7C%3F",
-                "50%25",
-                "ends%2E",
-                "ends%20",
-                "%01",
+            str(
+                pathlib.Path(
+                    "testdata",
+                    "prop",
+                    "tests",
+                    "test_a.py",
+                    "TestSuite",
+                    "c%3A%5Cd%2A%22%3Cx%3E%7C%3F",
+                    "50%25",
+                    "ends%2E",
+                    "ends%20",
+                    "%01",
+                )
             ),
             "store_of returns the escaped path",
         )
@@ -152,7 +156,7 @@ class TestSeedsOf:
         check.equal(
             seat,
             seeds_of(named),
-            os.path.join("testdata", "fuzz", "test_a.py", "test_parses"),
+            str(pathlib.Path("testdata", "fuzz", "test_a.py", "test_parses")),
             "seeds_of returns the directory",
         )
 

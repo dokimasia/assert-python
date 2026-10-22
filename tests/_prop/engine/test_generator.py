@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/generator.py tests what each generator decodes and draws.
 
 Rejected derives from BaseException. The raises assertion does not catch it,
@@ -9,11 +12,12 @@ from __future__ import annotations
 import math
 import threading
 from fractions import Fraction
-from typing import Any, ClassVar, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
 import pytest
 
 from dokimi_assert import check
+from dokimi_assert._override import override
 from dokimi_assert._prop.engine import draw
 from dokimi_assert._prop.engine.case import (
     Case,
@@ -56,8 +60,10 @@ from dokimi_assert._prop.engine.generator import (
 )
 from dokimi_assert._prop.engine.source import Source
 from dokimi_assert._prop.engine.value import Pairs, canonical
-from dokimi_assert.seat import Collector
 from helpers import Picked, values_of
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 T = TypeVar("T")
 
@@ -111,6 +117,7 @@ class Feed(Provider):
         """Return the provider of the values."""
         self._values: list[Value] = list(values)
 
+    @override
     def value(self, request: Request, index: int) -> Value:
         """Return the next given value."""
         del request, index
@@ -861,6 +868,7 @@ class TestRecursive:
             return c.integer(IntegerBounds(0, 9))
 
         class Waiting(Provider):
+            @override
             def value(self, request: Request, index: int) -> Value:
                 del index
                 other_waits.set()

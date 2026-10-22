@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The pieces of a pattern of the portable subset and their decoding from a case.
 
 Each piece decodes in a fixed way. An alternation of two or more branches
@@ -10,12 +13,16 @@ simplest character of each class.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import dokimi_assert._pattern.parse as syntax
 from dokimi_assert._prop.engine import alphabet
-from dokimi_assert._prop.engine.case import Case
 from dokimi_assert._prop.engine.choice import IntegerBounds
 from dokimi_assert._prop.engine.collection import ELEMENT, Sizes, collect
-from dokimi_assert._prop.engine.generator import Piece
+
+if TYPE_CHECKING:
+    from dokimi_assert._prop.engine.case import Case
+    from dokimi_assert._prop.engine.generator import Piece
 
 __all__ = ["Alternation", "Class", "Literal", "Repeat", "Sequence", "piece"]
 
@@ -205,7 +212,8 @@ def _piece_of(node: syntax.Node) -> Piece:
             [found for lo, hi in node.ranges for found in alphabet.indices(lo, hi)]
         )
         if not intervals:
-            raise ValueError("prop: a class in the pattern does not have a member")
+            msg = "prop: a class in the pattern does not have a member"
+            raise ValueError(msg)
         return Class(intervals)
     if isinstance(node, syntax.Concat):
         return Sequence([_piece_of(item) for item in node.items])

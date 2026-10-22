@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/shape.py tests what each shape decodes and how read fails.
 
 The expected values are the values that the reference implementation of the
@@ -9,11 +12,12 @@ from __future__ import annotations
 import calendar
 import math
 import threading
-from typing import Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import pytest
 
 from dokimi_assert import check
+from dokimi_assert._override import override
 from dokimi_assert._prop.engine.case import (
     Case,
     Generating,
@@ -39,8 +43,10 @@ from dokimi_assert._prop.engine.shape import (
 from dokimi_assert._prop.engine.source import case_source
 from dokimi_assert._prop.engine.value import Fields, Pairs, Variant, canonical
 from dokimi_assert._prop.engine.zone import ZONES
-from dokimi_assert.seat import Collector
 from helpers import integers, refusal
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: The number of nodes that one value of a recursive shape can use.
 BUDGET = 100
@@ -596,8 +602,10 @@ class TestRead:
             "prop: shape bound 5 is not a local date and time",
         ),
         (
-            "raises shape error for a definition of an enum whose variants are not a "
-            "list",
+            (
+                "raises shape error for a definition of an enum whose variants are "
+                "not a list"
+            ),
             {
                 "shape": "ref",
                 "name": "e",
@@ -606,8 +614,10 @@ class TestRead:
             "prop: definitions.e.variants is 5, not a list of pairs",
         ),
         (
-            "raises shape error for a definition of an enum whose variant is not a "
-            "pair",
+            (
+                "raises shape error for a definition of an enum whose variant is not a "
+                "pair"
+            ),
             {
                 "shape": "ref",
                 "name": "e",
@@ -773,8 +783,10 @@ class TestRead:
                 "min": "2020-01-01T00:00:00.5Z",
                 "max": "2020-01-01T00:00:00.1Z",
             },
-            "prop: shape bounds 1577836800,500 to 1577836800,100 are empty or out of "
-            "range",
+            (
+                "prop: shape bounds 1577836800,500 to 1577836800,100 are empty or "
+                "out of range"
+            ),
         ),
         (
             "raises shape error for a date that does not exist",
@@ -1382,6 +1394,7 @@ class Pausing(Replaying):
         self._paused: threading.Event = paused
         self._resume: threading.Event = resume
 
+    @override
     def value(self, request: Request, index: int) -> Value:
         """Return the recorded value, after the pause at the index."""
         if index == self._at:
@@ -1398,6 +1411,7 @@ class Waiting(Provider):
         self._started: threading.Event = started
         self._done: threading.Event = done
 
+    @override
     def value(self, request: Request, index: int) -> Value:
         """Return the target, after the other thread has finished."""
         del index

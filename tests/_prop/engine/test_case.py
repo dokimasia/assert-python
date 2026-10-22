@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/case.py tests the values and the record of a case.
 
 The pinned draws are the draws of the reference implementation of the
@@ -7,11 +10,12 @@ assertion does not catch them, so the spec catches them with pytest.raises.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
 from dokimi_assert import check
+from dokimi_assert._override import override
 from dokimi_assert._prop.engine import draw
 from dokimi_assert._prop.engine.case import (
     MAX_CHOICES,
@@ -42,8 +46,10 @@ from dokimi_assert._prop.engine.choice import (
     Value,
 )
 from dokimi_assert._prop.engine.source import Source
-from dokimi_assert.seat import Collector
 from helpers import Decoding, integers, values_of
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: The bounds that most cases request.
 DIGIT = IntegerBounds(0, 9)
@@ -948,11 +954,14 @@ class TestCaseDraw:
         class Serving(Provider):
             served: int = 0
 
+            @override
             def value(self, request: Request, index: int) -> Value:
                 self.served += 1
                 return replay.value(request, index)
 
+            @override
             def drawing(self, generator: Decoder[Any], label: str) -> None:
+                del generator
                 heard.append((label, self.served))
 
         c = Case(Serving())

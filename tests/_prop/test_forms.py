@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/forms.py tests the property forms.
 
 Each form passes a true property, and it fails a false property with its
@@ -201,13 +204,15 @@ def type_error(_: int) -> Exception:
 
 def raise_value_error(_: int) -> None:
     """Raise a ValueError."""
-    raise ValueError("e")
+    msg = "e"
+    raise ValueError(msg)
 
 
 def raises_when_big(x: int) -> None:
     """Raise a ValueError for a digit of 5 or more."""
     if x >= 5:
-        raise ValueError("big")
+        msg = "big"
+        raise ValueError(msg)
 
 
 def nan(_: int) -> float:

@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/executor.py tests the executors of a run.
 
 A run on more than one worker reports the same outcome as a run on one, so
@@ -7,7 +10,7 @@ the spec checks each case of Ahead against the same case of Serial.
 from __future__ import annotations
 
 import threading
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dokimi_assert import check
 from dokimi_assert._prop.engine.case import Case, Generating, Replaying
@@ -18,8 +21,10 @@ from dokimi_assert._prop.engine.executor import Ahead, Generated, Serial
 from dokimi_assert._prop.engine.generator import Filter, Integer
 from dokimi_assert._prop.engine.source import Source, case_source
 from dokimi_assert._prop.engine.tree import Tree
-from dokimi_assert.seat import Collector
 from helpers import integers, refusal
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 SEED = 7
 DIGIT = Integer(IntegerBounds(0, 9))
@@ -174,7 +179,8 @@ class TestAhead:
 
         def breaks(c: Case) -> None:
             del c
-            raise TypeError("the body broke")
+            msg = "the body broke"
+            raise TypeError(msg)
 
         executor = Ahead(breaks, SEED, 8, Tree(), 2)
         try:

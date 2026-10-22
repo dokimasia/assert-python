@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The strict JSON of a store file.
 
 A strict text is one JSON text with these properties.
@@ -29,14 +32,16 @@ def _object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     found: dict[str, Any] = {}
     for name, value in pairs:
         if name in found:
-            raise JsonError(f"prop: an object repeats the name {json.dumps(name)}")
+            msg = f"prop: an object repeats the name {json.dumps(name)}"
+            raise JsonError(msg)
         found[name] = value
     return found
 
 
 def _constant(name: str) -> Any:
     """Refuse the name of a float that is not a JSON number."""
-    raise JsonError(f"prop: {name} is not a JSON number")
+    msg = f"prop: {name} is not a JSON number"
+    raise JsonError(msg)
 
 
 def _integer(text: str) -> int:
@@ -46,9 +51,10 @@ def _integer(text: str) -> int:
     except ValueError as error:
         digits = len(text.lstrip("-"))
         limit = sys.get_int_max_str_digits()
-        raise JsonError(
+        msg = (
             f"prop: an integer of the JSON has {digits} digits, and int allows {limit}"
-        ) from error
+        )
+        raise JsonError(msg) from error
 
 
 def _nests_past(value: object, levels: int) -> bool:
@@ -86,9 +92,12 @@ def parse(text: str, max_depth: int) -> Any:
             parse_int=_integer,
         )
     except json.JSONDecodeError as error:
-        raise JsonError(f"prop: the JSON at {error.pos}: {error.msg}") from error
+        msg = f"prop: the JSON at {error.pos}: {error.msg}"
+        raise JsonError(msg) from error
     except RecursionError as error:
-        raise JsonError(f"prop: the JSON nests past {max_depth} levels") from error
+        msg = f"prop: the JSON nests past {max_depth} levels"
+        raise JsonError(msg) from error
     if _nests_past(value, max_depth):
-        raise JsonError(f"prop: the JSON nests past {max_depth} levels")
+        msg = f"prop: the JSON nests past {max_depth} levels"
+        raise JsonError(msg)
     return value

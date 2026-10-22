@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The decoding of the bytes of a fuzzer into the choices of one case.
 
 Bridging is a provider that reads each value from the bytes in request
@@ -24,6 +27,7 @@ is a choice sequence that the shrinker can minimise and the store can keep.
 
 from __future__ import annotations
 
+from dokimi_assert._override import override
 from dokimi_assert._prop.engine.case import Provider, Request
 from dokimi_assert._prop.engine.choice import (
     Choice,
@@ -32,7 +36,7 @@ from dokimi_assert._prop.engine.choice import (
     SequenceBounds,
     Value,
 )
-from dokimi_assert._prop.engine.float import from_bits, from_bits32
+from dokimi_assert._prop.engine.float import BINARY64, from_bits, from_bits32
 
 __all__ = ["Bridging"]
 
@@ -58,6 +62,7 @@ class Bridging(Provider):
         self._data: bytes = data
         self._at: int = 0
 
+    @override
     def value(self, request: Request, index: int) -> Value:
         """Return the value of the next bytes under the bounds of a request.
 
@@ -111,7 +116,7 @@ class Bridging(Provider):
         bits = self._take(bounds.width // 8)
         if bits is None:
             return bounds.target
-        value = from_bits(bits) if bounds.width == 64 else from_bits32(bits)
+        value = from_bits(bits) if bounds.width == BINARY64 else from_bits32(bits)
         return bounds.coerce(Choice("float", value))
 
     def _sequence(self, bounds: SequenceBounds) -> tuple[int, ...]:

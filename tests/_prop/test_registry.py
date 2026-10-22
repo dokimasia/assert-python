@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/registry.py tests the registrations and the generators of types.
 
 Each case of a registration runs in a child process of its own, because the
@@ -8,7 +11,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Annotated, Any, ClassVar
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar
 
 import annotated_types as at
 import pytest
@@ -30,8 +33,10 @@ from dokimi_assert._prop.registry import (
     scope,
     shape_of,
 )
-from dokimi_assert.seat import Collector
 from helpers import integers, refusal, run_python
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: A generator of one digit.
 DIGITS = Integer(IntegerBounds(0, 9))
@@ -345,8 +350,10 @@ refused(lambda: registry.register(Point, DIGITS))
             seat,
             lines,
             [
-                "RuntimeError prop: register(__main__.Point): the first run of a "
-                "property closed the registry"
+                (
+                    "RuntimeError prop: register(__main__.Point): the first run of a "
+                    "property closed the registry"
+                )
             ],
             "the registration raises RuntimeError",
         )
@@ -397,8 +404,10 @@ refused(lambda: registry.shape_of(list[Point]))
             seat,
             lines,
             [
-                "TypeError prop.shape_of: list[__main__.Point][]: a registered "
-                "generator generates the part, and it does not have a shape"
+                (
+                    "TypeError prop.shape_of: list[__main__.Point][]: a registered "
+                    "generator generates the part, and it does not have a shape"
+                )
             ],
             "shape_of raises TypeError",
         )
@@ -418,8 +427,10 @@ refused(lambda: registry.register(Point, DIGITS))
             seat,
             lines,
             [
-                "RuntimeError prop: register(__main__.Point) registers __main__.Point "
-                "a second time"
+                (
+                    "RuntimeError prop: register(__main__.Point) registers "
+                    "__main__.Point a second time"
+                )
             ],
             "the second registration raises RuntimeError",
         )
@@ -439,8 +450,10 @@ refused(lambda: registry.register(Point, DIGITS))
             seat,
             lines,
             [
-                "RuntimeError prop: register(__main__.Point): the generators of an "
-                "earlier read of __main__.Point do not include the registration"
+                (
+                    "RuntimeError prop: register(__main__.Point): the generators of an "
+                    "earlier read of __main__.Point do not include the registration"
+                )
             ],
             "the registration raises RuntimeError",
         )
@@ -468,8 +481,10 @@ print(json.dumps(json.loads(registry.shape_of(Status))["values"]))
             lines,
             [
                 "Status pending",
-                '[{"type": "string", "value": "pending"}, '
-                '{"type": "string", "value": "paid"}]',
+                (
+                    '[{"type": "string", "value": "pending"}, '
+                    '{"type": "string", "value": "paid"}]'
+                ),
             ],
             "the simplest value and the literals",
         )
@@ -483,29 +498,41 @@ print(json.dumps(json.loads(registry.shape_of(Status))["values"]))
         (
             "raises value error for a value without a typed literal",
             "refused(lambda: registry.register_values(Status, object()))",
-            "ValueError prop: register_values(__main__.Status): value 0 does not have "
-            "a typed literal",
+            (
+                "ValueError prop: register_values(__main__.Status): value 0 does not "
+                "have a typed literal"
+            ),
         ),
         (
             "raises value error for two values of one typed literal",
-            "refused(lambda: registry.register_values("
-            "Status, Status('a'), Status('a')))",
-            "ValueError prop: register_values(__main__.Status): values 0 and 1 have "
-            "one typed literal",
+            (
+                "refused(lambda: registry.register_values("
+                "Status, Status('a'), Status('a')))"
+            ),
+            (
+                "ValueError prop: register_values(__main__.Status): values 0 and 1 "
+                "have one typed literal"
+            ),
         ),
         (
             "raises type error for a type that the reader does not read",
             "refused(lambda: registry.register_values(object, 1))",
-            "TypeError prop: register_values(builtins.object): object: object is not "
-            "a type that the reader reads",
+            (
+                "TypeError prop: register_values(builtins.object): object: object is "
+                "not a type that the reader reads"
+            ),
         ),
         (
             "raises type error for a part that a registered generator generates",
-            "registry.register(Point, DIGITS)\n"
-            "refused(lambda: registry.register_values(list[Point], [Point(1, 2)]))",
-            "TypeError prop: register_values(list[__main__.Point]): "
-            "list[__main__.Point][]: a registered generator generates the part, and "
-            "its values do not have typed literals",
+            (
+                "registry.register(Point, DIGITS)\n"
+                "refused(lambda: registry.register_values(list[Point], [Point(1, 2)]))"
+            ),
+            (
+                "TypeError prop: register_values(list[__main__.Point]): "
+                "list[__main__.Point][]: a registered generator generates the part, "
+                "and its values do not have typed literals"
+            ),
         ),
     ]
 
@@ -546,14 +573,18 @@ print(first(registry.of(Shape)))
         (
             "raises type error for a variant that is not a class",
             "refused(lambda: registry.register_variants(Shape, Circle(1)))",
-            "TypeError prop: register_variants(__main__.Shape): variant 0 is "
-            "Circle(radius=1), not a class",
+            (
+                "TypeError prop: register_variants(__main__.Shape): variant 0 is "
+                "Circle(radius=1), not a class"
+            ),
         ),
         (
             "raises value error for two variants of one name",
             "refused(lambda: registry.register_variants(Shape, Circle, Circle))",
-            "ValueError prop: register_variants(__main__.Shape): variants 0 and 1 are "
-            "both named Circle",
+            (
+                "ValueError prop: register_variants(__main__.Shape): variants 0 and 1 "
+                "are both named Circle"
+            ),
         ),
     ]
 

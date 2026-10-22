@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/case.py tests the case of a property."""
 
 from __future__ import annotations
@@ -5,8 +8,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import threading
-from collections.abc import Callable
-from typing import ClassVar, cast
+from typing import TYPE_CHECKING, ClassVar, cast
 
 import pytest
 
@@ -14,7 +16,6 @@ from dokimi_assert import check
 from dokimi_assert._history.history import History
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert._matcher.loop import Loop
-from dokimi_assert._matcher.seat import Seat
 from dokimi_assert._prop import case as case_module
 from dokimi_assert._prop.case import (
     Case,
@@ -36,6 +37,11 @@ from dokimi_assert.clock import Controlled
 from dokimi_assert.failure import Failure, Where
 from dokimi_assert.seat import Collector, Recorder
 from helpers import integers
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from dokimi_assert._matcher.seat import Seat
 
 #: The call site of the property of the cases.
 SITE = Where("/work/tests/test_total.py", 4)
@@ -358,7 +364,8 @@ class TestCaseDraw:
         """The function of a map raises an error."""
 
         def refuse(_: int) -> int:
-            raise ValueError("the map refuses")
+            msg = "the map refuses"
+            raise ValueError(msg)
 
         c, _ = case_on(FREE, 1)
         failure = record_of(
@@ -576,7 +583,8 @@ class TestCaseCleanup:
         ran: list[bool] = []
 
         def breaks() -> None:
-            raise TypeError("the cleanup broke")
+            msg = "the cleanup broke"
+            raise TypeError(msg)
 
         def body(one: Case) -> None:
             one.cleanup(lambda: ran.append(True))
@@ -597,11 +605,13 @@ class TestCaseCleanup:
         c, _ = case_on()
 
         def breaks() -> None:
-            raise TypeError("second")
+            msg = "second"
+            raise TypeError(msg)
 
         def body(one: Case) -> None:
             one.cleanup(breaks)
-            raise ValueError("first")
+            msg = "first"
+            raise ValueError(msg)
 
         failure = record_of(ending(c, body)).failure
         check.equal(
@@ -748,7 +758,8 @@ class TestOnEngine:
         c, _ = case_on()
 
         def breaks(_: Engine) -> None:
-            raise TypeError("bad")
+            msg = "bad"
+            raise TypeError(msg)
 
         check.raises(seat, lambda: on_engine(c, breaks), "on_engine raises the error")
         check.does_not_raise(seat, lambda: c.note("later"), "the case runs on")
@@ -773,7 +784,8 @@ class TestExecute:
         c, _ = case_on()
 
         def breaks(_: Case) -> None:
-            raise TypeError("bad input")
+            msg = "bad input"
+            raise TypeError(msg)
 
         failing = record_of(ending(c, breaks))
         failure = failing.failure
@@ -806,7 +818,8 @@ class TestExecute:
         c, _ = case_on()
 
         async def late(_: Case) -> None:
-            raise ValueError("late")
+            msg = "late"
+            raise ValueError(msg)
 
         failure = record_of(ending(c, late)).failure
         check.equal(seat, failure.contract, "late", "the exception fails the case")

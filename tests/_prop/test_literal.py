@@ -1,9 +1,12 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/literal.py tests the typed literal of a drawn value."""
 
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
@@ -25,8 +28,10 @@ from dokimi_assert._prop.engine.generator import (
 from dokimi_assert._prop.engine.shape import read
 from dokimi_assert._prop.engine.value import Fields, Pairs, Variant
 from dokimi_assert._prop.literal import drawn_literal
-from dokimi_assert.seat import Collector
 from helpers import Picked
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: The generator of the integers 0 to 9.
 DIGIT = Integer(IntegerBounds(0, 9))
@@ -40,7 +45,8 @@ INT64 = {"shape": "int", "width": 64, "signed": True}
 
 def refused(value: int) -> int:
     """Raise TypeError, as an inverse does for a value that the map does not return."""
-    raise TypeError(f"{value} is not a value of the map")
+    msg = f"{value} is not a value of the map"
+    raise TypeError(msg)
 
 
 class TestDrawnLiteral:

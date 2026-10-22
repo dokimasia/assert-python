@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The inverse of a generator from a value to the choices that decode to it.
 
 invert walks a generator with a value. It emits each choice in the order and
@@ -43,9 +46,8 @@ takes the whole range.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, TypeAlias, cast
+from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
 from dokimi_assert._prop.engine import alphabet, pattern
 from dokimi_assert._prop.engine.case import Case, Rejected, Replaying
@@ -58,9 +60,7 @@ from dokimi_assert._prop.engine.choice import (
     choice_of,
     same_choice,
 )
-from dokimi_assert._prop.engine.collection import Sizes
 from dokimi_assert._prop.engine.draw import flag_bounds
-from dokimi_assert._prop.engine.float import Key
 from dokimi_assert._prop.engine.generator import (
     Bool,
     Bytes,
@@ -103,6 +103,12 @@ from dokimi_assert._prop.engine.shape import (
 )
 from dokimi_assert._prop.engine.value import Fields, Pairs, Variant, canonical
 from dokimi_assert._prop.engine.zone import ZONES
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
+    from dokimi_assert._prop.engine.collection import Sizes
+    from dokimi_assert._prop.engine.float import Key
 
 __all__ = [
     "CannotInvertError",
@@ -175,16 +181,14 @@ def invert(generator: Generator[Any], value: object) -> list[Choice]:
     try:
         decoded = generator.decode(c)
     except Rejected:
-        raise CannotInvertError(
-            f"prop: the choices of {canonical(value)} do not decode to a value"
-        ) from None
+        msg = f"prop: the choices of {canonical(value)} do not decode to a value"
+        raise CannotInvertError(msg) from None
     unchanged = len(c.choices) == len(choices) and all(
         same_choice(a, b) for a, b in zip(c.choices, choices, strict=True)
     )
     if not unchanged or canonical(decoded) != canonical(normal):
-        raise CannotInvertError(
-            f"prop: {canonical(value)} is not a value that the generator produces"
-        )
+        msg = f"prop: {canonical(value)} is not a value that the generator produces"
+        raise CannotInvertError(msg)
     return choices
 
 
@@ -210,7 +214,8 @@ def inverse_of(generator: Generator[Any], value: object) -> list[Choice] | None:
 def _step(bounds: Bounds, value: object) -> Step:
     """Return a step whose value its bounds admit."""
     if not bounds.admits(value):
-        raise CannotInvertError(f"prop: {canonical(value)} is outside {bounds.id}")
+        msg = f"prop: {canonical(value)} is outside {bounds.id}"
+        raise CannotInvertError(msg)
     return Step(bounds, cast("Value", value))
 
 
@@ -220,7 +225,8 @@ def _index_of(values: Sequence[object], value: object) -> int:
     for index, candidate in enumerate(values):
         if canonical(candidate) == wanted:
             return index
-    raise CannotInvertError(f"prop: {canonical(value)} is not one of the values")
+    msg = f"prop: {canonical(value)} is not one of the values"
+    raise CannotInvertError(msg)
 
 
 def _first_branch(
@@ -244,10 +250,10 @@ def _first_branch(
             continue
         return [Step(bounds, index), *steps], normal
     if unknown:
-        raise NoInverseError(
-            f"prop: {refusal}, and one of them does not have an inverse"
-        )
-    raise CannotInvertError(f"prop: {refusal}")
+        msg = f"prop: {refusal}, and one of them does not have an inverse"
+        raise NoInverseError(msg)
+    msg = f"prop: {refusal}"
+    raise CannotInvertError(msg)
 
 
 def _shortlex(steps: list[Step]) -> tuple[int, tuple[Key, ...]]:
@@ -261,9 +267,8 @@ def _collection(sizes: Sizes, items: list[list[Step]]) -> list[Step]:
     if count < sizes.min_size or (
         sizes.max_size is not None and count > sizes.max_size
     ):
-        raise CannotInvertError(
-            f"prop: {count} items are outside the sizes of the collection"
-        )
+        msg = f"prop: {count} items are outside the sizes of the collection"
+        raise CannotInvertError(msg)
     steps: list[Step] = []
     for index, item in enumerate(items):
         steps.append(Step(flag_bounds(index, sizes.min_size, sizes.max_size), 1))
@@ -275,19 +280,23 @@ def _collection(sizes: Sizes, items: list[list[Step]]) -> list[Step]:
 def _distinct(values: list[object]) -> None:
     """Refuse values of which two are equal."""
     if len({canonical(value) for value in values}) != len(values):
-        raise CannotInvertError(f"prop: {canonical(values)} repeats a value")
+        msg = f"prop: {canonical(values)} repeats a value"
+        raise CannotInvertError(msg)
 
 
 def _elements(of: Generator[Any], value: object, unique: bool) -> list[Emitted]:
     """Return the steps of each element, and the value that they decode to."""
     if not isinstance(value, list):
-        raise CannotInvertError(f"prop: {canonical(value)} is not a list")
+        msg = f"prop: {canonical(value)} is not a list"
+        raise CannotInvertError(msg)
     items: list[object] = value
     if unique:
         _distinct(items)
+    # A comprehension adds a frame to each level of a recursive value before
+    # Python 3.12, and a value at its budget then runs out of frames.
     emitted: list[Emitted] = []
     for element in items:
-        emitted.append(emit(of, element))
+        emitted.append(emit(of, element))  # noqa: PERF401
     return emitted
 
 
@@ -299,7 +308,8 @@ def _entries(
     Each entry has the steps of its key, then the steps of its value.
     """
     if not isinstance(value, Pairs):
-        raise CannotInvertError(f"prop: {canonical(value)} is not a map")
+        msg = f"prop: {canonical(value)} is not a map"
+        raise CannotInvertError(msg)
     _distinct([k for k, _ in value.items])
     emitted: list[tuple[list[Step], tuple[object, object]]] = []
     for k, v in value.items:
@@ -311,13 +321,16 @@ def _entries(
     return steps, Pairs(tuple(normal for _, normal in emitted))
 
 
+#: The fields of a record of a shape of two choices.
+_TWO_FIELDS = 2
+
+
 def _two_parts(value: object, names: tuple[str, str]) -> tuple[object, object]:
     """Return the two fields of a record of a shape of two choices."""
     fields = value.fields if isinstance(value, Fields) else ()
-    if len(fields) != 2 or (fields[0][0], fields[1][0]) != names:
-        raise CannotInvertError(
-            f"prop: {canonical(value)} is not a record of {names[0]} and {names[1]}"
-        )
+    if len(fields) != _TWO_FIELDS or (fields[0][0], fields[1][0]) != names:
+        msg = f"prop: {canonical(value)} is not a record of {names[0]} and {names[1]}"
+        raise CannotInvertError(msg)
     return fields[0][1], fields[1][1]
 
 
@@ -354,6 +367,10 @@ class _Check:
 _Work: TypeAlias = "tuple[Piece | _Count | _Check, _Work] | None"
 _Steps: TypeAlias = "tuple[Step, _Steps] | None"
 
+#: A state of the search: the work left, the position in the text and the
+#: steps so far.
+_State: TypeAlias = "tuple[_Work, int, _Steps]"
+
 
 def _single(
     piece: pattern.Literal | pattern.Class, chars: list[str], at: int
@@ -380,7 +397,7 @@ def _match(root: Piece, chars: list[str]) -> list[Step] | None:
     Raises:
         NoInverseError: The pattern has a piece outside the portable subset.
     """
-    stack: list[tuple[_Work, int, _Steps]] = [((root, None), 0, None)]
+    stack: list[_State] = [((root, None), 0, None)]
     while stack:
         work, at, steps = stack.pop()
         if work is None:
@@ -388,38 +405,64 @@ def _match(root: Piece, chars: list[str]) -> list[Step] | None:
                 return _flattened(steps)
             continue
         item, rest = work
-        if isinstance(item, (pattern.Literal, pattern.Class)):
-            matched = _single(item, chars, at)
-            if matched is not None:
-                end, step = matched
-                stack.append((rest, end, steps if step is None else (step, steps)))
-        elif isinstance(item, pattern.Sequence):
-            todo = rest
-            for piece in reversed(item.items):
-                todo = (piece, todo)
-            stack.append((todo, at, steps))
-        elif isinstance(item, pattern.Alternation):
-            for index in reversed(range(len(item.branches))):
-                branch = item.branches[index]
-                stack.append(((branch, rest), at, (Step(item.bounds, index), steps)))
-        elif isinstance(item, pattern.Repeat):
-            stack.append(((_Count(item, 0), rest), at, steps))
-        elif isinstance(item, _Count):
-            sizes = item.piece.sizes
-            flag = flag_bounds(item.count, sizes.min_size, sizes.max_size)
-            if flag.lo == 0:
-                stack.append((rest, at, (Step(flag, 0), steps)))
-            if flag.hi == 1:
-                check = _Check(item.piece, item.count, at)
-                todo = (item.piece.item, (check, rest))
-                stack.append((todo, at, (Step(flag, 1), steps)))
-        elif isinstance(item, _Check):
-            if at != item.start or item.count < item.piece.sizes.min_size:
-                stack.append(((_Count(item.piece, item.count + 1), rest), at, steps))
+        if isinstance(item, (_Count, _Check)):
+            stack.extend(_quantifier_states(item, rest, at, steps))
         else:
-            name = type(item).__name__
-            raise NoInverseError(f"prop: a {name} piece does not run backwards")
+            stack.extend(_piece_states(item, rest, at, steps, chars))
     return None
+
+
+def _piece_states(
+    piece: Piece, rest: _Work, at: int, steps: _Steps, chars: list[str]
+) -> list[_State]:
+    """Return the states of the search after a piece at at, in the order of the stack.
+
+    Raises:
+        NoInverseError: The piece is outside the portable subset.
+    """
+    if isinstance(piece, (pattern.Literal, pattern.Class)):
+        matched = _single(piece, chars, at)
+        if matched is None:
+            return []
+        end, step = matched
+        return [(rest, end, steps if step is None else (step, steps))]
+    if isinstance(piece, pattern.Sequence):
+        todo = rest
+        for item in reversed(piece.items):
+            todo = (item, todo)
+        return [(todo, at, steps)]
+    if isinstance(piece, pattern.Alternation):
+        return [
+            ((piece.branches[index], rest), at, (Step(piece.bounds, index), steps))
+            for index in reversed(range(len(piece.branches)))
+        ]
+    if isinstance(piece, pattern.Repeat):
+        return [((_Count(piece, 0), rest), at, steps)]
+    name = type(piece).__name__
+    msg = f"prop: a {name} piece does not run backwards"
+    raise NoInverseError(msg)
+
+
+def _quantifier_states(
+    work: _Count | _Check, rest: _Work, at: int, steps: _Steps
+) -> list[_State]:
+    """Return the states of the search after the work of a quantifier at at.
+
+    The states are in the order of the stack.
+    """
+    if isinstance(work, _Check):
+        if at != work.start or work.count < work.piece.sizes.min_size:
+            return [((_Count(work.piece, work.count + 1), rest), at, steps)]
+        return []
+    sizes = work.piece.sizes
+    flag = flag_bounds(work.count, sizes.min_size, sizes.max_size)
+    states: list[_State] = []
+    if flag.lo == 0:
+        states.append((rest, at, (Step(flag, 0), steps)))
+    if flag.hi == 1:
+        check = _Check(work.piece, work.count, at)
+        states.append(((work.piece.item, (check, rest)), at, (Step(flag, 1), steps)))
+    return states
 
 
 def _flattened(steps: _Steps) -> list[Step]:
@@ -446,14 +489,16 @@ def _emit_bool(g: Bool, value: object) -> Emitted:
     """Return the one choice of a bool."""
     del g
     if not isinstance(value, bool):
-        raise CannotInvertError(f"prop: {canonical(value)} is not a bool")
+        msg = f"prop: {canonical(value)} is not a bool"
+        raise CannotInvertError(msg)
     return [Step(_BIT, 1 if value else 0)], value
 
 
 def _emit_just(g: Just[Any], value: object) -> Emitted:
     """Return an empty list of steps for the given value."""
     if canonical(value) != canonical(g.value):
-        raise CannotInvertError(f"prop: {canonical(value)} is not {canonical(g.value)}")
+        msg = f"prop: {canonical(value)} is not {canonical(g.value)}"
+        raise CannotInvertError(msg)
     return [], value
 
 
@@ -508,7 +553,8 @@ def _emit_map_shape(g: MapShape, value: object) -> Emitted:
 def _emit_text(g: Text, value: object) -> Emitted:
     """Return the one sequence of the indices of the characters of a string."""
     if not isinstance(value, str):
-        raise CannotInvertError(f"prop: {canonical(value)} is not a string")
+        msg = f"prop: {canonical(value)} is not a string"
+        raise CannotInvertError(msg)
     characters = g.characters
     if characters is None:
         indices = [alphabet.index_of(char) for char in value]
@@ -517,28 +563,28 @@ def _emit_text(g: Text, value: object) -> Emitted:
             characters.index(char) if char in characters else None for char in value
         ]
     if None in indices:
-        raise CannotInvertError(
-            f"prop: {canonical(value)} has a character outside the alphabet"
-        )
+        msg = f"prop: {canonical(value)} has a character outside the alphabet"
+        raise CannotInvertError(msg)
     return [_step(g.bounds, tuple(indices))], value
 
 
 def _emit_bytes(g: Bytes, value: object) -> Emitted:
     """Return the one sequence of the bytes."""
     if not isinstance(value, bytes):
-        raise CannotInvertError(f"prop: {canonical(value)} is not bytes")
+        msg = f"prop: {canonical(value)} is not bytes"
+        raise CannotInvertError(msg)
     return [_step(g.bounds, tuple(value))], value
 
 
 def _emit_matching(g: Matching, value: object) -> Emitted:
     """Return the choices of the first match of the pattern in full."""
     if not isinstance(value, str):
-        raise CannotInvertError(f"prop: {canonical(value)} is not a string")
+        msg = f"prop: {canonical(value)} is not a string"
+        raise CannotInvertError(msg)
     steps = _match(g.piece, list(value))
     if steps is None:
-        raise CannotInvertError(
-            f"prop: the pattern does not match {canonical(value)} in full"
-        )
+        msg = f"prop: the pattern does not match {canonical(value)} in full"
+        raise CannotInvertError(msg)
     return steps, value
 
 
@@ -546,9 +592,8 @@ def _emit_permutation(g: Permutation[Any], value: object) -> Emitted:
     """Return the smallest index at each swap that orders the values as value."""
     current: list[object] = list(g.values)
     if not isinstance(value, list) or len(value) != len(current):
-        raise CannotInvertError(
-            f"prop: {canonical(value)} is not a permutation of the values"
-        )
+        msg = f"prop: {canonical(value)} is not a permutation of the values"
+        raise CannotInvertError(msg)
     ordered: list[object] = value
     steps: list[Step] = []
     last = len(current) - 1
@@ -557,31 +602,31 @@ def _emit_permutation(g: Permutation[Any], value: object) -> Emitted:
         steps.append(Step(IntegerBounds(i, last), j))
         current[i], current[j] = current[j], current[i]
     if canonical(current) != canonical(ordered):
-        raise CannotInvertError(
-            f"prop: {canonical(value)} is not a permutation of the values"
-        )
+        msg = f"prop: {canonical(value)} is not a permutation of the values"
+        raise CannotInvertError(msg)
     return steps, value
 
 
 def _emit_filter(g: Filter[Any], value: object) -> Emitted:
     """Return the steps of the source for a value that the predicate keeps."""
     if not g.keep(value):
-        raise CannotInvertError(f"prop: the filter rejects {canonical(value)}")
+        msg = f"prop: the filter rejects {canonical(value)}"
+        raise CannotInvertError(msg)
     return emit(g.of, value)
 
 
 def _emit_mapped(g: Mapped[Any, Any], value: object) -> Emitted:
     """Return the steps of the source value that the inverse of the map returns."""
     if g.back is None:
-        raise NoInverseError("prop: a map does not run backwards")
+        msg = "prop: a map does not run backwards"
+        raise NoInverseError(msg)
     try:
         inner = g.back(value)
     except CannotInvertError:
         raise
     except Exception as error:
-        raise CannotInvertError(
-            f"prop: {canonical(value)} is not a value of the map: {error}"
-        ) from error
+        msg = f"prop: {canonical(value)} is not a value of the map: {error}"
+        raise CannotInvertError(msg) from error
     steps, normal = emit(g.of, inner)
     return steps, g.f(normal)
 
@@ -612,9 +657,8 @@ def _emit_record(g: RecordShape, value: object) -> Emitted:
     names = [name for name, _ in g.fields]
     fields = value.fields if isinstance(value, Fields) else ()
     if [name for name, _ in fields] != names:
-        raise CannotInvertError(
-            f"prop: {canonical(value)} is not a record of {', '.join(names)}"
-        )
+        msg = f"prop: {canonical(value)} is not a record of {', '.join(names)}"
+        raise CannotInvertError(msg)
     steps: list[Step] = []
     normal: list[tuple[str, object]] = []
     for (name, of), (_, field) in zip(g.fields, fields, strict=True):
@@ -628,17 +672,15 @@ def _emit_enum(g: EnumShape, value: object) -> Emitted:
     """Return the index of the variant, then the steps of its payload."""
     names = [name for name, _ in g.variants]
     if not isinstance(value, Variant) or value.name not in names:
-        raise CannotInvertError(
-            f"prop: {canonical(value)} is not a variant of {', '.join(names)}"
-        )
+        msg = f"prop: {canonical(value)} is not a variant of {', '.join(names)}"
+        raise CannotInvertError(msg)
     index = names.index(value.name)
     payload = g.variants[index][1]
     head = Step(IntegerBounds(0, len(names) - 1), index)
     if payload is None:
         if value.has_payload:
-            raise CannotInvertError(
-                f"prop: the variant {value.name} does not have a payload"
-            )
+            msg = f"prop: the variant {value.name} does not have a payload"
+            raise CannotInvertError(msg)
         return [head], value
     steps, normal = emit(payload, value.payload)
     return [head, *steps], Variant(value.name, normal)
@@ -647,7 +689,8 @@ def _emit_enum(g: EnumShape, value: object) -> Emitted:
 def _emit_int128(g: Int128Shape, value: object) -> Emitted:
     """Return the high half and the low half of a 128-bit integer."""
     if not isinstance(value, int) or isinstance(value, bool):
-        raise CannotInvertError(f"prop: {canonical(value)} is not an integer")
+        msg = f"prop: {canonical(value)} is not an integer"
+        raise CannotInvertError(msg)
     lo, hi = halves(g.lo), halves(g.hi)
     high, low = halves(value)
     first = _step(IntegerBounds(lo[0], hi[0]), high)
@@ -660,9 +703,8 @@ def _emit_instant(g: InstantShape, value: object) -> Emitted:
     first = _step(IntegerBounds(g.lo[0], g.hi[0]), seconds)
     if g.per == 1:
         if not isinstance(units, int) or isinstance(units, bool) or units != 0:
-            raise CannotInvertError(
-                f"prop: an instant at seconds has 0 units, not {canonical(units)}"
-            )
+            msg = f"prop: an instant at seconds has 0 units, not {canonical(units)}"
+            raise CannotInvertError(msg)
         return [first], value
     bounds = second_part(cast("int", seconds), g.lo, g.hi, g.per - 1)
     return [first, _step(bounds, units)], value
@@ -691,12 +733,14 @@ def _emit_wall(g: WallShape, value: object) -> Emitted:
 def _emit_ip(g: IpShape, value: object) -> Emitted:
     """Return the index of the version of an address, then its bytes."""
     if not isinstance(value, bytes):
-        raise CannotInvertError(f"prop: {canonical(value)} is not an address")
+        msg = f"prop: {canonical(value)} is not an address"
+        raise CannotInvertError(msg)
     for index, version in enumerate(g.versions):
         if version.bounds.min_size == len(value):
             steps, _ = emit(version, value)
             return [Step(_BIT, index), *steps], value
-    raise CannotInvertError(f"prop: {canonical(value)} is neither 4 nor 16 bytes")
+    msg = f"prop: {canonical(value)} is neither 4 nor 16 bytes"
+    raise CannotInvertError(msg)
 
 
 #: The emitter of each class of generator.
@@ -756,7 +800,6 @@ def emit(generator: Generator[Any], value: object) -> Emitted:
             return emit(picked, value)
     emitter = _EMITTERS.get(type(generator))
     if emitter is None:
-        raise NoInverseError(
-            f"prop: a {type(generator).__name__} does not run backwards"
-        )
+        msg = f"prop: a {type(generator).__name__} does not run backwards"
+        raise NoInverseError(msg)
     return emitter(generator, value)

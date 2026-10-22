@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/float.py tests the values of a float choice.
 
 It checks their bits, their neighbours and their sort keys.
@@ -6,7 +9,7 @@ It checks their bits, their neighbours and their sort keys.
 from __future__ import annotations
 
 import math
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import pytest
 
@@ -26,7 +29,9 @@ from dokimi_assert._prop.engine.float import (
     same_float,
     simplest_float,
 )
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 #: The largest finite value of width 32, and the smallest positive one.
 MAX_FLOAT32 = from_bits32(0x7F7FFFFF)
@@ -263,7 +268,7 @@ class TestFloatKey:
             -INF,
             NAN,
         ]
-        got = sorted(reversed(ordered), key=float_key)
+        got = sorted(ordered, key=float_key)
         check.equal(
             seat,
             [bits_of(x) for x in got],

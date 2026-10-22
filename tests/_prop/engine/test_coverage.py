@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/coverage.py tests the coverage test.
 
 Each verdict is the verdict of the reference implementation of the
@@ -6,13 +9,15 @@ definition on the same counts.
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import pytest
 
 from dokimi_assert import check
 from dokimi_assert._prop.engine.coverage import CHECKS, Verdict, verdict
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from dokimi_assert.seat import Collector
 
 
 class TestChecks:

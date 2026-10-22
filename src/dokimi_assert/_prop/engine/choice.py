@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The three kinds of choice in a case.
 
 A choice is one typed decision within bounds. Its kind is an integer, a
@@ -20,6 +23,7 @@ import math
 from dataclasses import dataclass
 from typing import ClassVar, Literal, TypeGuard, cast
 
+from dokimi_assert._override import override
 from dokimi_assert._prop.engine.float import (
     Key,
     Width,
@@ -103,19 +107,22 @@ class IntegerBounds:
                 signed nor the unsigned 64-bit range.
         """
         if lo > hi:
-            raise ValueError(f"prop: integer bounds [{lo}, {hi}] are empty")
+            msg = f"prop: integer bounds [{lo}, {hi}] are empty"
+            raise ValueError(msg)
         signed = lo >= INT64_MIN and hi <= INT64_MAX
         unsigned = lo >= 0 and hi <= UINT64_MAX
         if not signed and not unsigned:
-            raise ValueError(
+            msg = (
                 f"prop: integer bounds [{lo}, {hi}] are inside neither the signed "
                 "nor the unsigned 64-bit range"
             )
+            raise ValueError(msg)
         self.lo: int = lo
         self.hi: int = hi
         self.target: int = 0 if lo <= 0 <= hi else (lo if lo > 0 else hi)
         self.id: str = f"integer {lo} {hi}"
 
+    @override
     def __eq__(self, other: object) -> bool:
         """Report whether other is integer bounds of the same range."""
         return (
@@ -124,6 +131,7 @@ class IntegerBounds:
             and self.hi == other.hi
         )
 
+    @override
     def __hash__(self) -> int:
         """Return the hash of the range."""
         return hash((self.kind, self.lo, self.hi))
@@ -242,14 +250,15 @@ class FloatBounds:
         """
         # A caller without type annotations can pass any width.
         if cast("int", width) not in (32, 64):
-            raise ValueError(f"prop: float width {width} is neither 32 nor 64")
+            msg = f"prop: float width {width} is neither 32 nor 64"
+            raise ValueError(msg)
         if math.isnan(lo) or math.isnan(hi) or lo > hi:
-            raise ValueError(f"prop: float bounds [{lo}, {hi}] are empty")
+            msg = f"prop: float bounds [{lo}, {hi}] are empty"
+            raise ValueError(msg)
         for bound in (lo, hi):
             if not representable(bound, width):
-                raise ValueError(
-                    f"prop: float bound {bound} is not a value of width {width}"
-                )
+                msg = f"prop: float bound {bound} is not a value of width {width}"
+                raise ValueError(msg)
         self.lo: float = lo
         self.hi: float = hi
         self.allow_nan: bool = allow_nan
@@ -259,6 +268,7 @@ class FloatBounds:
         self.target: float = cast("float", simplest_float(lo, hi, width))
         self.id: str = f"float {lo} {hi} {allow_nan} {width}"
 
+    @override
     def __eq__(self, other: object) -> bool:
         """Report whether other is float bounds with the same range, rule and width."""
         return (
@@ -269,6 +279,7 @@ class FloatBounds:
             and self.width == other.width
         )
 
+    @override
     def __hash__(self) -> int:
         """Return the hash of the range, the NaN rule and the width."""
         return hash((self.kind, self.lo, self.hi, self.allow_nan, self.width))
@@ -349,15 +360,18 @@ class SequenceBounds:
                 below min_size.
         """
         if k < 1:
-            raise ValueError(f"prop: a sequence with k = {k} cannot have an element")
+            msg = f"prop: a sequence with k = {k} cannot have an element"
+            raise ValueError(msg)
         if min_size < 0 or (max_size is not None and max_size < min_size):
-            raise ValueError(f"prop: sequence sizes [{min_size}, {max_size}] are empty")
+            msg = f"prop: sequence sizes [{min_size}, {max_size}] are empty"
+            raise ValueError(msg)
         self.k: int = k
         self.min_size: int = min_size
         self.max_size: int | None = max_size
         self.target: tuple[int, ...] = (0,) * min_size
         self.id: str = f"sequence {k} {min_size} {max_size}"
 
+    @override
     def __eq__(self, other: object) -> bool:
         """Report whether other is sequence bounds of the same elements and sizes."""
         return (
@@ -367,6 +381,7 @@ class SequenceBounds:
             and self.max_size == other.max_size
         )
 
+    @override
     def __hash__(self) -> int:
         """Return the hash of the elements and the sizes."""
         return hash((self.kind, self.k, self.min_size, self.max_size))

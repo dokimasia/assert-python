@@ -1,3 +1,6 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
 """The spec of _prop/engine/tokens.py tests the replay token.
 
 The pinned bytes are the bytes of the reference implementation of the
@@ -9,8 +12,7 @@ from __future__ import annotations
 import base64
 import math
 import sys
-from collections.abc import Sequence
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import pytest
 
@@ -18,7 +20,11 @@ from dokimi_assert import check
 from dokimi_assert._prop.engine.choice import INT64_MIN, UINT64_MAX, Choice, same_choice
 from dokimi_assert._prop.engine.float import bits_of
 from dokimi_assert._prop.engine.tokens import PREFIX, decode, encode
-from dokimi_assert.seat import Collector
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from dokimi_assert.seat import Collector
 
 #: A choice of every kind and the bytes of their token. Each choice has a
 #: tag, and LEB128 or the bits of a float follow it.
@@ -40,9 +46,11 @@ BYTES = (
 LOWEST = Choice("float", -sys.float_info.max)
 
 
-def token(hex: str) -> str:
+def token(hex_text: str) -> str:
     """Return the token of the bytes of a hex text."""
-    text = base64.urlsafe_b64encode(bytes.fromhex(hex)).rstrip(b"=").decode("ascii")
+    text = (
+        base64.urlsafe_b64encode(bytes.fromhex(hex_text)).rstrip(b"=").decode("ascii")
+    )
     return PREFIX + text
 
 
@@ -196,8 +204,10 @@ class TestDecode:
         (
             "raises value error for standard base64",
             encode([LOWEST]).replace("_", "/"),
-            f'prop: the token "{encode([LOWEST]).replace("_", "/")}" is not unpadded '
-            "base64url",
+            (
+                f'prop: the token "{encode([LOWEST]).replace("_", "/")}" is not '
+                "unpadded base64url"
+            ),
         ),
         (
             "raises value error for a superfluous leb128 byte",
