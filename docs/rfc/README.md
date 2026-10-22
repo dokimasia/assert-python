@@ -1,3 +1,8 @@
+<!--
+  ~ Copyright Dokimasia B.V. 2026
+  ~ SPDX-License-Identifier: MIT
+-->
+
 # Requests for Comment
 
 An RFC proposes a change and carries the argument for it. Numbered in
