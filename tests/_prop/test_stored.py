@@ -21,6 +21,7 @@ from dokimi_assert._prop.engine.store import name
 from dokimi_assert._prop.engine.tokens import encode
 from dokimi_assert._prop.identity import key_of, of_record
 from dokimi_assert._prop.stored import differs, entry_of
+from dokimi_assert._record.call import DEFINITION
 from dokimi_assert.failure import Failure, Where
 from dokimi_assert.seat import Collector
 from helpers import integers
@@ -60,7 +61,7 @@ class TestEntryOf:
                 name("the total is positive", integers(3)),
                 {
                     "store": 1,
-                    "definition": "10.0.0",
+                    "definition": DEFINITION,
                     "property": "the total is positive",
                     "identity": {
                         "assertion": "equal",

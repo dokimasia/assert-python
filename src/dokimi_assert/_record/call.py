@@ -14,12 +14,14 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from dokimi_assert._record.literal import json
+from dokimi_assert.conformance.definition import version
 
 __all__ = ["DEFINITION", "Call", "Phase", "Place", "Verdict", "encode_call"]
 
-#: The version of the definition that this library implements. Every call
-#: record contains it.
-DEFINITION = "10.0.0"
+#: The version of the definition that this library implements: the version of
+#: the vendored definition, which its file VERSION contains. Every call record
+#: contains it.
+DEFINITION = version()
 
 #: How a call ended.
 Verdict = Literal["pass", "fail", "error"]
