@@ -7,8 +7,8 @@ build the entries. Entry.with_mode sets the permission bits of a file or a
 directory when they are part of the contract.
 
     dir = files.workspace(seat, {
-        "go.mod": files.text("module example.com/a\n"),
-        "a/a.go": files.text("package a\n\nfunc Old() {}\n"),
+        "pyproject.toml": files.text('[project]\nname = "a"\n'),
+        "src/a/__init__.py": files.text("def old() -> None: ...\n"),
         "keys/id": files.text("secret\n").with_mode(0o600),
     })
 
@@ -134,7 +134,7 @@ def workspace(seat: Seat, tree: Tree) -> str:
 
     Example:
         dir = files.workspace(seat, {
-            "go.mod": files.text("module example.com/a\n"),
+            "pyproject.toml": files.text('[project]\nname = "a"\n'),
             "keys/id": files.text("secret\n").with_mode(0o600),
         })
     """
@@ -188,9 +188,9 @@ def write(seat: Seat, dir: str | os.PathLike[str], tree: Tree) -> None:
         tree: The tree.
 
     Example:
-        dir = files.workspace(seat, {"api/store.gen.go": files.text(generated)})
+        dir = files.workspace(seat, {"api/store_pb2.py": files.text(generated)})
         check.no_error(seat, run(dir), "the first run writes the file")
-        files.write(seat, dir, {"api/store.gen.go": files.text(edited)})
+        files.write(seat, dir, {"api/store_pb2.py": files.text(edited)})
     """
     __tracebackhide__ = True
     seat.helper()
@@ -281,7 +281,7 @@ def equal(seat: Seat, dir: str | os.PathLike[str], want: Tree, msg: str) -> None
 
     Example:
         files.equal(seat, dir, {
-            "a/a.go": files.text("package a\n\nfunc New() {}\n"),
+            "src/a/__init__.py": files.text("def new() -> None: ...\n"),
         }, "the rename rewrites the declaration")
     """
     __tracebackhide__ = True
@@ -536,8 +536,8 @@ def has_content(
         msg: The contract under test.
 
     Example:
-        files.has_content(seat, os.path.join(dir, "go.mod"),
-                          "module example.com/a\n", "the module is renamed")
+        files.has_content(seat, os.path.join(dir, "pyproject.toml"),
+                          '[project]\nname = "b"\n', "the project is renamed")
     """
     __tracebackhide__ = True
     seat.helper()
