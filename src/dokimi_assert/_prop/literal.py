@@ -2,9 +2,10 @@
 
 The type of a draw is the type of its generator, so an integral float is
 still a float. A value of a map with an inverse has the literal of the value
-that the map received. A store entry and the call record of a property write
-each draw this way, so the option draws can replay the counterexample of an
-entry.
+that the map received, and a value of a deferred generator the literal of
+the generator that it picks. A store entry and the call record of a property
+write each draw this way, so the option draws can replay the counterexample
+of an entry.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from dokimi_assert._prop.engine import literal as engine
 from dokimi_assert._prop.engine.generator import (
     Bool,
     Bytes,
+    Deferred,
     Dict,
     Filter,
     Float,
@@ -182,6 +184,10 @@ def drawn_literal(generator: object, value: object) -> Literal | None:
     Returns:
         The literal, or None for a value without a typed literal.
     """
+    if isinstance(generator, Deferred):
+        deferred: Deferred[Any] = generator
+        with deferred.picked() as picked:
+            return drawn_literal(picked, value)
     inner = _wrapped(generator)
     if inner is not None:
         return drawn_literal(inner, value)

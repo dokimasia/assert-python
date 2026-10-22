@@ -7,22 +7,29 @@ registration of a type that a read has looked up raises RuntimeError too,
 because the generators that the read returned do not include it. A
 conftest.py has the registrations of a project.
 
+A run of a property can give types other generators through using. A draw of
+of picks the generator of its type in the run where it decodes. The run sets
+its generators with scope on each thread that decodes its draws.
+
 The registry is safe for concurrent use. A read of a type locks the registry
 until the read ends.
 """
 
 from __future__ import annotations
 
+import collections.abc
 import inspect
 import json
 import threading
 from collections.abc import Mapping
+from contextlib import AbstractContextManager, contextmanager, nullcontext
+from contextvars import ContextVar
 from typing import Any, TypeVar
 
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert._prop.convert import converter_of
 from dokimi_assert._prop.engine import literal, shape, strict_json
-from dokimi_assert._prop.engine.generator import Generator, Mapped
+from dokimi_assert._prop.engine.generator import Deferred, Generator, Mapped
 from dokimi_assert._prop.engine.value import canonical
 from dokimi_assert._prop.reader import (
     Derived,
@@ -34,6 +41,9 @@ from dokimi_assert._prop.reader import (
 )
 
 __all__ = [
+    "Generators",
+    "Picking",
+    "Within",
     "close",
     "derived",
     "of",
@@ -41,6 +51,7 @@ __all__ = [
     "register",
     "register_values",
     "register_variants",
+    "scope",
     "shape_of",
 ]
 
@@ -57,6 +68,198 @@ _OF: dict[object, Generator[Any]] = {}
 
 #: The most levels of objects and arrays of a shape file.
 _SHAPE_DEPTH = 128
+
+#: The generators of the run whose draws decode in the current context. None
+#: stands for the generators of the test process.
+_RUN: ContextVar[Generators | None] = ContextVar("dokimi_assert_prop_run", default=None)
+
+
+@contextmanager
+def scope(generators: Generators | None) -> collections.abc.Generator[None, None, None]:
+    """Make generators the generators of the draws of of inside a with statement.
+
+    A run enters its generators on each thread that decodes its draws. The
+    previous generators apply again when the block ends.
+
+    Args:
+        generators: The generators of a run, or None for the generators of
+            the test process.
+
+    Yields:
+        Nothing.
+    """
+    token = _RUN.set(generators)
+    try:
+        yield
+    finally:
+        _RUN.reset(token)
+
+
+class Generators:
+    """The generators that the using options of one run give types.
+
+    A draw of of(t) picks the generator of t from them. The methods are safe
+    for concurrent use.
+    """
+
+    def __init__(self, stated: Mapping[object, Generator[Any]] | None = None) -> None:
+        """Return the generators of a run.
+
+        Args:
+            stated: The generator of each type that the run states, or None
+                for a run that states none.
+        """
+        self._stated: dict[object, Generator[Any]] = dict(stated or {})
+        self._lock: threading.Lock = threading.Lock()
+        self._picked: dict[object, Generator[Any]] = {}
+        self._without: dict[object, Generators] = {}
+
+    def __eq__(self, other: object) -> bool:
+        """Report whether other states the same generator of each type.
+
+        Args:
+            other: The other value.
+
+        Returns:
+            True for generators of the same types with the same generators.
+        """
+        return isinstance(other, Generators) and other._stated == self._stated
+
+    def read(self, t: object) -> Generator[Any]:
+        """Return the generator of t under these generators.
+
+        A type that the run states has its stated generator, which decodes
+        under the other generators of the run. Any other type has the
+        generator that the reader reads with the stated generators in place
+        of their types. A property form reads its input this way.
+
+        Args:
+            t: The type.
+
+        Returns:
+            The generator.
+
+        Raises:
+            FaultError: The reader does not read a part of t, or the
+                definition refuses a constraint.
+        """
+        stated = self._stated.get(t)
+        if stated is not None:
+            return Within(stated, self, t)
+        externals = {s: Within(g, self, s) for s, g in self._stated.items()}
+        return derived(t, externals)
+
+    def pick(self, t: object, default: Generator[_T]) -> Generator[_T]:
+        """Return the generator of a draw of of(t) under these generators.
+
+        A run that states no generator picks default. Any other run reads
+        each type once.
+
+        Args:
+            t: The type.
+            default: The generator of t in the test process.
+
+        Returns:
+            The generator.
+
+        Raises:
+            TypeError: The reader does not read t with the stated generators
+                in place.
+        """
+        if not self._stated:
+            return default
+        with self._lock:
+            picked = self._picked.get(t)
+            if picked is None:
+                try:
+                    picked = self.read(t)
+                except FaultError as error:
+                    raise TypeError(f"prop.of: {error}") from error
+                self._picked[t] = picked
+        return picked
+
+    def without(self, t: object) -> Generators:
+        """Return these generators without the generator of t.
+
+        Args:
+            t: The type.
+
+        Returns:
+            The generators of every other stated type.
+        """
+        with self._lock:
+            rest = self._without.get(t)
+            if rest is None:
+                rest = Generators({s: g for s, g in self._stated.items() if s != t})
+                self._without[t] = rest
+        return rest
+
+
+class Picking(Deferred[_T]):
+    """The generator that of returns for a type.
+
+    A draw picks the generator of the type in the run where it decodes, and
+    the generator of the test process outside a run.
+
+    Attributes:
+        t: The type.
+        default: The generator of the type in the test process.
+    """
+
+    def __init__(self, t: object, default: Generator[_T]) -> None:
+        """Return the generator of the draws of a type.
+
+        Args:
+            t: The type.
+            default: The generator of the type in the test process.
+        """
+        self.t: object = t
+        self.default: Generator[_T] = default
+
+    def picked(self) -> AbstractContextManager[Generator[_T]]:
+        """Return the generator of the type in the current run.
+
+        Returns:
+            A context manager. Entering it returns the generator.
+        """
+        run = _RUN.get()
+        if run is None:
+            return nullcontext(self.default)
+        return nullcontext(run.pick(self.t, self.default))
+
+
+class Within(Deferred[_T]):
+    """The generator that a run states for a type.
+
+    It decodes under the other generators of the run. A draw of of(t) inside
+    the generator of t then picks the generator of t without it, so the
+    generator can narrow the generator of its own type.
+
+    Attributes:
+        generator: The stated generator.
+    """
+
+    def __init__(self, generator: Generator[_T], run: Generators, t: object) -> None:
+        """Return the stated generator of a type in a run.
+
+        Args:
+            generator: The stated generator.
+            run: The generators of the run.
+            t: The type.
+        """
+        self.generator: Generator[_T] = generator
+        self._run: Generators = run
+        self._t: object = t
+
+    @contextmanager
+    def picked(self) -> collections.abc.Generator[Generator[_T], None, None]:
+        """Enter the other generators of the run, and return the stated generator.
+
+        Yields:
+            The stated generator.
+        """
+        with scope(self._run.without(self._t)):
+            yield self.generator
 
 
 def close() -> None:
@@ -94,11 +297,11 @@ def _admit(call: str, t: object) -> None:
 def register(t: type[_T], generator: Generator[_T]) -> None:
     """Make generator the generator of t in the test process.
 
-    of(t) returns the generator, and a type that contains t generates t with
-    it. The generator does not need a shape. A generator of map, filter or
-    composite does not have one. shape_of raises TypeError for t and for a
-    type that contains t, because a registered generator does not have a
-    shape.
+    A draw of of(t) decodes with the generator, and a type that contains t
+    generates t with it. The generator does not need a shape. A generator of
+    map, filter or composite does not have one. shape_of raises TypeError
+    for t and for a type that contains t, because a registered generator does
+    not have a shape.
 
     Args:
         t: The type.
@@ -222,11 +425,11 @@ def _generator_of(read: Derived) -> Generator[Any]:
 def derived(t: object, using: Mapping[object, Generator[Any]]) -> Generator[Any]:
     """Return the generator of a type with the generators of using for some types.
 
-    A property form reads its input this way on every call.
+    of and the generators of a run read a type this way.
 
     Args:
         t: The type.
-        using: The generators of the types of the form.
+        using: The generators of some types.
 
     Returns:
         The generator.
@@ -250,13 +453,20 @@ def derived(t: object, using: Mapping[object, Generator[Any]]) -> Generator[Any]
 def of(t: type[_T]) -> Generator[_T]:
     """Return the generator of t.
 
-    The generator is the one that register gives t, and otherwise the
-    generator of the shape that the reader reads from t. Two types of one
-    shape generate the same values from one seed in every language of the
-    definition. A store entry has each value of the generator as a typed
-    literal of the shape of t, and the draws option accepts that literal.
-    The first call of a type reads the type with the registrations of that
-    moment. Every later call returns the same generator.
+    The generator decodes with the generator that register gives t, and
+    otherwise with the generator of the shape that the reader reads from t.
+    Two types of one shape generate the same values from one seed in every
+    language of the definition. A store entry has each value of the
+    generator as a typed literal of the shape of t, and the draws option
+    accepts that literal. The first call of a type reads the type with the
+    registrations of that moment. Every later call returns the same
+    generator.
+
+    In a run that gives types generators through using, a draw of the
+    generator decodes with the generator that the run gives t. A draw of a
+    type that contains such a type reads the type again with the generators
+    of the run in place, once per run. A draw whose type the reader then
+    refuses raises TypeError inside its case.
 
     Args:
         t: The type.
@@ -274,11 +484,12 @@ def of(t: type[_T]) -> Generator[_T]:
         if cached is not None:
             return cached
         try:
-            generator = derived(t, {})
+            default = derived(t, {})
         except FaultError as error:
             raise TypeError(f"prop.of: {error}") from error
-        _OF[t] = generator
-        return generator
+        picking = Picking(t, default)
+        _OF[t] = picking
+        return picking
 
 
 def shape_of(t: type) -> str:

@@ -17,15 +17,33 @@ from dokimi_assert import check
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert._prop.engine.case import Case, Replaying
 from dokimi_assert._prop.engine.choice import IntegerBounds
-from dokimi_assert._prop.engine.generator import Integer
+from dokimi_assert._prop.engine.generator import Integer, Just
 from dokimi_assert._prop.engine.shape import ShapeError
 from dokimi_assert._prop.reader import qualified
-from dokimi_assert._prop.registry import derived, of, of_shape, shape_of
+from dokimi_assert._prop.registry import (
+    Generators,
+    Picking,
+    Within,
+    derived,
+    of,
+    of_shape,
+    scope,
+    shape_of,
+)
 from dokimi_assert.seat import Collector
 from helpers import integers, refusal, run_python
 
 #: A generator of one digit.
 DIGITS = Integer(IntegerBounds(0, 9))
+
+#: A generator of the one int 7.
+SEVEN = Just(7)
+
+
+def simplest(generator: Any) -> Any:
+    """Return the value that generator decodes from a case without choices."""
+    return generator.decode(Case(Replaying([])))
+
 
 #: The types of the child processes of the registrations.
 PRELUDE = """
@@ -84,6 +102,231 @@ def child(seat: Collector, code: str) -> list[str]:
     return done.stdout.splitlines()
 
 
+class TestScope:
+    """scope sets the generators of the draws of of inside a with statement."""
+
+    def test_makes_a_draw_of_of_pick_the_generator_of_the_run(
+        self, seat: Collector
+    ) -> None:
+        """The run gives int the generator of 7."""
+        with scope(Generators({int: SEVEN})):
+            value = simplest(of(int))
+        check.equal(seat, value, 7, "the draw decodes with the generator of the run")
+
+    def test_restores_the_generators_of_the_enclosing_block(
+        self, seat: Collector
+    ) -> None:
+        """The inner block has the generators of the test process."""
+        with scope(Generators({int: SEVEN})):
+            with scope(None):
+                inner = simplest(of(int))
+            outer = simplest(of(int))
+        check.equal(
+            seat,
+            (inner, outer, simplest(of(int))),
+            (0, 7, 0),
+            "each block decodes with its own generators",
+        )
+
+
+class TestGenerators:
+    """Generators are the generators that the using options of one run give types."""
+
+    def test_returns_generators_of_no_type_by_default(self, seat: Collector) -> None:
+        """The run states no generator."""
+        check.equal(seat, Generators(), Generators({}), "the run states no type")
+
+
+class TestGeneratorsEq:
+    """Generators.__eq__ compares the stated generator of each type."""
+
+    def test_reports_true_for_the_same_generator_of_each_type(
+        self, seat: Collector
+    ) -> None:
+        """Both runs give int the digits."""
+        check.is_true(
+            seat,
+            Generators({int: DIGITS}) == Generators({int: DIGITS}),
+            "the generators are equal",
+        )
+
+    def test_reports_false_for_another_generator_of_a_type(
+        self, seat: Collector
+    ) -> None:
+        """The second run gives int the generator of 7."""
+        check.is_false(
+            seat,
+            Generators({int: DIGITS}) == Generators({int: SEVEN}),
+            "the generators differ",
+        )
+
+    def test_reports_false_for_a_value_of_another_class(self, seat: Collector) -> None:
+        """A map of the types is not the generators of a run."""
+        stated: object = {int: DIGITS}
+        check.is_false(
+            seat, Generators({int: DIGITS}) == stated, "the generators differ"
+        )
+
+
+class TestGeneratorsRead:
+    """Generators.read returns the generator of a type under the generators."""
+
+    def test_returns_the_stated_generator_of_a_stated_type(
+        self, seat: Collector
+    ) -> None:
+        """The generator decodes 7."""
+        check.equal(
+            seat,
+            simplest(Generators({int: SEVEN}).read(int)),
+            7,
+            "the generator is the stated one",
+        )
+
+    def test_reads_a_type_with_the_stated_generators_in_place(
+        self, seat: Collector
+    ) -> None:
+        """Each int of the point is 7."""
+        check.equal(
+            seat,
+            simplest(Generators({int: SEVEN}).read(Point)),
+            Point(7, 7),
+            "the point has the ints of the stated generator",
+        )
+
+    def test_raises_a_fault_for_a_type_that_the_reader_does_not_read(
+        self, seat: Collector
+    ) -> None:
+        """The fault has the part."""
+        check.equal(
+            seat,
+            refusal(seat, lambda: Generators().read(object), FaultError),
+            "object: object is not a type that the reader reads",
+            "the fault has the part and the reason",
+        )
+
+
+class TestGeneratorsPick:
+    """Generators.pick returns the generator of a draw of of under the generators."""
+
+    def test_returns_the_default_of_a_run_that_states_no_generator(
+        self, seat: Collector
+    ) -> None:
+        """The run does not read the type."""
+        check.is_true(
+            seat, Generators().pick(int, DIGITS) is DIGITS, "the pick is the default"
+        )
+
+    def test_reads_each_type_once(self, seat: Collector) -> None:
+        """The second pick of the point returns the first read."""
+        generators = Generators({int: SEVEN})
+        first = generators.pick(Point, DIGITS)
+        check.is_true(
+            seat,
+            generators.pick(Point, DIGITS) is first,
+            "the run reads the point once",
+        )
+        check.equal(seat, simplest(first), Point(7, 7), "the read has the stated ints")
+
+    def test_raises_type_error_for_a_type_that_the_reader_refuses_under_the_run(
+        self, seat: Collector
+    ) -> None:
+        """The bound of the int does not apply to the stated generator of int."""
+        text = refusal(
+            seat,
+            lambda: Generators({int: DIGITS}).pick(Annotated[int, at.Ge(0)], DIGITS),
+            TypeError,
+        )
+        check.has_prefix(seat, text, "prop.of: ", "the error names of")
+        check.has_suffix(
+            seat,
+            text,
+            "does not apply to a type that a generator generates",
+            "the error has the reason",
+        )
+
+
+class TestGeneratorsWithout:
+    """Generators.without returns the generators without the one of a type."""
+
+    def test_returns_the_generators_of_every_other_type(self, seat: Collector) -> None:
+        """The run without int keeps the generator of str."""
+        letter = Just("a")
+        check.equal(
+            seat,
+            Generators({int: DIGITS, str: letter}).without(int),
+            Generators({str: letter}),
+            "the generators keep str",
+        )
+
+    def test_returns_the_same_generators_for_each_call(self, seat: Collector) -> None:
+        """The run makes the generators without a type once."""
+        generators = Generators({int: DIGITS})
+        check.is_true(
+            seat,
+            generators.without(int) is generators.without(int),
+            "the two calls return one value",
+        )
+
+
+class TestPicking:
+    """Picking is the generator that of returns for a type."""
+
+    def test_keeps_its_type_and_its_default(self, seat: Collector) -> None:
+        """The generator has int and the digits."""
+        picking = Picking(int, DIGITS)
+        check.equal(
+            seat,
+            (picking.t, picking.default is DIGITS),
+            (int, True),
+            "the generator keeps both",
+        )
+
+
+class TestPickingPicked:
+    """Picking.picked returns the generator of the type in the current run."""
+
+    def test_returns_the_default_outside_a_run(self, seat: Collector) -> None:
+        """The test process gives int the digits."""
+        with Picking(int, DIGITS).picked() as picked:
+            check.is_true(seat, picked is DIGITS, "the pick is the default")
+
+    def test_returns_the_generator_that_the_run_picks(self, seat: Collector) -> None:
+        """The run gives int the generator of 7."""
+        with scope(Generators({int: SEVEN})), Picking(int, DIGITS).picked() as picked:
+            value = simplest(picked)
+        check.equal(seat, value, 7, "the pick decodes with the generator of the run")
+
+
+class TestWithin:
+    """Within is the generator that a run states for a type."""
+
+    def test_keeps_the_stated_generator(self, seat: Collector) -> None:
+        """The generator is the digits."""
+        check.is_true(
+            seat,
+            Within(DIGITS, Generators(), int).generator is DIGITS,
+            "the generator keeps the stated one",
+        )
+
+
+class TestWithinPicked:
+    """Within.picked enters the other generators of the run."""
+
+    def test_makes_a_draw_of_its_own_type_pick_the_generator_of_the_process(
+        self, seat: Collector
+    ) -> None:
+        """The stated generator of int adds 100 to the simplest int."""
+        with scope(Generators({int: of(int).map(lambda x: x + 100)})):
+            value = simplest(of(int))
+        check.equal(seat, value, 100, "the inner draw of of(int) decodes 0")
+
+    def test_keeps_the_generators_of_the_other_types(self, seat: Collector) -> None:
+        """The stated generator of str draws the stated int."""
+        with scope(Generators({int: SEVEN, str: of(int).map(str)})):
+            value = simplest(of(str))
+        check.equal(seat, value, "7", "the inner draw of of(int) decodes 7")
+
+
 class TestClose:
     """close ends the registrations of the process."""
 
@@ -112,16 +355,18 @@ refused(lambda: registry.register(Point, DIGITS))
 class TestRegister:
     """register sets the generator of a type in the process."""
 
-    def test_makes_of_return_the_generator(self, seat: Collector) -> None:
-        """The registry returns the registered generator itself."""
+    def test_makes_a_draw_of_of_decode_with_the_generator(
+        self, seat: Collector
+    ) -> None:
+        """The draw of the point decodes the digit 7."""
         lines = child(
             seat,
             """
 registry.register(Point, DIGITS)
-print(registry.of(Point) is DIGITS)
+print(registry.of(Point).decode(Case(Replaying([Choice("integer", 7)]))))
 """,
         )
-        check.equal(seat, lines, ["True"], "of returns the registered generator")
+        check.equal(seat, lines, ["7"], "of decodes with the registered generator")
 
     def test_makes_a_type_that_contains_the_type_generate_it_with_the_generator(
         self, seat: Collector

@@ -51,7 +51,7 @@ from dokimi_assert._prop.engine.shrink import (
 )
 from dokimi_assert._prop.engine.value import canonical
 from dokimi_assert.seat import Collector
-from helpers import Decoding, integers
+from helpers import Decoding, Picked, integers
 
 DIGIT = Integer(IntegerBounds(0, 9))
 WIDE = Integer(IntegerBounds(0, 1_000_000_000))
@@ -1384,6 +1384,24 @@ class TestExplain:
             explanation[0][1:],
             ["a1001b", False, ("a1000b",)],
             "the map wraps the step in a and b",
+        )
+
+    def test_reports_the_nearest_value_of_the_generator_that_a_deferred_one_picks(
+        self, seat: Collector
+    ) -> None:
+        """The pick is the wide integer."""
+        picked = Picked(WIDE)
+
+        def above_picked(c: Case) -> None:
+            if c.draw(picked, "n") > 1000:
+                c.fail("above")
+
+        explanation, _ = explained(above_picked, integers(1001), 7)
+        check.equal(
+            seat,
+            explanation[0][1:],
+            [1001, False, (1000,)],
+            "the nearest passing value of n is 1000",
         )
 
     def test_does_not_report_a_nearest_value_for_a_draw_that_is_not_an_integer(

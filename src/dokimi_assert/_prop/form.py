@@ -3,19 +3,18 @@
 A form runs its assertion on each case of a run in the same way as for_all
 runs a body. The arguments of the assertion are the values that the case
 generates. The form reads the type of its input from the annotation of the
-input parameter of its function, and the registry derives the generator of
-that type. For a function of more than one input parameter, the form
-generates the parameters in order as the fields of a record. A form also
-takes the options of a run, the relaxations of its assertion, the generators
-that using gives types, and the cases of example and examples. Those cases
-run before the stored cases.
+input parameter of its function, and the generators of the run derive the
+generator of that type. For a function of more than one input parameter,
+the form generates the parameters in order as the fields of a record. A
+form also takes the options of a run, the relaxations of its assertion and
+the cases of example and examples. Those cases run before the stored cases.
 """
 
 from __future__ import annotations
 
 import dataclasses
 import inspect
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -34,7 +33,7 @@ from dokimi_assert._prop.engine.inverse import (
 from dokimi_assert._prop.engine.runner import Values
 from dokimi_assert._prop.option import FormOnly, FormOption, Option, configure
 from dokimi_assert._prop.property import Call, Property
-from dokimi_assert._prop.registry import derived
+from dokimi_assert._prop.registry import Generators, scope
 from dokimi_assert.failure import call_site
 
 __all__ = ["INPUT", "PAIR", "TRIPLE", "Check", "Form", "run_form"]
@@ -89,21 +88,14 @@ class _Sorted:
     run: list[Option]
     relaxations: list[Relaxation]
     examples: list[FormOnly]
-    using: dict[object, Generator[Any]]
 
 
 def _sorted(options: Sequence[FormOption]) -> _Sorted:
-    """Return the options of the call of a form by kind.
-
-    A later using of a type replaces an earlier one.
-    """
-    by_kind = _Sorted([], [], [], {})
+    """Return the options of the call of a form by kind."""
+    by_kind = _Sorted([], [], [])
     for option in options:
         if isinstance(option, Relaxation):
             by_kind.relaxations.append(option)
-        elif isinstance(option, FormOnly) and option.kind == "using":
-            t, generator = option.value
-            by_kind.using[t] = generator
         elif isinstance(option, FormOnly):
             by_kind.examples.append(option)
         else:
@@ -147,7 +139,7 @@ def _parameters(function: Callable[..., Any], skip: int) -> list[inspect.Paramet
 
 
 def _input_of(
-    form: Form, function: Callable[..., Any], using: Mapping[object, Generator[Any]]
+    form: Form, function: Callable[..., Any], using: Generators
 ) -> tuple[Generator[Any], type | None]:
     """Return the generator of the input of a form, and the record of its parameters.
 
@@ -161,11 +153,11 @@ def _input_of(
     """
     parameters = _parameters(function, form.skip)
     if len(form.labels) > 1 or len(parameters) == 1:
-        return derived(parameters[0].annotation, using), None
+        return using.read(parameters[0].annotation), None
     name = getattr(function, "__name__", "parameters")
     fields = [(p.name, p.annotation) for p in parameters]
     record = dataclasses.make_dataclass(name, fields, frozen=True)
-    return derived(record, using), record
+    return using.read(record), record
 
 
 def _arguments_of(record: type | None, values: tuple[Any, ...]) -> tuple[Any, ...]:
@@ -299,9 +291,11 @@ def run_form(
                 "the form does not take a relaxation, because its assertion does "
                 "not take one",
             )
-        generator, record = _input_of(form, function, by_kind.using)
-        cases = _examples_of(form.labels, generator, record, by_kind.examples)
-        prop = Property.of(seat, call, configure(by_kind.run), cases)
+        config = configure(by_kind.run)
+        with scope(config.using):
+            generator, record = _input_of(form, function, config.using)
+            cases = _examples_of(form.labels, generator, record, by_kind.examples)
+        prop = Property.of(seat, call, config, cases)
     except FaultError as error:
         Property.fault(running, call, error)
         return

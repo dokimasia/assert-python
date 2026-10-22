@@ -72,7 +72,9 @@ def for_all(
     with a fault before any other case. for_all writes an entry of each
     failure of a counterexample to the store. It does not write an entry
     when a file of the name of the entry exists, or in a process of a
-    mutation run. It notes a store that cannot keep an entry as a warning.
+    mutation run. It notes a store that cannot keep an entry: a seat with
+    report_fault receives the fault with ending False, and any other seat a
+    warning.
 
     Args:
         seat: The seat that receives the failure. Use the seat fixture.

@@ -9,6 +9,7 @@ import sys
 import textwrap
 import threading
 from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from types import ModuleType
 from typing import Any, NoReturn
@@ -20,6 +21,7 @@ from dokimi_assert._prop.case import Case as BodyCase
 from dokimi_assert._prop.case import Location
 from dokimi_assert._prop.engine.case import Case, Provider, Replaying
 from dokimi_assert._prop.engine.choice import Choice, Value
+from dokimi_assert._prop.engine.generator import Deferred, Generator
 from dokimi_assert.clock import Controlled
 from dokimi_assert.seat import Collector, Recorder
 
@@ -90,6 +92,25 @@ class Decoding:
     def decode(self, c: Case) -> Any:
         """Return the value of the function."""
         return self.fn(c)
+
+
+class Picked(Deferred[Any]):
+    """A deferred generator that picks one generator, and counts its picks.
+
+    Attributes:
+        generator: The generator that it picks.
+        picks: The number of picks.
+    """
+
+    def __init__(self, generator: Generator[Any]) -> None:
+        """Return the deferred generator of generator."""
+        self.generator: Generator[Any] = generator
+        self.picks: int = 0
+
+    def picked(self) -> AbstractContextManager[Generator[Any]]:
+        """Count the pick, and return the generator."""
+        self.picks += 1
+        return nullcontext(self.generator)
 
 
 def integers(*values: int) -> list[Choice]:

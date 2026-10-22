@@ -17,6 +17,7 @@ from __future__ import annotations
 import threading
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
+from contextlib import AbstractContextManager
 from fractions import Fraction
 from typing import ClassVar, Generic, Protocol, TypeVar, cast
 
@@ -35,6 +36,7 @@ __all__ = [
     "Bound",
     "Bytes",
     "Composite",
+    "Deferred",
     "Dict",
     "Filter",
     "Float",
@@ -127,6 +129,36 @@ class Generator(ABC, Generic[_T_co]):
             The generator.
         """
         return Bound(self, f)
+
+
+class Deferred(Generator[_T_co], ABC):
+    """A generator that picks the generator of its values where it is used.
+
+    A draw of the generator of a type picks the generator that its run gives
+    the type. The engine decodes, inverts and walks the picked generator
+    inside the context of the pick, so a pick inside the picked generator
+    reads the same context. The decode does not open a span of its own.
+    """
+
+    @abstractmethod
+    def picked(self) -> AbstractContextManager[Generator[_T_co]]:
+        """Return the context of the pick.
+
+        Returns:
+            A context manager. Entering it returns the picked generator.
+        """
+
+    def decode(self, c: Case) -> _T_co:
+        """Return the value that the picked generator decodes from the case.
+
+        Args:
+            c: The case.
+
+        Returns:
+            The value.
+        """
+        with self.picked() as generator:
+            return generator.decode(c)
 
 
 class Integer(Generator[int]):

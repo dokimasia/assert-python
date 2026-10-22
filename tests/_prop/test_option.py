@@ -34,6 +34,7 @@ from dokimi_assert._prop.option import (
     using,
     workers,
 )
+from dokimi_assert._prop.registry import Generators
 from dokimi_assert.seat import Collector
 from helpers import refusal
 
@@ -147,6 +148,20 @@ class TestConfigure:
         """The later option overrides the earlier one."""
         check.equal(
             seat, configure([cases(5), cases(6)]).cases, 6, "the later option applies"
+        )
+
+    def test_returns_the_generator_of_each_type_that_a_using_option_states(
+        self, seat: Collector
+    ) -> None:
+        """A later using of one type replaces an earlier one."""
+        five = Integer(IntegerBounds(0, 5))
+        digits = Integer(IntegerBounds(0, 9))
+        letters = Integer(IntegerBounds(97, 122))
+        check.equal(
+            seat,
+            configure([using(int, five), using(str, letters), using(int, digits)]),
+            Config(using=Generators({int: digits, str: letters})),
+            "the run has the later generator of int",
         )
 
 
@@ -480,7 +495,7 @@ class TestAround:
 
 
 class TestUsing:
-    """using sets the generator of a type in a property form."""
+    """using sets the generator of a type in a run."""
 
     def test_returns_the_option_of_the_type_and_its_generator(
         self, seat: Collector
@@ -490,7 +505,7 @@ class TestUsing:
         check.equal(
             seat,
             using(int, digits),
-            FormOnly("using", (int, digits)),
+            Option("using", (int, digits)),
             "the option has the type and its generator",
         )
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import math
 import threading
 from collections.abc import Callable
@@ -39,12 +40,14 @@ def concurrently(
     """Run one copy of body for each client at the same time.
 
     The clients have the numbers 0 to clients - 1. concurrently starts one
-    daemon thread for each client. The thread of client i calls body(i). A
-    barrier releases the threads at once after concurrently has started every
-    thread. concurrently then waits until every body has ended or until within
-    seconds have passed on the platform clock. It counts the time from the
-    release. When a body returns an awaitable, its thread runs the awaitable
-    to its end on an event loop of its own.
+    daemon thread for each client. The thread of client i calls body(i) in a
+    copy of the context of the caller, so a draw of of in a body picks the
+    generators of the run of the caller. A barrier releases the threads at
+    once after concurrently has started every thread. concurrently then
+    waits until every body has ended or until within seconds have passed on
+    the platform clock. It counts the time from the release. When a body
+    returns an awaitable, its thread runs the awaitable to its end on an
+    event loop of its own.
 
     When the time passes before a body ends, the outcome of the body is not
     finished. Its thread runs on, because Python cannot stop a thread from
@@ -107,7 +110,10 @@ def concurrently(
 
     for client in range(clients):
         name = f"{_OP} client {client}"
-        threading.Thread(target=run, args=(client,), name=name, daemon=True).start()
+        context = contextvars.copy_context()
+        threading.Thread(
+            target=context.run, args=(run, client), name=name, daemon=True
+        ).start()
     release.wait()
     with ended:
         ended.wait_for(lambda: running == 0, min(within, threading.TIMEOUT_MAX))

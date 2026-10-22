@@ -14,7 +14,8 @@ A value that the generator cannot produce raises CannotInvertError.
 - A set or a map repeats an element.
 
 Every generator runs backwards except a map without an inverse, a bind and
-a composite. A filter runs backwards through the generator that it filters.
+a composite. A filter runs backwards through the generator that it filters,
+and a deferred generator through the generator that it picks.
 A function that the engine cannot run backwards raises NoInverseError. The
 caller can tell that error apart from a value outside a domain. A one-of and
 a recursive raise NoInverseError when no branch produces the value and one
@@ -63,6 +64,7 @@ from dokimi_assert._prop.engine.float import Key
 from dokimi_assert._prop.engine.generator import (
     Bool,
     Bytes,
+    Deferred,
     Dict,
     Filter,
     Float,
@@ -748,6 +750,10 @@ def emit(generator: Generator[Any], value: object) -> Emitted:
         NoInverseError: The generator applies a function that the engine
             cannot run backwards.
     """
+    if isinstance(generator, Deferred):
+        deferred: Deferred[Any] = generator
+        with deferred.picked() as picked:
+            return emit(picked, value)
     emitter = _EMITTERS.get(type(generator))
     if emitter is None:
         raise NoInverseError(

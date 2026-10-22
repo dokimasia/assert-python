@@ -7,9 +7,14 @@ of a form. The contract of the record is the contract of the property, and
 its location is the call of the property. The record of each call in a case
 has the phase of the case. Its parent is the call of the property.
 
-A property notes each fault that does not end its call as a warning. A file
-of its store that it skips is such a fault. pytest shows the warning in the
+A property notes each fault that does not end its call. A file of its store
+that it skips is such a fault. A seat with report_fault receives the fault
+with ending False. Any other seat gets a warning, which pytest shows in the
 summary of the run.
+
+The generators that the run gives types apply on the thread of the call and
+in each run of the body, so every draw of of, its literal, its inverse and
+the fillings that explain it pick the same generators.
 """
 
 from __future__ import annotations
@@ -17,7 +22,6 @@ from __future__ import annotations
 import json
 import os
 import threading
-import warnings
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -26,7 +30,7 @@ from typing import Any, cast
 from dokimi_assert._matcher.fault import FaultError, of_operation
 from dokimi_assert._matcher.loop import Loop
 from dokimi_assert._matcher.seat import Mode, Seat
-from dokimi_assert._matcher.verdict import Running
+from dokimi_assert._matcher.verdict import Running, note_fault
 from dokimi_assert._prop.case import Case, FaultSignal, Location, case_of, execute
 from dokimi_assert._prop.detail import detail_json, detail_of, record_of
 from dokimi_assert._prop.directory import Loaded, claim, load, save, store_of
@@ -51,7 +55,7 @@ from dokimi_assert._prop.engine.store import MAX_DEPTH
 from dokimi_assert._prop.engine.traces import Draw, Entry, TraceError
 from dokimi_assert._prop.environment import budget_of, mutated, seed_of, token_of
 from dokimi_assert._prop.option import Config, Wrapper
-from dokimi_assert._prop.registry import close
+from dokimi_assert._prop.registry import Generators, close, scope
 from dokimi_assert._prop.stored import differs, entry_of
 from dokimi_assert._record.calls import Slot, cut, own
 from dokimi_assert.failure import Where
@@ -190,9 +194,9 @@ def _observer_of(slot: Slot | None) -> Observer:
     return observe
 
 
-def _note(op: str, fault: FaultError) -> None:
-    """Warn with the text of a fault that does not end the call of an operation."""
-    warnings.warn(str(of_operation(op, fault)), stacklevel=4)
+def _note(seat: Seat, op: str, fault: FaultError) -> None:
+    """Note a fault that does not end the call of an operation on seat."""
+    note_fault(seat, of_operation(op, fault), stacklevel=4)
 
 
 class _Run:
@@ -276,7 +280,8 @@ class Property:
         budget: int,
         replay: tuple[Choice, ...] | None,
         directory: str,
-        around: Wrapper | None = None,
+        around: Wrapper | None,
+        using: Generators,
     ) -> None:
         """Return a property. Call Property.of instead.
 
@@ -292,6 +297,7 @@ class Property:
             directory: The directory of the store, or the empty string for a
                 property without one.
             around: The wrapper of each run of the body, or None.
+            using: The generators that the runs give types.
         """
         self.call: Call = call
         self._settings: Settings = settings
@@ -300,6 +306,7 @@ class Property:
         self._replay: tuple[Choice, ...] | None = replay
         self._directory: str = directory
         self._around: Wrapper | None = around
+        self._using: Generators = using
 
     @staticmethod
     def of(
@@ -354,6 +361,7 @@ class Property:
             _replay_of(config),
             store_of(seat, config.store),
             config.around,
+            config.using,
         )
 
     def run(self, seat: Seat, running: Running, body: PropertyBody) -> None:
@@ -380,38 +388,43 @@ class Property:
         """
         if not self._claim(seat, running):
             return
-        with Loop(self.call.assertion) as loop:
-            cases = self._adapt(seat, running.slot, body, loop)
-            observer = _observer_of(running.slot)
-            if self._replay is not None:
-                settings = replace(self._settings, replay=self._replay)
-                outcome = self._drive(running, lambda: run(cases, settings, observer))
-                if outcome is not None:
-                    self._report(running, outcome)
+        with scope(self._using):
+            with Loop(self.call.assertion) as loop:
+                cases = self._adapt(seat, running.slot, body, loop)
+                observer = _observer_of(running.slot)
+                if self._replay is not None:
+                    settings = replace(self._settings, replay=self._replay)
+                    outcome = self._drive(
+                        running, lambda: run(cases, settings, observer)
+                    )
+                    if outcome is not None:
+                        self._report(running, outcome)
+                    return
+                loaded = self._load(running)
+                if loaded is None:
+                    return
+                stored = tuple(entry.choices for entry in loaded.entries)
+                settings = replace(self._settings, stored=stored)
+                saved: list[FaultError] = []
+
+                def concluded(found: Outcome) -> None:
+                    saved.extend(self._save(found))
+
+                def work() -> Outcome:
+                    if self._budget > 0:
+                        return campaign(
+                            cases, settings, self._budget, observer, concluded
+                        )
+                    return run(cases, settings, observer)
+
+                outcome = self._drive(running, work)
+            if outcome is None:
                 return
-            loaded = self._load(running)
-            if loaded is None:
-                return
-            stored = tuple(entry.choices for entry in loaded.entries)
-            settings = replace(self._settings, stored=stored)
-            saved: list[FaultError] = []
-
-            def concluded(found: Outcome) -> None:
-                saved.extend(self._save(found))
-
-            def work() -> Outcome:
-                if self._budget > 0:
-                    return campaign(cases, settings, self._budget, observer, concluded)
-                return run(cases, settings, observer)
-
-            outcome = self._drive(running, work)
-        if outcome is None:
-            return
-        if outcome.kind == "counterexample" and self._budget == 0:
-            concluded(outcome)
-        for fault in [*self._store_faults(loaded, outcome), *saved]:
-            _note(self.call.op, fault)
-        self._report(running, outcome)
+            if outcome.kind == "counterexample" and self._budget == 0:
+                concluded(outcome)
+            for fault in [*self._store_faults(loaded, outcome), *saved]:
+                _note(seat, self.call.op, fault)
+            self._report(running, outcome)
 
     def replay_stored(self, seat: Seat, running: Running, body: PropertyBody) -> None:
         """Replay the stored cases of the property on seat, and report them.
@@ -440,17 +453,18 @@ class Property:
             return
         stored = tuple(entry.choices for entry in loaded.entries)
         settings = replace(self._settings, stored=stored)
-        with Loop(self.call.assertion) as loop:
-            cases = self._adapt(seat, running.slot, body, loop)
-            observer = _observer_of(running.slot)
-            outcome = self._drive(
-                running, lambda: run_stored(cases, settings, observer)
-            )
-        if outcome is None:
-            return
-        for fault in self._store_faults(loaded, outcome):
-            _note(self.call.op, fault)
-        self._report(running, outcome)
+        with scope(self._using):
+            with Loop(self.call.assertion) as loop:
+                cases = self._adapt(seat, running.slot, body, loop)
+                observer = _observer_of(running.slot)
+                outcome = self._drive(
+                    running, lambda: run_stored(cases, settings, observer)
+                )
+            if outcome is None:
+                return
+            for fault in self._store_faults(loaded, outcome):
+                _note(seat, self.call.op, fault)
+            self._report(running, outcome)
 
     def input(
         self, seat: Seat, running: Running, body: PropertyBody, data: bytes
@@ -469,25 +483,28 @@ class Property:
             data: The bytes from the fuzzer.
         """
         settings = self._settings
-        with Loop(self.call.assertion) as loop:
-            cases = self._adapt(seat, running.slot, body, loop)
-            observer = _observer_of(running.slot)
+        with scope(self._using):
+            with Loop(self.call.assertion) as loop:
+                cases = self._adapt(seat, running.slot, body, loop)
+                observer = _observer_of(running.slot)
 
-            def bridged() -> Outcome:
-                execution = execute_engine(cases, Bridging(data), settings.max_choices)
-                observer("fuzz", execution)
-                tally = Tally(settings.seed)
-                if tally.take(execution) is None:
-                    return tally.outcome("passed")
-                return conclude_case(cases, settings, execution, observer)
+                def bridged() -> Outcome:
+                    execution = execute_engine(
+                        cases, Bridging(data), settings.max_choices
+                    )
+                    observer("fuzz", execution)
+                    tally = Tally(settings.seed)
+                    if tally.take(execution) is None:
+                        return tally.outcome("passed")
+                    return conclude_case(cases, settings, execution, observer)
 
-            outcome = self._drive(running, bridged)
-        if outcome is None:
-            return
-        if outcome.kind == "counterexample":
-            for fault in self._save(outcome):
-                _note(self.call.op, fault)
-        self._report(running, outcome)
+                outcome = self._drive(running, bridged)
+            if outcome is None:
+                return
+            if outcome.kind == "counterexample":
+                for fault in self._save(outcome):
+                    _note(seat, self.call.op, fault)
+            self._report(running, outcome)
 
     @staticmethod
     def fault(running: Running, call: Call, error: object) -> None:
@@ -509,19 +526,22 @@ class Property:
 
         A case on the thread of the run runs on the loop of the run. A case on
         another thread runs on a loop of its own. Under the around option,
-        each case runs inside the wrapper.
+        each case runs inside the wrapper. Each case runs under the
+        generators of the run, on any thread.
         """
         location = Location(self.call.where, self.call.pinned)
         thread = threading.get_ident()
         assertion = self.call.assertion
         around = self._around
+        using = self._using
 
         def run_case(c: Case) -> None:
-            if threading.get_ident() == thread:
-                execute(c, body, loop)
-                return
-            with Loop(assertion) as own_loop:
-                execute(c, body, own_loop)
+            with scope(using):
+                if threading.get_ident() == thread:
+                    execute(c, body, loop)
+                    return
+                with Loop(assertion) as own_loop:
+                    execute(c, body, own_loop)
 
         def adapted(engine: EngineCase) -> None:
             c = Case(engine, seat, slot, location)

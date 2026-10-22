@@ -53,6 +53,7 @@ from dokimi_assert._prop.engine.source import case_source
 from dokimi_assert._prop.engine.value import Fields, Pairs, Variant, canonical
 from dokimi_assert._prop.engine.zone import ZONES
 from dokimi_assert.seat import Collector
+from helpers import Picked
 
 #: The number of cases of each generator in the round trip.
 CASES = 60
@@ -443,6 +444,18 @@ class TestInvert:
     ) -> None:
         """4 is even."""
         check.equal(seat, choice_values(invert(EVEN, 4)), [4], "the choice is 4")
+
+    def test_runs_a_deferred_generator_back_through_the_generator_that_it_picks(
+        self, seat: Collector
+    ) -> None:
+        """The walk picks the digit, and the replay of the choices picks it again."""
+        deferred = Picked(DIGIT)
+        check.equal(
+            seat,
+            [choice_values(invert(deferred, 4)), deferred.picks],
+            [[4], 2],
+            "the choice is 4",
+        )
 
     def test_passes_over_an_alternative_of_a_one_of_that_cannot_produce_the_value(
         self, seat: Collector

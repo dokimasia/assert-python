@@ -26,6 +26,7 @@ from dokimi_assert._prop.engine.shape import read
 from dokimi_assert._prop.engine.value import Fields, Pairs, Variant
 from dokimi_assert._prop.literal import drawn_literal
 from dokimi_assert.seat import Collector
+from helpers import Picked
 
 #: The generator of the integers 0 to 9.
 DIGIT = Integer(IntegerBounds(0, 9))
@@ -80,6 +81,12 @@ class TestDrawnLiteral:
             "returns the literal of a filtered value through the filtered generator",
             Filter(DIGIT, lambda x: x % 2 == 0),
             4,
+            {"type": "int", "value": 4},
+        ),
+        (
+            "returns the literal of the generator that a deferred generator picks",
+            Picked(Mapped(DIGIT, str, int)),
+            "4",
             {"type": "int", "value": 4},
         ),
         (

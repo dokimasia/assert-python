@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import math
 import threading
+from contextvars import ContextVar
 from typing import Any, ClassVar
 
 import pytest
@@ -16,6 +17,9 @@ from helpers import refusal
 
 #: A wait in seconds that is longer than any body of the spec needs.
 PATIENT = 60.0
+
+#: A mark that a caller sets in its context.
+MARK: ContextVar[str] = ContextVar("mark", default="unset")
 
 #: The seconds of a case whose body runs past them. A body that returns at
 #: once ends within them on a loaded machine.
@@ -73,6 +77,29 @@ class TestConcurrently:
             concurrently(3, PATIENT, lambda client: client * 10),
             [Outcome(0, True, 0), Outcome(1, True, 10), Outcome(2, True, 20)],
             "concurrently returns the three outputs in client order",
+        )
+
+    def test_runs_each_body_in_a_copy_of_the_context_of_the_caller(
+        self, seat: Collector
+    ) -> None:
+        """Each body reads the mark that the caller set, and its own mark stays."""
+
+        def body(client: int) -> str:
+            seen = MARK.get()
+            MARK.set(f"client {client}")
+            return seen
+
+        token = MARK.set("the caller")
+        try:
+            outputs = [outcome.output for outcome in concurrently(2, PATIENT, body)]
+            after = MARK.get()
+        finally:
+            MARK.reset(token)
+        check.equal(
+            seat,
+            [outputs, after],
+            [["the caller", "the caller"], "the caller"],
+            "each body reads the mark of the caller",
         )
 
     def test_runs_the_awaitable_of_a_body_to_its_end(self, seat: Collector) -> None:

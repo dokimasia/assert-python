@@ -34,6 +34,7 @@ import time
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -69,7 +70,7 @@ from dokimi_assert._prop.engine.execution import (
     unobserved,
 )
 from dokimi_assert._prop.engine.float import INTEGRAL_LIMIT, Key
-from dokimi_assert._prop.engine.generator import Integer, Mapped
+from dokimi_assert._prop.engine.generator import Deferred, Integer, Mapped
 from dokimi_assert._prop.engine.order import choice_key, shortlex
 from dokimi_assert._prop.engine.source import MASK, Source
 from dokimi_assert._prop.engine.tokens import encode
@@ -1275,14 +1276,20 @@ def _nearest(
 
     The result is None unless the case passes with that value. A map of an
     integer is an integer draw too. Its integer is its choice, and its
-    nearest passing value is what the map returns for the step.
+    nearest passing value is what the map returns for the step. A deferred
+    generator is the generator that it picks.
     """
     generator: object = drawn.generator
     maps: list[Mapped[Any, Any]] = []
-    while isinstance(generator, Mapped):
-        mapped: Mapped[Any, Any] = generator
-        maps.append(mapped)
-        generator = mapped.of
+    with ExitStack() as picks:
+        while isinstance(generator, (Mapped, Deferred)):
+            if isinstance(generator, Deferred):
+                deferred: Deferred[Any] = generator
+                generator = picks.enter_context(deferred.picked())
+                continue
+            mapped: Mapped[Any, Any] = generator
+            maps.append(mapped)
+            generator = mapped.of
     value = nodes[span.start].choice.value if maps else drawn.value
     if not isinstance(generator, Integer) or not isinstance(value, int):
         return None

@@ -14,9 +14,9 @@ the parameters in order as the fields of a record. A form of a relation
 generates the arguments that the relation takes. is_commutative generates a
 and b, and is_associative generates a, b and c.
 
-Every form takes the options of a run, the generators that using gives
-types, and the cases of example and examples. A form whose assertion takes
-relaxations takes them too.
+Every form takes the options of a run and the cases of example and
+examples. The generators that using gives types apply to the input of the
+form. A form whose assertion takes relaxations takes them too.
 """
 
 from __future__ import annotations

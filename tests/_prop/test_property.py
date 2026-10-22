@@ -12,7 +12,6 @@ import json
 import os
 import threading
 import time
-import warnings
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, ClassVar
@@ -46,9 +45,11 @@ from dokimi_assert._prop.option import (
     seed,
     shrink,
     store,
+    using,
     workers,
 )
 from dokimi_assert._prop.property import Call, Property, PropertyBody
+from dokimi_assert._prop.registry import of
 from dokimi_assert.failure import Where
 from dokimi_assert.seat import Collector, Recorder, Standard
 from helpers import UNENFORCED, records, refusal, run_python
@@ -140,12 +141,10 @@ def first_detail(recorder: Recorder) -> dict[str, Any]:
     return dict(failures[0].detail) if failures else {}
 
 
-def notes(call: Callable[[], object]) -> list[str]:
-    """Return the text of each warning that call emits."""
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        call()
-    return [str(one.message) for one in caught]
+def notes(recorder: Recorder, call: Callable[[], object]) -> list[str]:
+    """Return the text of each fault that recorder receives while call runs."""
+    call()
+    return [str(fault) for fault in recorder.faults]
 
 
 def in_a_running_loop(call: Callable[[], object]) -> None:
@@ -527,8 +526,10 @@ class TestPropertyRun:
         monkeypatch.delenv(MUTANT, raising=False)
         name = stored_by_a_failure(tmp_path)
         (tmp_path / "later.json").write_text(json.dumps({"store": 2}), "utf-8")
+        recorder = Recorder()
         texts = notes(
-            lambda: run_on(Recorder(), plus_one_below_five, store(str(tmp_path)))
+            recorder,
+            lambda: run_on(recorder, plus_one_below_five, store(str(tmp_path))),
         )
         check.equal(
             seat,
@@ -549,8 +550,11 @@ class TestPropertyRun:
         """The directory of the store cannot be written."""
         monkeypatch.delenv(MUTANT, raising=False)
         tmp_path.chmod(0o500)
+        recorder = Recorder()
         try:
-            texts = notes(lambda: run_on(Recorder(), below_five, store(str(tmp_path))))
+            texts = notes(
+                recorder, lambda: run_on(recorder, below_five, store(str(tmp_path)))
+            )
         finally:
             tmp_path.chmod(0o700)
         check.equal(seat, len(texts), 1, "the run notes one fault")
@@ -682,6 +686,43 @@ class TestPropertyRun:
             records(two),
             records(one),
             "two workers record the same calls as one worker",
+        )
+
+    runs: ClassVar[list[tuple[str, tuple[Option, ...]]]] = [
+        ("draws a type with the generator that using gives it", ()),
+        ("draws a type with the generator of using on two workers", (workers(2),)),
+    ]
+
+    @pytest.mark.parametrize("give", [t[1] for t in runs], ids=[t[0] for t in runs])
+    def test_draws_a_type_with_the_generator_of_using(
+        self, seat: Collector, give: tuple[Option, ...]
+    ) -> None:
+        """Every int that a case draws is a digit."""
+
+        def body(c: Case) -> None:
+            check.is_true(c, c.draw(of(int), "x") < 10, "x is a digit")
+
+        recorder = Recorder()
+        run_on(recorder, body, using(int, DIGITS), *give)
+        check.is_false(seat, recorder.failed, "the run passes")
+
+    def test_writes_the_literal_of_a_draw_under_the_generators_of_using(
+        self, seat: Collector
+    ) -> None:
+        """The stated generator of int adds 100 to the int that it draws."""
+        above = Mapped(of(int), lambda x: x + 100, lambda y: y - 100)
+
+        def body(c: Case) -> None:
+            check.is_true(c, c.draw(of(int), "x") < 100, "x is below 100")
+
+        recorder = Recorder()
+        run_on(recorder, body, using(int, above))
+        [drawn] = records(recorder)[0]["detail"]["counterexample"]
+        check.equal(
+            seat,
+            [drawn["value"], first_detail(recorder)["counterexample"][0].value],
+            [{"type": "int", "value": 0}, 100],
+            "the literal is the int that the map received",
         )
 
     def test_runs_each_run_of_the_body_inside_the_wrapper_of_around(
@@ -850,9 +891,10 @@ class TestPropertyReplayStored:
         recorder = Recorder()
         prop = property_of(recorder, store(str(tmp_path)))
         texts = notes(
+            recorder,
             lambda: prop.replay_stored(
                 recorder, Running.begin(recorder, WHERE), plus_one_below_five
-            )
+            ),
         )
         detail = first_detail(recorder)
         check.equal(
@@ -976,12 +1018,13 @@ class TestPropertyInput:
         recorder = Recorder()
         prop = property_of(recorder, store(str(file)))
         texts = notes(
+            recorder,
             lambda: prop.input(
                 recorder,
                 Running.begin(recorder, WHERE),
                 starts_with_seven,
                 bytes([1, 7]),
-            )
+            ),
         )
         check.equal(seat, len(texts), 1, "the input notes one fault")
         check.has_prefix(

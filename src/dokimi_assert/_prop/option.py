@@ -1,10 +1,12 @@
 """The options of a property, and the options that only a property form takes.
 
 Each option is one setting of a run of for_all, fuzz or a property form.
-When a caller passes two options of one kind, the later one applies. Three
+When a caller passes two options of one kind, the later one applies. Four
 kinds add to the earlier options of their kind instead.
 
 - Each require option adds a requirement.
+- Each using option adds the generator of its type. A later using of one
+  type replaces an earlier one.
 - Each example and examples option adds cases.
 
 A property form also takes the relaxations of the comparison. One of them is
@@ -15,7 +17,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
 from dokimi_assert._matcher.option import Option as Relaxation
@@ -23,6 +25,7 @@ from dokimi_assert._prop.engine.case import MAX_CHOICES
 from dokimi_assert._prop.engine.generator import Generator
 from dokimi_assert._prop.engine.runner import DEFAULT_CASES, Requirement
 from dokimi_assert._prop.engine.shrink import DEFAULT_BUDGET
+from dokimi_assert._prop.registry import Generators
 
 __all__ = [
     "DEFAULT_SHRINK_TIME",
@@ -85,6 +88,7 @@ class Option:
         "hermetic",
         "draws",
         "around",
+        "using",
     ]
     value: Any = None
 
@@ -95,11 +99,10 @@ class FormOnly:
 
     Attributes:
         kind: The canonical id of the option.
-        value: The type and its generator for using, or the values for
-            example and examples.
+        value: The values of the cases.
     """
 
-    kind: Literal["using", "example", "examples"]
+    kind: Literal["example", "examples"]
     value: Any
 
 
@@ -127,6 +130,7 @@ class Config:
         hermetic: When True, the run ignores the variables of the engine.
         draws: The JSON array of entries that the first case follows, or None.
         around: The wrapper of each run of the body, or None.
+        using: The generators that the run gives types.
     """
 
     cases: int = DEFAULT_CASES
@@ -142,13 +146,15 @@ class Config:
     hermetic: bool = False
     draws: str | None = None
     around: Wrapper | None = None
+    using: Generators = field(default_factory=Generators)
 
 
 def configure(options: Iterable[Option]) -> Config:
     """Apply the options to the defaults in their order, and return the settings.
 
     The defaults are 100 cases, a shrink budget of 2,000 calls and 30
-    seconds, a cap of 8,192 choices, an explanation and one worker.
+    seconds, a cap of 8,192 choices, an explanation, one worker and no
+    generator of a type.
 
     Args:
         options: The options of the run.
@@ -157,14 +163,18 @@ def configure(options: Iterable[Option]) -> Config:
         The settings.
     """
     config = Config()
+    stated: dict[object, Generator[Any]] = {}
     for option in options:
         if option.kind == "require":
             config = replace(config, requirements=(*config.requirements, option.value))
         elif option.kind == "hermetic":
             config = replace(config, hermetic=True)
+        elif option.kind == "using":
+            t, generator = option.value
+            stated[t] = generator
         else:
             config = replace(config, **{option.kind.replace("-", "_"): option.value})
-    return config
+    return replace(config, using=Generators(stated))
 
 
 def _counted(call: str, n: int, minimum: int) -> int:
@@ -442,13 +452,21 @@ def around(wrapper: Wrapper) -> Option:
     return Option("around", wrapper)
 
 
-def using(t: type[Any], generator: Generator[Any]) -> FormOnly:
-    """Make generator the generator of t in a property form.
+def using(t: type[Any], generator: Generator[Any]) -> Option:
+    """Make generator the generator of t in the run that takes the option.
 
-    The form uses the generator for its input when the input is a t, and
-    for each t that the input contains. The generator takes precedence over
-    the generator that register gave t and over the shape of t. A second
-    using of one type replaces the first.
+    for_all, fuzz and every property form take the option. In the run, a
+    draw of of(t) decodes with generator. A draw of of(u) generates each t
+    that u contains with generator. The input of a form is such a draw. The
+    generator takes precedence over the generator that register gave t and
+    over the shape of t. Every other generator, such as integer(0, 9),
+    decodes as it does without the option. A second using of one type
+    replaces the first.
+
+    Inside generator, a draw of of(t) decodes with the generator of t
+    without the option, so generator can narrow the values of its own type:
+
+        prop.using(Status, prop.of(Status).filter(lambda s: s != Status.CANCELLED))
 
     Args:
         t: The type.
@@ -457,7 +475,7 @@ def using(t: type[Any], generator: Generator[Any]) -> FormOnly:
     Returns:
         The option.
     """
-    return FormOnly("using", (t, generator))
+    return Option("using", (t, generator))
 
 
 def example(*values: Any) -> FormOnly:

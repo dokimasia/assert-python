@@ -57,7 +57,7 @@ from dokimi_assert._prop.engine.generator import (
 from dokimi_assert._prop.engine.source import Source
 from dokimi_assert._prop.engine.value import Pairs, canonical
 from dokimi_assert.seat import Collector
-from helpers import values_of
+from helpers import Picked, values_of
 
 T = TypeVar("T")
 
@@ -176,6 +176,23 @@ class TestGeneratorBind:
             [isinstance(bound, Bound), value, labels(c)],
             [True, 3, ["bind", "integer", "integer"]],
             "the bound generator decodes 3 in one span",
+        )
+
+
+class TestDeferred:
+    """Deferred decodes with the generator that it picks."""
+
+    def test_decodes_with_the_picked_generator_without_a_span_of_its_own(
+        self, seat: Collector
+    ) -> None:
+        """The recorded 4 decodes in the span of the integer alone."""
+        deferred = Picked(DIGIT)
+        value, c = decoded_from(deferred, 4)
+        check.equal(
+            seat,
+            [value, labels(c), deferred.picks],
+            [4, ["integer"], 1],
+            "the pick decodes 4",
         )
 
 
