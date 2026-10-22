@@ -8,3 +8,4 @@ because they record why not.
 |---|---|---|
 | [0001](0001-the-python-implementation.md) | The Python assertion library | Accepted |
 | [0002](0002-definition-8-in-python.md) | Definition 8.0 in Python | Accepted |
+| [0003](0003-definition-9-in-python.md) | Definition 9.0.0 in Python | Accepted |
