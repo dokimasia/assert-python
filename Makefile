@@ -1,64 +1,163 @@
-.PHONY: help install api-docs fmt lint lint-md types test coverage check build spec-sync
+# Managed by ergon init, with .ergon/local/Makefile merged in. Change the repository's settings there and run ergon init sync.
+#
+# make check is the gate of the repository. lint-common lints the Markdown files, and lint-github
+# lints the workflows. Each language adds its own fmt, lint, test, generate, audit and check
+# targets as prerequisites of the targets below. CI runs make check-<language> per language. It
+# runs lint-common and lint-github in jobs of their own. Every target runs its tools through ergon
+# tool run, which installs the version that .ergon.yaml names. make help lists the targets in
+# groups. A line ##@ <name> starts a group: the common targets, the targets of the GitHub files and
+# of spec, then the targets of each language, and the targets of .ergon/local/Makefile after a line
+# of its own.
 
-help: ## Show this help
-	@grep -hE '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sort | \
-		awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
+.DEFAULT_GOAL := check
 
-install: ## Create the environment and install the project
-	uv sync --extra dev
+# The command that runs ergon for the tools of the targets. The key ergon of the section common of
+# .ergon.yaml sets it.
+ERGON ?= ergon
 
-api-docs: ## Regenerate the README's API reference from the code
-	uv run python tools/api_reference.py --write
+# The tools of the common targets, which ergon installs at the versions of the section common.
+RUMDL := $(ERGON) tool run common.rumdl --
 
-fmt: ## Format the source
-	uv run ruff format src tests
-	uv run ruff check --fix src tests
+# verify-generated runs the command of the variable $(1) and fails when the run changes a file of
+# the repository, with the target $(2) that updates the files in its message. It compares the
+# changes of the working tree before and after the run, so it also runs on a tree with uncommitted
+# changes.
+verify-generated = before="$$(git diff HEAD --binary 2>/dev/null; git ls-files --others --exclude-standard)"; \
+	$($(1)) || exit 1; \
+	after="$$(git diff HEAD --binary 2>/dev/null; git ls-files --others --exclude-standard)"; \
+	if [ "$$before" != "$$after" ]; then \
+	echo "$(2): the generated files are out of date, so run make $(2) and commit the result:" >&2; \
+	git status --short >&2; exit 1; fi
 
-lint: ## Lint, and check formatting without changing anything
-	uv run ruff check src tests
-	uv run ruff format --check src tests
+.PHONY: help fmt lint test generate audit check lint-common
 
-lint-md: ## Lint the Markdown
-	@if command -v markdownlint >/dev/null 2>&1; then \
-		markdownlint '**/*.md'; \
-	elif command -v npx >/dev/null 2>&1; then \
-		npx --yes markdownlint-cli '**/*.md'; \
-	else \
-		echo "lint-md: no markdownlint and no npx; skipped"; exit 1; \
-	fi
-	@echo "lint-md: markdown is clean"
+##@ Common
 
-types: ## Type-check with mypy and with the editor's language server
-	uv run mypy
-	uv run basedpyright src tests
+help: ## List the targets in groups
+	@awk 'BEGIN {FS = ":.*## "} /^##@ / {group = substr($$0, 5); next} /^[a-z][a-z-]*:.*## / {if (group != shown) {printf "%s%s\n", (shown == "" ? "" : "\n"), group; shown = group} printf "  %-28s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-test: ## Run the tests
-	uv run pytest
+fmt: ## Format the sources of every language
+lint: ## Lint the Markdown files, the workflows and the sources of every language
+test: ## Run the tests of every language
+generate: ## Run the generators of every language
+audit: ## Run the vulnerability scan of every language
+check: ## Run the gate of every language, and lint the Markdown files and the workflows
+lint: lint-common
+check: lint-common
 
-# coverage run starts measuring before Python imports anything, so the
-# plugin, which pytest imports while it registers plugins, is measured
-# too. Each process writes a data file of its own, and combine merges
-# them before the report enforces 100% of statements and branches.
-coverage: ## Run the tests and enforce 100% coverage
-	uv run coverage erase
-	uv run coverage run -m pytest
-	uv run coverage combine
-	uv run coverage report
+lint-common: ## Lint the Markdown files with rumdl and the rules of .markdownlint.yml
+	$(RUMDL) check --no-cache .
 
-check: lint lint-md types coverage ## The full pre-merge gate
+##@ GitHub
+#
+# The section github of .ergon.yaml sets the tools of the GitHub targets.
 
-build: ## Build the sdist and wheel, then check what they carry
-	rm -rf dist
-	uv build
-	uv run --no-project --with twine twine check dist/*
-	@echo "built; publishing happens in CI on a version tag"
+# The tools of the GitHub targets, which ergon installs at the versions of the section github.
+ACTIONLINT := $(ERGON) tool run github.actionlint --
 
-# The command that runs spec, which vendors the definition of assert-spec.
-SPEC ?= spec
+.PHONY: lint-github
+lint: lint-github
+check: lint-github
 
-spec-sync: ## Vendor the definition of assert-spec at the head of its branch main
-	@$(SPEC) sync
+# actionlint runs shellcheck and pyflakes on the scripts of the steps, and the flags turn both off.
+# ergon pins neither program, so actionlint would run the versions that the machine has.
+lint-github: ## Lint the workflows with actionlint and the configuration of .github/actionlint.yaml
+	$(ACTIONLINT) -shellcheck= -pyflakes=
 
-.PHONY: spec-check
-spec-check: ## Check that the vendored definition is intact and comes from a commit of assert-spec
-	@$(SPEC) check
+##@ Spec
+#
+# The section spec of .ergon.yaml sets the roles of the repository and the release of spec. spec
+# reads its own configuration from .spec.yaml.
+
+# The program spec, which ergon installs at the version of the section spec.
+SPEC := $(ERGON) tool run spec.spec --
+
+.PHONY: check-spec
+check: check-spec
+
+check-spec: ## Check the copies of the definitions against their manifests with spec
+	$(SPEC) check
+
+##@ Python
+#
+# The section python of .ergon.yaml sets the tools and the options of the Python targets, and the
+# steps of check-python. One run overrides an option on the command line, such as
+# make test-python PYTHON_TEST_ARGS=-x.
+
+# The tools of the Python targets, which ergon installs at the versions of the section python.
+UV := $(ERGON) tool run python.uv --
+RUFF := $(ERGON) tool run python.ruff --
+MYPY := $(ERGON) tool run python.mypy --
+PYTEST := $(ERGON) tool run python.pytest --
+PIP_AUDIT := $(ERGON) tool run python.pip-audit --
+
+# The options of the section python.
+PYTHON_PATHS ?= .
+PYTHON_TEST_ARGS ?=
+PYTHON_AUDIT_IGNORE ?=
+PYTHON_AUDIT_SKIP ?=
+PYTHON_GENERATE ?= make api-docs
+
+# The error codes of mypy that neither its defaults nor --strict turn on.
+MYPY_CODES := $(foreach code,redundant-expr possibly-undefined truthy-bool truthy-iterable ignore-without-code \
+	unused-awaitable redundant-self explicit-override mutable-override unimported-reveal exhaustive-match deprecated,\
+	--enable-error-code $(code))
+
+.PHONY: fmt-python lint-python test-python generate-python verify-generate-python audit-python check-python
+fmt: fmt-python
+lint: lint-python
+test: test-python
+generate: generate-python
+audit: audit-python
+check: check-python
+
+fmt-python: ## Format the Python sources
+	$(RUFF) format $(PYTHON_PATHS)
+lint-python: ## Check the Python sources with ruff.toml and with mypy in its strictest mode
+	$(RUFF) check --no-fix $(PYTHON_PATHS)
+	$(RUFF) format --check $(PYTHON_PATHS)
+	$(MYPY) --strict --warn-unreachable --strict-equality-for-none $(MYPY_CODES) --exclude-gitignore $(PYTHON_PATHS)
+test-python: ## Run the Python tests
+	$(PYTEST) $(PYTHON_TEST_ARGS)
+generate-python: ## Run the generators of Python
+	$(PYTHON_GENERATE)
+verify-generate-python: ## Fail when the generators of Python change a file of the repository
+	@$(call verify-generated,PYTHON_GENERATE,generate-python)
+audit-python: ## Scan the packages of uv.lock for known vulnerabilities
+	@dir="$$(mktemp -d)"; \
+	$(UV) export --frozen --all-packages --all-extras --all-groups --no-emit-local \
+		$(foreach package,$(PYTHON_AUDIT_SKIP),--no-emit-package $(package)) --format pylock.toml \
+		--quiet --output-file "$$dir/pylock.toml"; status=$$?; \
+	if [ $$status -eq 0 ] && ! grep -q '^\[\[packages\]\]' "$$dir/pylock.toml"; then \
+		echo "audit-python: uv.lock has no package to scan"; \
+	elif [ $$status -eq 0 ]; then \
+		$(PIP_AUDIT) --locked --strict $(foreach id,$(PYTHON_AUDIT_IGNORE),--ignore-vuln $(id)) "$$dir"; status=$$?; \
+	fi; \
+	rm -rf "$$dir"; exit $$status
+check-python: lint-python test-python audit-python ## Run the gate of Python
+
+# The targets of assert-python, which ergon init appends to the Makefile. api-docs writes the API
+# reference of the README from the code, and make generate runs it. coverage runs the tests under
+# coverage and fails below 100% of the statements and branches. check-python runs it on Linux.
+
+##@ Repository
+
+.PHONY: api-docs coverage
+
+api-docs: ## Write the API reference of the README from the code
+	$(UV) run --locked python tools/api_reference.py --write
+
+# coverage run starts measuring before Python imports anything, so the plugin, which pytest imports
+# while it registers plugins, is measured too. Each process writes a data file of its own, and
+# combine merges them before the report enforces 100% of statements and branches.
+coverage: ## Run the tests under coverage, and fail below 100% of the statements and branches
+	$(UV) run --locked coverage erase
+	$(UV) run --locked coverage run -m pytest
+	$(UV) run --locked coverage combine
+	$(UV) run --locked coverage report
+
+# Windows skips the tests of permission bits and of long names, and a test that a system skips
+# leaves a branch that no test takes there. check-python measures the coverage on Linux alone.
+ifeq ($(shell uname -s),Linux)
+check-python: coverage
+endif

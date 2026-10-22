@@ -1,0 +1,50 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
+# The package dokimi_assert is under src, and the specs import the helpers under tests as top-level
+# modules, so both directories hold first-party code.
+src = ["src", "tests"]
+
+# The rules that contradict what an assertion library does:
+#
+# - ANN401 reports Any, and an assertion takes a value of any type.
+# - FBT001, FBT002 and FBT003 report a boolean parameter or argument, and a boolean is a value under
+#   test.
+# - BLE001 reports an except of Exception, and an assertion catches whatever the code under test
+#   raises.
+# - PLR0913 and PLR0917 report more than five parameters, and the standard fixes the parameters of
+#   an assertion: the seat, the values, the message and the options.
+# - TRY003 asks for an exception class per message, which would add a class for nearly every
+#   raise.
+[lint]
+ignore = ["ANN401", "FBT001", "FBT002", "FBT003", "BLE001", "PLR0913", "PLR0917", "TRY003"]
+
+# prop reads the annotations of a dataclass at run time with typing.get_type_hints, so each name in
+# them needs an import at run time.
+[lint.flake8-type-checking]
+runtime-evaluated-decorators = ["dataclasses.dataclass"]
+
+# The naming table of the definition names the generators of prop bytes, float, list and dict, and
+# the entry of files with bytes bytes, as the builtins of Python are named. The modules that define
+# them, the modules that import them and the specs of those entries use the names of the table.
+[lint.per-file-ignores]
+"src/dokimi_assert/_prop/generators.py" = ["A001"]
+"src/dokimi_assert/_files/entry.py" = ["A001"]
+"src/dokimi_assert/prop.py" = ["A004"]
+"src/dokimi_assert/files.py" = ["A004"]
+"src/dokimi_assert/_files/literal.py" = ["A004"]
+"src/dokimi_assert/_files/reader.py" = ["A004"]
+"tests/_files/test_difference.py" = ["A004"]
+"tests/_files/test_entry.py" = ["A004"]
+"tests/_files/test_literal.py" = ["A004"]
+"tests/_files/test_reader.py" = ["A004"]
+# The runners of the property vectors read each vector as JSON. A part of a vector of the wrong JSON
+# type is a ValueError, as the json module raises it, and TRY004 asks for a TypeError.
+"src/dokimi_assert/conformance/prop/*.py" = ["TRY004"]
+# The specs of the local date and time shapes and of the bounds of a datetime build datetimes
+# without a zone, and DTZ001 and DTZ901 report each of them.
+"tests/_prop/test_convert.py" = ["DTZ001", "DTZ901"]
+"tests/_prop/test_reader.py" = ["DTZ001", "DTZ901"]
+"tests/_prop/engine/test_value.py" = ["DTZ001", "DTZ901"]
+# The tool under tools runs as a program and not as a module of a package, and it prints its output.
+"tools/*.py" = ["INP001", "T201"]

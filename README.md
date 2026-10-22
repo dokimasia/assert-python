@@ -1,3 +1,8 @@
+<!--
+  ~ Copyright Dokimasia B.V. 2026
+  ~ SPDX-License-Identifier: MIT
+-->
+
 # dokimi-assert
 
 Test assertions for Python. A language-neutral standard defines what each
@@ -379,7 +384,9 @@ def test_shapes(seat):
 
     check.pairwise(seat, [1, 2, 2, 5], operator.le, "the log is ordered")
     check.close_to(seat, 1.02, 1.0, 0.05, "the retry waited about a second")
-    check.matches(seat, "req_0123456789abcdef", r"^req_[0-9a-f]{16}$", "the id is well formed")
+    check.matches(
+        seat, "req_0123456789abcdef", r"^req_[0-9a-f]{16}$", "the id is well formed"
+    )
 
 
 async def serve() -> None:
@@ -436,7 +443,9 @@ from dokimi_assert import golden
 def test_the_report_is_unchanged(seat):
     report = "generated at 2026-10-22T09:30:00Z\ntotal: 3\n"
 
-    golden.match(seat, "report.txt", report, golden.should_update(), golden.scrub_timestamps())
+    golden.match(
+        seat, "report.txt", report, golden.should_update(), golden.scrub_timestamps()
+    )
 ```
 
 The file `testdata/golden/report.txt`, below the directory where pytest
@@ -463,7 +472,12 @@ def test_a_rename_moves_the_draft(seat):
 
     os.rename(os.path.join(root, "draft.txt"), os.path.join(root, "final.txt"))
 
-    files.equal(seat, root, {"final.txt": files.text("hello\n")}, "the draft becomes the final file")
+    files.equal(
+        seat,
+        root,
+        {"final.txt": files.text("hello\n")},
+        "the draft becomes the final file",
+    )
     files.absent(seat, os.path.join(root, "draft.txt"), "no draft is left")
 ```
 
@@ -554,11 +568,15 @@ from dokimi_assert import check, prop
 
 def reverse_starts_with_first(c: prop.Case) -> None:
     xs = c.draw(prop.list(prop.integer(0, 9)), "xs")
-    check.equal(c, list(reversed(xs))[:1], xs[:1], "the reverse starts with the first element")
+    check.equal(
+        c, list(reversed(xs))[:1], xs[:1], "the reverse starts with the first element"
+    )
 
 
 def test_reverse(seat):
-    prop.for_all(seat, "a reversed list starts with its first element", reverse_starts_with_first)
+    prop.for_all(
+        seat, "a reversed list starts with its first element", reverse_starts_with_first
+    )
 ```
 
 ```text
@@ -600,7 +618,9 @@ def frozen(run: Callable[[], None]) -> None:
 
 
 def test_backoff(seat):
-    prop.for_all(seat, "a retry waits for its backoff", waits_for_backoff, prop.around(frozen))
+    prop.for_all(
+        seat, "a retry waits for its backoff", waits_for_backoff, prop.around(frozen)
+    )
 ```
 
 A wrapper that does not call `run`, calls it a second time or raises ends
@@ -615,7 +635,9 @@ option. The generator can then narrow the values of its own type:
 ```python
 def test_a_paid_order_ships(seat):
     open_orders = prop.of(Status).filter(lambda s: s is not Status.CANCELLED)
-    prop.for_all(seat, "a paid order ships", ships_when_paid, prop.using(Status, open_orders))
+    prop.for_all(
+        seat, "a paid order ships", ships_when_paid, prop.using(Status, open_orders)
+    )
 ```
 
 `prop.values(generator, seed, n)` returns the values of the first random
@@ -898,7 +920,9 @@ class Queue:
     def initial(self) -> tuple[int, ...]:
         return ()
 
-    def next(self, state: tuple[int, ...], op: history.Operation) -> list[tuple[int, ...]]:
+    def next(
+        self, state: tuple[int, ...], op: history.Operation
+    ) -> list[tuple[int, ...]]:
         if op.name == "put":
             return [(*state, op.args[0])]
         head = state[0] if state else None
@@ -998,7 +1022,9 @@ def test_the_check_refuses_an_empty_name(seat):
         "an empty name is refused",
         lambda inner: check.is_not_empty(inner, "", "the name is not empty"),
     )
-    check.equal(seat, failures[0].assertion, "not-empty", "the check fails on the empty name")
+    check.equal(
+        seat, failures[0].assertion, "not-empty", "the check fails on the empty name"
+    )
 ```
 
 `rejects` returns the failure records of the body, so a test confirms that
@@ -1061,25 +1087,31 @@ library against it:
 
 ## Development
 
+ergon manages the Makefile, the workflows and the configuration of the
+tools. `ergon init sync` writes them again from its baseline and from the
+files under `.ergon/local`.
+
 ```sh
-make install    # create the environment
-make check      # lint, Markdown, types, and the tests with 100% coverage
+make check      # the gate of the repository
 make test       # the tests
-make fmt        # format and autofix
+make coverage   # the tests under coverage, which fail below 100%
+make fmt        # format the sources
 make api-docs   # regenerate the API reference of this README
-make build      # build the sdist and wheel
-make spec-sync  # refresh the vendored definition
 make help       # list every target
 ```
 
-`make check` runs ruff, a format check, markdownlint, mypy strict,
-basedpyright and the tests with 100% coverage of statements and branches.
-CI runs ruff, the format check, mypy and the tests on Python 3.11 through
-3.14, and it checks the vendored definition.
+`make check` lints the Markdown files with rumdl and the workflows with
+actionlint, and it checks the vendored definition with spec. For Python, it
+runs ruff, a format check, mypy in its strictest mode, the tests, and
+pip-audit over `uv.lock`. On Linux, it also runs the tests under coverage,
+which fail below 100% of the statements and branches. CI runs the gate of
+Python on Linux, macOS and Windows with Python 3.11 to 3.14.
 
-A `v*` tag starts the release. The workflow builds the package, runs the
-gate again and checks that the tag agrees with `pyproject.toml`. Then it
-publishes to PyPI through Trusted Publishing.
+A change to the package comes with a changeset, which `ergon release add`
+writes. When CI passes on `main`, the workflow `version.yml` opens the
+version pull request. Its merge publishes the package to PyPI through
+Trusted Publishing. The nightly workflow proposes each new version of the
+definition as a pull request.
 
 The design is in
 [RFC-0001](docs/rfc/0001-the-python-implementation.md),

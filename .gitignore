@@ -1,21 +1,55 @@
+# Managed by ergon init, with .ergon/local/.gitignore merged in. Change the repository's settings there and run ergon init sync.
+
+# Editors and IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Agents
+.claude/
+.codex/
+.gemini/
+AGENT.md
+CLAUDE.md
+GEMINI.md
+
+# Operating systems
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+*.local
+secrets.json
+
+# ergon release
+# The publish plan of the release workflow, which a build of a release must not see as a change
+/publish-plan.json
+
+# Python
 __pycache__/
 *.py[cod]
 .venv/
 .pytest_cache/
 .ruff_cache/
+.coverage
+dist/
+build/
+*.egg-info/
+
+# The cache of mypy, the metadata of a build, and the sdist and wheel of uv build
 .mypy_cache/
 *.egg-info/
 dist/
 
-# A library resolves its dev tools fresh rather than pinning them, so a
-# ruff or mypy release shows up as a failure to look at rather than
-# passing unnoticed until someone upgrades.
-uv.lock
-
-# .zed/settings.json is shared: it points the language server at
-# the venv and picks the formatter. Nothing else in .zed is.
-.zed/*
-!.zed/settings.json
+# The data and the reports of coverage
 .coverage
 coverage.xml
 htmlcov/
+
+# Zed: settings.json points the language server at the environment and picks the formatter.
+# Nothing else in .zed is shared.
+.zed/*
+!.zed/settings.json

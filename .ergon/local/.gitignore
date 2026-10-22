@@ -1,0 +1,17 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
+# The cache of mypy, the metadata of a build, and the sdist and wheel of uv build
+.mypy_cache/
+*.egg-info/
+dist/
+
+# The data and the reports of coverage
+.coverage
+coverage.xml
+htmlcov/
+
+# Zed: settings.json points the language server at the environment and picks the formatter.
+# Nothing else in .zed is shared.
+.zed/*
+!.zed/settings.json

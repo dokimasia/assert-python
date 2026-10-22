@@ -1,0 +1,67 @@
+# Managed by ergon init, with .ergon/local/ruff.toml merged in. Change the repository's settings there and run ergon init sync.
+#
+# The configuration of ruff for every package of the repository: every stable rule, with the
+# rules that conflict with ruff's formatter left out. ruff reads this file in place of the table
+# [tool.ruff] of pyproject.toml. The local file of a repository is a valid TOML document of its
+# own, such as the table [lint.per-file-ignores] with the entries of the repository. ergon init
+# merges each table of the local file into the table of this file with the same name.
+
+# ruff reads the local ruff.toml under .ergon as the configuration of a project of its own, and
+# writes the cache of that project there, so ruff skips the directory .ergon.
+extend-exclude = [".ergon"]
+
+# The package dokimi_assert is under src, and the specs import the helpers under tests as top-level
+# modules, so both directories hold first-party code.
+src = ["src", "tests"]
+
+[lint]
+select = ["ALL"]
+
+# The formatter of ruff writes the trailing commas that COM812 asks for.
+ignore = ["COM812", "ANN401", "FBT001", "FBT002", "FBT003", "BLE001", "PLR0913", "PLR0917", "TRY003"]
+
+[lint.pydocstyle]
+convention = "google"
+
+# CPY001 requires a copyright notice in each file. The license header of ergon names the owner
+# before the year, as in "Copyright Dokimasia B.V. 2026", which the default pattern of ruff does
+# not accept.
+[lint.flake8-copyright]
+notice-rgx = '(?i)Copyright\s+(.+?\s+)?\d{4}'
+
+# A test of pytest checks with the statement assert, which S101 reports, states its values inline,
+# because the value is the assertion, which PLR2004 reports, and lives in a directory that pytest
+# imports without an __init__.py, which INP001 reports.
+[lint.per-file-ignores]
+"**/tests/**" = ["S101", "PLR2004", "INP001"]
+"**/test_*.py" = ["S101", "PLR2004", "INP001"]
+"**/*_test.py" = ["S101", "PLR2004", "INP001"]
+"**/conftest.py" = ["S101", "PLR2004", "INP001"]
+"src/dokimi_assert/_prop/generators.py" = ["A001"]
+"src/dokimi_assert/_files/entry.py" = ["A001"]
+"src/dokimi_assert/prop.py" = ["A004"]
+"src/dokimi_assert/files.py" = ["A004"]
+"src/dokimi_assert/_files/literal.py" = ["A004"]
+"src/dokimi_assert/_files/reader.py" = ["A004"]
+"tests/_files/test_difference.py" = ["A004"]
+"tests/_files/test_entry.py" = ["A004"]
+"tests/_files/test_literal.py" = ["A004"]
+"tests/_files/test_reader.py" = ["A004"]
+
+# The runners of the property vectors read each vector as JSON. A part of a vector of the wrong JSON
+# type is a ValueError, as the json module raises it, and TRY004 asks for a TypeError.
+"src/dokimi_assert/conformance/prop/*.py" = ["TRY004"]
+
+# The specs of the local date and time shapes and of the bounds of a datetime build datetimes
+# without a zone, and DTZ001 and DTZ901 report each of them.
+"tests/_prop/test_convert.py" = ["DTZ001", "DTZ901"]
+"tests/_prop/test_reader.py" = ["DTZ001", "DTZ901"]
+"tests/_prop/engine/test_value.py" = ["DTZ001", "DTZ901"]
+
+# The tool under tools runs as a program and not as a module of a package, and it prints its output.
+"tools/*.py" = ["INP001", "T201"]
+
+# prop reads the annotations of a dataclass at run time with typing.get_type_hints, so each name in
+# them needs an import at run time.
+[lint.flake8-type-checking]
+runtime-evaluated-decorators = ["dataclasses.dataclass"]
