@@ -135,9 +135,10 @@ states an independent property.
 
 `check` and `expect` each have 48 assertions. The `golden` module has 4
 comparisons, and a `bench.Contract` has 3 ceilings. The modules `files`,
-`history` and `prop` have their own sections.
+`prop`, `history` and `stateful` have their own sections, and each section
+ends with the reference of its module.
 
-<!-- api-reference:start -->
+<!-- api-reference:assertions:start -->
 
 Each assertion takes the seat first and the message last.
 `check` and `expect` have the same names and the same
@@ -279,10 +280,14 @@ golden.scrub_timestamps() -> Scrubber
 golden.scrub_hashes() -> Scrubber
 golden.scrub_run_ids() -> Scrubber
 golden.scrub_json_fields(*fields: str) -> Scrubber
+golden.Scrubber = Callable[[str], str]
+golden.GOLDEN_DIR = 'testdata/golden'
+golden.UPDATE_ENV = 'DOKIMI_ASSERT_UPDATE_GOLDEN'
 ```
 
 **Benchmark ceilings.** The ceilings chain onto one contract, and
-`check` reports a verdict for each of them.
+`check` reports a verdict for each of them. `allocs_checked`
+returns whether a run checks allocation ceilings.
 
 ```python
 bench.Contract(seat: Seat)
@@ -293,13 +298,70 @@ Contract.max_bytes(count: int) -> Contract
 Contract.loop(iterations: int) -> Iterator[int]
 Contract.excluding(setup: Callable[[], _T]) -> _T
 Contract.check()
+bench.allocs_checked() -> tuple[bool, str]
+```
+
+**Seats.** An assertion reports each failure to its seat. The seat fixture is a Collector, and the recorder fixture is a Recorder.
+
+```python
+Seat.helper()
+Seat.fail(message: str)
+Seat.record(message: str)
+seat.Collector()
+Collector.cleanup(fn: Callable[[], object])
+Collector.with_clock(clock: Clock) -> Collector
+seat.Standard()
+seat.Recorder()
+Recorder.with_clock(clock: Clock) -> Recorder
+Recorder.failed: bool
+Recorder.message: str
+Recorder.messages: list[str]
+Recorder.failures: list[Failure]
+Recorder.faults: list[BaseException]
+Recorder.records: list[str]
+Recorder.helper_calls: int
+seat.clean_up(collector: Collector)
+seat.fault(seat: Seat, error: BaseException)
+```
+
+**Options of a comparison.** An option relaxes or narrows equality for the one call that it is passed to.
+
+```python
+option.equate_empty() -> Option
+option.equate_nans() -> Option
+option.by_identity() -> Option
+option.Option
+```
+
+**Failure records.** A failure is a record of the assertion, the contract and the detail. render returns the sentence of a record.
+
+```python
+failure.Failure(assertion: str, contract: str, detail: Mapping[str, Any], where: Where | None)
+Failure.want: Any
+Failure.got: Any
+Failure.case_failure: Failure
+failure.Where(file: str, line: int)
+failure.render(failure: Failure) -> str
+failure.register_sentence(sentence: Callable[[Failure], str], *assertions: str)
+failure.call_site() -> Where | None
+failure.site_in(traceback: TracebackType | None) -> Where | None
+```
+
+**Clocks.** An assertion that waits, retries or measures reads the clock of its seat. A Controlled clock moves only when a test advances it.
+
+```python
+Clock.now() -> float
+Clock.sleep(duration: float)
+clock.System()
+clock.Controlled(start: float)
+Controlled.advance(duration: float)
 ```
 
 Read the docstring of an assertion for its rules and the
 meaning of each argument, with `help(check.close_to)` or in
 your editor.
 
-<!-- api-reference:end -->
+<!-- api-reference:assertions:end -->
 
 ### A few in use
 
@@ -421,6 +483,49 @@ def test_a_rename_moves_the_draft(seat):
   system of Windows, a comparison does not compare modes, and `has_mode`
   ends the call with a fault.
 
+<!-- api-reference:files:start -->
+
+**Trees.** A tree maps each path to an entry. A path is relative to the root of the tree, and slashes separate its names.
+
+```python
+files.Tree = Mapping[str, Entry]
+files.text(content: str) -> Entry
+files.bytes(content: builtins.bytes | bytearray) -> Entry
+files.executable(content: str) -> Entry
+files.directory() -> Entry
+files.link(target: str) -> Entry
+Entry.with_mode(mode: int) -> Entry
+```
+
+**Writing and reading.** workspace writes a tree into a new directory that the test removes when it ends.
+
+```python
+files.workspace(seat: Seat, tree: Tree) -> str
+files.write(seat: Seat, dir: str | PathLike[str], tree: Tree)
+files.read(seat: Seat, path: str | PathLike[str]) -> str
+```
+
+**Comparing a tree.** Each compares the tree in a directory with a wanted tree.
+
+```python
+files.equal(seat: Seat, dir: str | PathLike[str], want: Tree, msg: str)
+files.contains(seat: Seat, dir: str | PathLike[str], want: Tree, msg: str)
+files.unchanged(seat: Seat, dir: str | PathLike[str], fn: Callable[[], object], msg: str)
+```
+
+**Checking one path.** Each reads the entry at the path itself and does not follow a link there.
+
+```python
+files.absent(seat: Seat, path: str | PathLike[str], msg: str)
+files.is_file(seat: Seat, path: str | PathLike[str], msg: str)
+files.is_dir(seat: Seat, path: str | PathLike[str], msg: str)
+files.links_to(seat: Seat, path: str | PathLike[str], target: str, msg: str)
+files.has_content(seat: Seat, path: str | PathLike[str], want: str | builtins.bytes | bytearray, msg: str)
+files.has_mode(seat: Seat, path: str | PathLike[str], want: int, msg: str)
+```
+
+<!-- api-reference:files:end -->
+
 ## Properties
 
 ```python
@@ -515,7 +620,151 @@ def test_a_paid_order_ships(seat):
 
 `prop.values(generator, seed, n)` returns the values of the first random
 cases of a seed outside a property. A benchmark then measures the same
-inputs in every run.
+inputs in every run. `values` also takes the options of `prop.using`, so
+the benchmark and a run of the property draw from one domain:
+
+```python
+open_orders = prop.of(Status).filter(lambda s: s is not Status.CANCELLED)
+orders = prop.values(prop.of(Order), 42, 100, prop.using(Status, open_orders))
+```
+
+<!-- api-reference:prop:start -->
+
+**Running a property.** for_all runs the body against generated cases, and the body draws its inputs from its case.
+
+```python
+prop.for_all(seat: Seat, contract: str, body: Callable[[Case], object], *options: Option)
+prop.fuzz(seat: Seat, contract: str, body: Callable[[Case], object], *options: Option) -> Target
+Case.draw(generator: Decoder[_T], label: str) -> _T
+Case.assume(condition: bool)
+Case.classify(label: str)
+Case.target(label: str, score: float)
+Case.note(message: str)
+Case.observe(fingerprint: int)
+Case.cleanup(fn: Callable[[], object])
+Case.rand() -> Random
+Case.history() -> History
+prop.values(generator: Generator[_T], seed: int, n: int, *options: Option) -> list[_T]
+```
+
+**Options of a run.** A later option of one kind replaces an earlier one. Each require and each using adds to the earlier ones.
+
+```python
+prop.Option
+prop.cases(n: int) -> Option
+prop.seed(s: int) -> Option
+prop.replay(token: str) -> Option
+prop.require(label: str, share: float) -> Option
+prop.shrink(runs: int) -> Option
+prop.shrink_time(seconds: float) -> Option
+prop.max_choices(n: int) -> Option
+prop.store(directory: str) -> Option
+prop.explain(enabled: bool) -> Option
+prop.workers(n: int) -> Option
+prop.hermetic() -> Option
+prop.draws(entries: str) -> Option
+prop.around(wrapper: Wrapper) -> Option
+prop.Wrapper = Callable[[Callable[[], None]], object]
+prop.using(t: type[Any], generator: Generator[Any]) -> Option
+```
+
+**Generators.** Each returns a Generator. map, filter and bind derive a new generator from one.
+
+```python
+Generator.map(f: Callable[[_T_co], _U]) -> Generator[_U]
+Generator.filter(keep: Callable[[_T_co], bool]) -> Generator[_T_co]
+Generator.bind(f: Callable[[_T_co], Generator[_U]]) -> Generator[_U]
+prop.boolean(p: Fraction | int) -> Generator[bool]
+prop.integer(lo: int, hi: int) -> Generator[int]
+prop.float(lo: builtins.float, hi: builtins.float, allow_nan: bool, width: Literal[32, 64]) -> Generator[builtins.float]
+prop.duration(lo: int, hi: int) -> Generator[int]
+prop.string(alphabet: str | None, min_size: int, max_size: int | None) -> Generator[str]
+prop.string_matching(pattern: str) -> Generator[str]
+prop.bytes(min_size: int, max_size: int | None) -> Generator[builtins.bytes]
+prop.list(of: Generator[_T], min_size: int, max_size: int | None, unique: bool) -> Generator[builtins.list[_T]]
+prop.dict(keys: Generator[_K], values: Generator[_V], min_size: int, max_size: int | None) -> Generator[builtins.dict[_K, _V]]
+prop.optional(of: Generator[_T]) -> Generator[_T | None]
+prop.one_of(*generators: Generator[_T]) -> Generator[_T]
+prop.just(value: _T) -> Generator[_T]
+prop.sampled_from(*values: _T) -> Generator[_T]
+prop.permutation(*values: _T) -> Generator[builtins.list[_T]]
+prop.recursive(base: Generator[_T], extend: Callable[[Generator[_T]], Generator[_T]], max_leaves: int) -> Generator[_T]
+prop.composite(f: Callable[[Case], _T]) -> Generator[_T]
+```
+
+**Types and shapes.** of derives the generator of a type from its shape. A registration replaces the generator or the shape of a type in the test process.
+
+```python
+prop.of(t: type[_T]) -> Generator[_T]
+prop.of_shape(text: str) -> Generator[Any]
+prop.shape_of(t: type) -> str
+prop.register(t: type[_T], generator: Generator[_T])
+prop.register_values(t: type[_T], *values: _T)
+prop.register_variants(t: type, *variants: type)
+prop.Variant(name: str, payload: Any)
+prop.WallTime(local: datetime, zone: ZoneInfo)
+```
+
+**Constraints.** Each is an argument of typing.Annotated, as the constraints of annotated-types are.
+
+```python
+prop.AllowInfinity()
+prop.AllowNan()
+prop.Alphabet(characters: str)
+prop.Char()
+prop.Pattern(regex: str)
+prop.Scale(digits: int)
+prop.Unit(name: Literal['s', 'ms', 'us', 'ns'])
+prop.Version(number: Literal[4, 6])
+prop.Width(bits: int, signed: bool)
+```
+
+**Forms.** Each form runs its assertion on every generated input. A form takes the options of a run, the options of a comparison that its assertion takes, and example and examples.
+
+```python
+prop.equal(seat: Seat, got: Callable[..., Any], want: Callable[..., Any], msg: str, *options: FormOption)
+prop.not_equal(seat: Seat, got: Callable[..., Any], want: Callable[..., Any], msg: str, *options: FormOption)
+prop.is_true(seat: Seat, condition: Callable[..., object], msg: str, *options: FormOption)
+prop.is_false(seat: Seat, condition: Callable[..., object], msg: str, *options: FormOption)
+prop.is_none(seat: Seat, got: Callable[..., Any], msg: str, *options: FormOption)
+prop.is_not_none(seat: Seat, got: Callable[..., Any], msg: str, *options: FormOption)
+prop.length(seat: Seat, got: Callable[..., Any], want: int, msg: str, *options: FormOption)
+prop.is_empty(seat: Seat, got: Callable[..., Any], msg: str, *options: FormOption)
+prop.is_not_empty(seat: Seat, got: Callable[..., Any], msg: str, *options: FormOption)
+prop.contains(seat: Seat, got: Callable[..., Any], needle: Any, msg: str, *options: FormOption)
+prop.not_contains(seat: Seat, got: Callable[..., Any], needle: Any, msg: str, *options: FormOption)
+prop.contains_in_order(seat: Seat, got: Callable[..., Any], needles: Sequence[str], msg: str, *options: FormOption)
+prop.is_permutation(seat: Seat, got: Callable[..., Any], want: Callable[..., Any], msg: str, *options: FormOption)
+prop.has_prefix(seat: Seat, got: Callable[..., Any], prefix: str, msg: str, *options: FormOption)
+prop.has_suffix(seat: Seat, got: Callable[..., Any], suffix: str, msg: str, *options: FormOption)
+prop.matches(seat: Seat, got: Callable[..., Any], pattern: str, msg: str, *options: FormOption)
+prop.close_to(seat: Seat, got: Callable[..., Any], want: float, tolerance: float, msg: str, *options: FormOption)
+prop.in_range(seat: Seat, got: Callable[..., Any], low: float, high: float, msg: str, *options: FormOption)
+prop.pairwise(seat: Seat, got: Callable[..., Sequence[Any]], predicate: Callable[[Any, Any], object], msg: str, *options: FormOption)
+prop.no_error(seat: Seat, fn: Callable[..., BaseException | None], msg: str, *options: FormOption)
+prop.has_error(seat: Seat, fn: Callable[..., BaseException | None], msg: str, *options: FormOption)
+prop.error_is(seat: Seat, fn: Callable[..., BaseException | None], target: object, msg: str, *options: FormOption)
+prop.error_is_not(seat: Seat, fn: Callable[..., BaseException | None], target: object, msg: str, *options: FormOption)
+prop.error_as(seat: Seat, fn: Callable[..., BaseException | None], want: type[BaseException], msg: str, *options: FormOption)
+prop.raises(seat: Seat, fn: Callable[..., Any], msg: str, *options: FormOption)
+prop.does_not_raise(seat: Seat, fn: Callable[..., Any], msg: str, *options: FormOption)
+prop.honours_cancellation(seat: Seat, fn: Callable[..., Awaitable[Any]], msg: str, *options: FormOption)
+prop.honours_deadline(seat: Seat, fn: Callable[..., Awaitable[Any]], msg: str, *options: FormOption)
+prop.none_handle_safe(seat: Seat, fn: Callable[..., Any], msg: str, *options: FormOption)
+prop.is_pure(seat: Seat, observe: Callable[[], Any], fn: Callable[..., Any], msg: str, *options: FormOption)
+prop.is_not_pure(seat: Seat, observe: Callable[[], Any], fn: Callable[..., Any], msg: str, *options: FormOption)
+prop.is_idempotent(seat: Seat, call: Callable[..., Any], observe: Callable[[], Any], msg: str, *options: FormOption)
+prop.accumulates(seat: Seat, call: Callable[..., Any], observe: Callable[[], Any], msg: str, *options: FormOption)
+prop.is_deterministic(seat: Seat, call: Callable[..., Any], msg: str, *options: FormOption)
+prop.is_commutative(seat: Seat, combine: Callable[[Any, Any], Any], msg: str, *options: FormOption)
+prop.is_associative(seat: Seat, combine: Callable[[Any, Any], Any], msg: str, *options: FormOption)
+prop.round_trip(seat: Seat, forward: Callable[..., Any], inverse: Callable[[Any], Any], msg: str, *options: FormOption)
+prop.example(*values: Any) -> FormOnly
+prop.examples(*values: Any) -> FormOnly
+prop.FormOption = prop.Option | option.Option | FormOnly
+```
+
+<!-- api-reference:prop:end -->
 
 ## Histories
 
@@ -564,6 +813,77 @@ AssertionError: the register is linearizable: violated in the partition of 'x'
   subject.
 - `history.is_serializable` and `history.has_snapshot_isolation` check a
   history of list-append transactions.
+
+<!-- api-reference:history:start -->
+
+**Recording.** A test records each call before the call starts, and completes it after the call returns.
+
+```python
+history.History()
+History.invoke(client: int, operation: str, args: Sequence[Any], *keys: Any) -> Call
+History.events() -> list[Event]
+Call.ok(output: Any)
+Call.fail(error: Any)
+Call.unknown(error: Any)
+history.concurrently(clients: int, within: float, body: Callable[[int], object]) -> list[Outcome]
+history.Outcome(client: int, finished: bool, output: Any)
+history.from_intervals(entries: Sequence[Interval]) -> History
+history.Interval(client: int, operation: str, args: Sequence[Any], keys: Sequence[Any], start: float, end: float | None, kind: Literal['ok', 'fail', 'unknown'] | None, output: Any, error: Any)
+history.IntervalError(entry: int, reason: str)
+```
+
+**Events.** History.events returns the events in recording order.
+
+```python
+history.Event = history.Invocation | history.Completion
+history.Invocation(index: int, call: int, client: int, process: int, operation: str, args: tuple[Any, ...], keys: tuple[Any, ...], kind: Literal['invoke'])
+history.Completion(index: int, kind: Literal['ok', 'fail', 'unknown'], call: int, client: int, process: int, output: Any, error: Any)
+history.Kind = Literal['invoke', 'ok', 'fail', 'unknown']
+```
+
+**Specifications.** A spec returns the states that an operation can lead to from a state, and no state for an operation that it refuses.
+
+```python
+Spec.initial() -> _S
+Spec.next(state: _S, op: Operation) -> Sequence[_S]
+Operation.name: str
+Operation.args: tuple[Any, ...]
+Operation.known: bool
+Operation.output: Any
+Operation.returned(value: Any) -> bool
+history.spec_from(factory: Callable[[], Subject]) -> SubjectSpec
+```
+
+**Checks.** is_linearizable checks a history against a spec. is_serializable and has_snapshot_isolation read a history of list-append transactions.
+
+```python
+history.is_linearizable(seat: Seat, history: History, spec: Spec[_S], msg: str, *options: Option)
+history.is_serializable(seat: Seat, history: History, msg: str)
+history.has_snapshot_isolation(seat: Seat, history: History, msg: str)
+```
+
+**Options of a check.** Each bounds the search of is_linearizable.
+
+```python
+history.Option
+history.budget(steps: int) -> Option
+history.memo_limit(bits: int) -> Option
+history.time_limit(seconds: float) -> Option
+history.workers(n: int) -> Option
+```
+
+**Calls and evidence.** These are the types of the calls, the transactions and the evidence that the checks and their records use.
+
+```python
+history.Span(call: int, completion: int | None, process: int, operation: CallOperation)
+history.Transaction(call: int, completion: int | None, kind: Literal['ok', 'fail', 'unknown'] | None, process: int, args: tuple[Any, ...], output: Any, mops: tuple[Mop, ...])
+history.Link(call: int, relations: tuple[Relation, ...])
+history.Edge(source: int, target: int, relation: Relation, key: Any, value: Any, empty: bool, following: Any)
+history.Observation(anomaly: Anomaly, calls: tuple[int, ...], key: Any, reads: tuple[list[Any], ...], value: Any, appender: int | None, following: Any, expected: tuple[Any, ...], whole: bool, future: Any, has_future: bool)
+history.Evidence = history.Edge | history.Observation
+```
+
+<!-- api-reference:history:end -->
 
 ## Machines
 
@@ -628,6 +948,43 @@ def test_the_queue_keeps_its_values_in_order(seat):
   `stateful.Scheduler`. The releases of the scheduler are choices of the
   case, so a race replays and shrinks. A subject that runs as tasks awaits
   a future or `asyncio.sleep(0)` at each point where another task can run.
+
+<!-- api-reference:stateful:start -->
+
+**Machines.** A machine has the spec of a subject and its actions. steps takes the steps of a machine in a case.
+
+```python
+Machine.spec: Spec[S] | None
+Machine.actions: Sequence[Action[S]]
+stateful.Action(name: str, run: Callable[[Case, int, Any], object], weight: int, drain: bool, enabled: Callable[[S], bool] | None, input: Callable[[Case, S], Any] | None)
+stateful.steps(case: Case, machine: Machine[_S], *options: Option)
+```
+
+**Options of steps.** Each sets one bound of the steps of a case, or the way in which the clients of a concurrent section run.
+
+```python
+stateful.Option
+stateful.clients(n: int) -> Option
+stateful.concurrent(n: int) -> Option
+stateful.max_steps(n: int) -> Option
+stateful.mean(n: int) -> Option
+stateful.repeat(n: int) -> Option
+stateful.swarm(on: bool) -> Option
+stateful.tasks(scheduler: Scheduler) -> Option
+```
+
+**Schedulers.** With tasks, the clients run as tasks of a Scheduler. Its releases are choices of the case.
+
+```python
+stateful.Scheduler(case: Case, strategy: Strategy)
+Scheduler.spawn(task: Callable[[], Coroutine[Any, Any, object]])
+Scheduler.run()
+stateful.Strategy
+stateful.uniform() -> Strategy
+stateful.pct(depth: int) -> Strategy
+```
+
+<!-- api-reference:stateful:end -->
 
 ## Testing your own assertions
 

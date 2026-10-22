@@ -212,29 +212,40 @@ def test_the_two_surfaces_document_the_same_assertions() -> None:
         assert inspect.getdoc(getattr(expect, name)), f"expect.{name}"
 
 
+#: One block of the reference with its name, between its two markers.
+BLOCK = re.compile(
+    r"<!-- api-reference:([a-z]+):start -->\n(.*?)\n<!-- api-reference:\1:end -->",
+    re.S,
+)
+
+
+def _blocks(text: str) -> dict[str, str]:
+    """Answer each block of the reference in text, by its name."""
+    return {m.group(1): m.group(2).strip() for m in BLOCK.finditer(text)}
+
+
 def test_the_readme_api_reference_matches_the_code() -> None:
     """A signature list that drifts from the code misleads every reader.
 
-    The README's reference is generated. Run
-    ``python tools/api_reference.py --write`` after changing a
-    signature, and commit what it produces.
+    The README's reference is generated, one block for each section that
+    describes a module. Run make api-docs after changing a signature, and
+    commit what it produces.
     """
     import subprocess
     import sys
 
     root = pathlib.Path(__file__).resolve().parent.parent
-    generated = subprocess.run(
-        [sys.executable, str(root / "tools" / "api_reference.py")],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
-
-    readme = (root / "README.md").read_text()
-    start, end = "<!-- api-reference:start -->", "<!-- api-reference:end -->"
-    assert start in readme and end in readme, "README.md has no api-reference block"
-
-    published = readme.split(start, 1)[1].split(end, 1)[0].strip()
-    assert published == generated, (
-        "README.md is out of date; run python tools/api_reference.py --write"
+    generated = _blocks(
+        subprocess.run(
+            [sys.executable, str(root / "tools" / "api_reference.py")],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
     )
+    published = _blocks((root / "README.md").read_text(encoding="utf-8"))
+
+    assert generated, "the tool prints no block"
+    assert sorted(published) == sorted(generated), "README.md lacks a block"
+    stale = sorted(name for name in generated if published[name] != generated[name])
+    assert not stale, f"README.md is out of date in {stale}; run make api-docs"
