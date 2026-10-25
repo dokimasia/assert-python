@@ -112,7 +112,7 @@ class TestParse:
         ),
         (
             "raises json error for a text that nests past the recursion limit",
-            "[" * 100_000 + "]" * 100_000,
+            "[" * 1_000_000 + "]" * 1_000_000,
             "prop: the JSON nests past 3 levels",
         ),
         (
