@@ -19,7 +19,9 @@ pip install dokimi-assert
 ```
 
 The distribution is `dokimi-assert`, and the package is `dokimi_assert`. It
-needs Python 3.11 or later and has no runtime dependencies.
+needs Python 3.11 or later and has no runtime dependencies. A property that
+draws a zone needs the package `tzdata` on Windows, because Windows has no
+time-zone database.
 
 - [Getting started](#getting-started)
 - [Two surfaces](#two-surfaces)

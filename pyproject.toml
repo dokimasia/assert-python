@@ -38,6 +38,8 @@ Issues = "https://github.com/dokimasia/assert-python/issues"
 
 # uv installs the group dev in every environment of the project. ergon
 # runs mypy and pytest with uv run, and pins ruff and mypy itself.
+# Windows has no time-zone database, so zoneinfo reads the zones of the
+# specs from tzdata there.
 [dependency-groups]
 dev = [
     "annotated-types>=0.7",
@@ -45,6 +47,7 @@ dev = [
     "pytest>=8",
     "pytest-cov>=5",
     "basedpyright>=1.19",
+    "tzdata>=2026.1; sys_platform == 'win32'",
 ]
 
 [build-system]
