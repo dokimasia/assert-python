@@ -35,12 +35,13 @@ if TYPE_CHECKING:
 MSG = "the stated contract"
 
 #: True on Windows. Its file systems do not record permission bits.
-WINDOWS = os.name == "nt"
+WINDOWS = sys.platform == "win32"
 
 #: True on Windows and for root. The file system then grants this process
 #: every permission whatever the mode, so a test of an error that a
-#: permission causes cannot run.
-UNENFORCED = WINDOWS or os.geteuid() == 0
+#: permission causes cannot run. mypy checks the call of os.geteuid only for
+#: the systems that have it, because the expression compares sys.platform first.
+UNENFORCED = sys.platform == "win32" or os.geteuid() == 0
 
 #: True when the file system reports a name past its length limit as absent.
 #: Windows does so. A test of a path that the file system refuses cannot run

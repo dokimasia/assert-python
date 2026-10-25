@@ -8,6 +8,7 @@ from __future__ import annotations
 import errno
 import os
 import pathlib
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
@@ -204,7 +205,8 @@ class TestReadTree:
     ) -> None:
         """A pipe is not an entry of a tree."""
         make_dir(tmp_path / "run")
-        os.mkfifo(tmp_path / "run" / "fifo")
+        if sys.platform != "win32":
+            os.mkfifo(tmp_path / "run" / "fifo")
         fault = fault_of(lambda: read_tree(str(tmp_path), True))
         check.equal(
             seat,

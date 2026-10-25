@@ -8,6 +8,7 @@ from __future__ import annotations
 import errno
 import os
 import pathlib
+import sys
 from typing import TYPE_CHECKING, ClassVar
 
 import pytest
@@ -389,7 +390,8 @@ class TestOverwrite:
         self, seat: Collector, tmp_path: pathlib.Path
     ) -> None:
         """A pipe cannot be written over."""
-        os.mkfifo(tmp_path / "fifo")
+        if sys.platform != "win32":
+            os.mkfifo(tmp_path / "fifo")
         fault = fault_of(lambda: overwrite(str(tmp_path), {"fifo": text("a")}))
         check.equal(
             seat,
