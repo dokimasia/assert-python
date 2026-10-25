@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import inspect
+import os
 import pathlib
 import pkgutil
 import re
@@ -752,7 +753,9 @@ def line(module: types.ModuleType, entry: str) -> str:
     if inspect.isclass(value) or inspect.isfunction(value):
         return signature(module, entry, prefix)
     if isinstance(value, str):
-        return f"{prefix}{entry} = {value!r}"
+        # The README states a path such as GOLDEN_DIR with slashes, as POSIX
+        # writes it, so the reference is the same on every system.
+        return f"{prefix}{entry} = {value.replace(os.sep, '/')!r}"
     return f"{prefix}{entry} = {_alias(value)}"
 
 
