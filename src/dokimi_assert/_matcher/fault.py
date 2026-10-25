@@ -67,6 +67,10 @@ def of_operation(op: str, error: object) -> Exception:
         error: The error that ended the operation.
 
     Returns:
-        An exception whose text is op, a colon and the text of error.
+        An exception whose text is op, a colon and the text of error. Its
+        cause is error when error is an exception.
     """
-    return Exception(f"{op}: {fault_text(error)}")
+    fault = Exception(f"{op}: {fault_text(error)}")
+    if isinstance(error, BaseException):
+        fault.__cause__ = error
+    return fault

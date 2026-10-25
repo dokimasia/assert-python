@@ -53,3 +53,12 @@ class TestOfOperation:
         """The text starts with the operation."""
         error = of_operation("files.workspace", OSError("disk full"))
         assert str(error) == "files.workspace: disk full"
+
+    def test_keeps_an_exception_as_its_cause(self) -> None:
+        """The fault keeps the error of the file system that ended the operation."""
+        cause = OSError("disk full")
+        assert of_operation("files.workspace", cause).__cause__ is cause
+
+    def test_has_no_cause_for_an_error_that_is_no_exception(self) -> None:
+        """A text that ended the operation is not a cause."""
+        assert of_operation("files.workspace", "disk full").__cause__ is None
