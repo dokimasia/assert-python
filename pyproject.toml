@@ -3,7 +3,7 @@
 
 [project]
 name = "dokimi-assert"
-version = "0.1.0"
+version = "0.2.0"
 description = "Test assertions defined by a language-neutral standard and held to it"
 readme = "README.md"
 requires-python = ">=3.11"
