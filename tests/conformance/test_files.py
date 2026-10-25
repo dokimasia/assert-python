@@ -18,7 +18,7 @@ import pytest
 
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert.conformance.files import CONTRACT, RUNNERS
-from helpers import UNENFORCED
+from helpers import UNENFORCED, os_fault
 
 if TYPE_CHECKING:
     import pathlib
@@ -307,10 +307,9 @@ class TestRunners:
         """The directory of the workspace exists already."""
         (tmp_path / "workspace").mkdir()
         raw = {"workspace": A_FILE, "args": [string("a")], "expect": "pass"}
-        want = (
-            f"workspace.workspace: the entry cannot be written: [Errno {errno.EEXIST}]"
-        )
-        assert fault_of("path-absent", raw, tmp_path).startswith(want)
+        fault = os_fault(lambda: RUNNERS["path-absent"](raw, str(tmp_path)))
+        want = ("workspace.workspace: the entry cannot be written", errno.EEXIST)
+        assert fault == want
 
     @pytest.mark.skipif(UNENFORCED, reason="every permission is granted here")
     def test_raises_the_fault_of_a_tree_unchanged_subject_that_fails(
@@ -322,8 +321,8 @@ class TestRunners:
             "subject": {"kind": "rewrites-files"},
             "expect": "pass",
         }
-        want = f"subject: the subject fails: [Errno {errno.EACCES}]"
-        assert fault_of("tree-unchanged", raw, tmp_path).startswith(want)
+        fault = os_fault(lambda: RUNNERS["tree-unchanged"](raw, str(tmp_path)))
+        assert fault == ("subject: the subject fails", errno.EACCES)
 
     def test_raises_the_fault_of_a_golden_tree_that_is_not_a_tree_literal(
         self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
@@ -341,8 +340,8 @@ class TestRunners:
         monkeypatch.chdir(tmp_path)
         (tmp_path / "testdata").write_text("a file")
         raw = golden(golden_args(False), A_FILE)
-        want = f"golden.testdata: the entry cannot be written: [Errno {errno.EEXIST}]"
-        assert fault_of("golden-match-tree", raw, tmp_path).startswith(want)
+        fault = os_fault(lambda: RUNNERS["golden-match-tree"](raw, str(tmp_path)))
+        assert fault == ("golden.testdata: the entry cannot be written", errno.EEXIST)
 
     def test_raises_the_fault_of_a_golden_tree_that_differs_after_the_update(
         self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
@@ -361,8 +360,8 @@ class TestRunners:
         """A comparison without update does not write a golden tree."""
         monkeypatch.chdir(tmp_path)
         raw = golden(golden_args(False), None, NO_FILES)
-        want = (
-            "after: the golden tree cannot be read: the tree cannot be read: "
-            f"[Errno {errno.ENOENT}]"
+        fault = os_fault(lambda: RUNNERS["golden-match-tree"](raw, str(tmp_path)))
+        assert fault == (
+            "after: the golden tree cannot be read: the tree cannot be read",
+            errno.ENOENT,
         )
-        assert fault_of("golden-match-tree", raw, tmp_path).startswith(want)

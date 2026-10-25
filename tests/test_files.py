@@ -18,7 +18,7 @@ import pytest
 from dokimi_assert import check, files
 from dokimi_assert._files.entry import Entry
 from dokimi_assert.seat import Collector, Recorder
-from helpers import LONG_NAMES_ABSENT, WINDOWS, records
+from helpers import LONG_NAMES_ABSENT, WINDOWS, os_error, records
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -220,10 +220,9 @@ class TestWorkspace:
         cleaning = Cleaning()
         directory = files.workspace(cleaning, {})
         check.equal(seat, directory, "", "the call returns an empty path")
-        want = f"files.workspace: [Errno {errno.ENOENT}]"
-        check.has_prefix(
-            seat, cleaning.message, want, "the fault has the error of the file system"
-        )
+        fault = os_error(cleaning.faults[0])
+        want = ("files.workspace", errno.ENOENT)
+        check.equal(seat, fault, want, "the fault has the error of the file system")
 
 
 class TestWrite:
@@ -324,10 +323,9 @@ class TestRead:
         directory = files.workspace(seat, {})
         recorder = Recorder()
         files.read(recorder, pathlib.Path(directory, TOO_LONG))
-        want = f"files.read: the entry cannot be read: [Errno {errno.ENAMETOOLONG}]"
-        check.has_prefix(
-            seat, recorder.message, want, "the fault has the error of the file system"
-        )
+        fault = os_error(recorder.faults[0])
+        want = ("files.read: the entry cannot be read", errno.ENAMETOOLONG)
+        check.equal(seat, fault, want, "the fault has the error of the file system")
 
 
 class TestEqual:
@@ -406,10 +404,9 @@ class TestEqual:
         """A missing directory does not have a tree."""
         recorder = Recorder()
         files.equal(recorder, tmp_path / "missing", {}, "the trees are equal")
-        want = f"files.equal: the tree cannot be read: [Errno {errno.ENOENT}]"
-        check.has_prefix(
-            seat, recorder.message, want, "the fault has the error of the file system"
-        )
+        fault = os_error(recorder.faults[0])
+        want = ("files.equal: the tree cannot be read", errno.ENOENT)
+        check.equal(seat, fault, want, "the fault has the error of the file system")
 
 
 class TestContains:
@@ -631,13 +628,12 @@ class TestAbsent:
         self, seat: Collector, fixture: str
     ) -> None:
         """A name past the limit of its length cannot be read."""
-        path = pathlib.Path(fixture, TOO_LONG)
-        verdict, fault = outcome(lambda r: files.absent(r, path, "m"))
-        want = f"files.absent: the entry cannot be read: [Errno {errno.ENAMETOOLONG}]"
-        check.equal(seat, verdict, "error", "the call ends with a fault")
-        check.has_prefix(
-            seat, fault, want, "the fault has the error of the file system"
-        )
+        recorder = Recorder()
+        files.absent(recorder, pathlib.Path(fixture, TOO_LONG), "m")
+        check.equal(seat, verdicts(recorder), ["error"], "the call ends with a fault")
+        fault = os_error(recorder.faults[0])
+        want = ("files.absent: the entry cannot be read", errno.ENAMETOOLONG)
+        check.equal(seat, fault, want, "the fault has the error of the file system")
 
 
 class TestIsFile:

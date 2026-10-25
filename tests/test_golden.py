@@ -14,7 +14,7 @@ import pytest
 
 from dokimi_assert import check, files, golden
 from dokimi_assert.seat import Collector, Recorder
-from helpers import UNENFORCED, WINDOWS, records
+from helpers import UNENFORCED, WINDOWS, os_error, records
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -704,10 +704,9 @@ class TestMatchTree:
         """A missing output does not have a tree."""
         recorder = Recorder()
         golden.match_tree(recorder, "api", project / "missing", CHECKING)
-        want = f"golden.match_tree: the tree cannot be read: [Errno {errno.ENOENT}]"
-        check.has_prefix(
-            seat, recorder.message, want, "the fault has the error of the file system"
-        )
+        fault = os_error(recorder.faults[0])
+        want = ("golden.match_tree: the tree cannot be read", errno.ENOENT)
+        check.equal(seat, fault, want, "the fault has the error of the file system")
 
     def test_ends_the_call_with_a_fault_for_a_golden_tree_that_is_not_a_directory(
         self, seat: Collector, project: pathlib.Path
@@ -736,10 +735,6 @@ class TestMatchTree:
             golden.match_tree(recorder, "api", files.workspace(seat, {}), UPDATING)
         finally:
             (project / "testdata" / "golden").chmod(0o755)
-        want = (
-            "golden.match_tree: the directory cannot be created: "
-            f"[Errno {errno.EACCES}]"
-        )
-        check.has_prefix(
-            seat, recorder.message, want, "the fault has the error of the file system"
-        )
+        fault = os_error(recorder.faults[0])
+        want = ("golden.match_tree: the directory cannot be created", errno.EACCES)
+        check.equal(seat, fault, want, "the fault has the error of the file system")

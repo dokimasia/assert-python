@@ -26,7 +26,7 @@ from dokimi_assert._files.writer import (
     update,
 )
 from dokimi_assert._matcher.fault import FaultError
-from helpers import LONG_NAMES_ABSENT, UNENFORCED, WINDOWS
+from helpers import LONG_NAMES_ABSENT, UNENFORCED, WINDOWS, os_fault
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -191,20 +191,18 @@ class TestCreate:
         self, seat: Collector, tmp_path: pathlib.Path
     ) -> None:
         """A missing directory cannot be opened."""
-        fault = fault_of(lambda: create(str(tmp_path / "missing"), {"a": text("a")}))
-        want = f"the directory cannot be opened: [Errno {errno.ENOENT}]"
-        check.has_prefix(
-            seat, fault, want, "the fault has the error of the file system"
-        )
+        fault = os_fault(lambda: create(str(tmp_path / "missing"), {"a": text("a")}))
+        want = ("the directory cannot be opened", errno.ENOENT)
+        check.equal(seat, fault, want, "the fault has the error of the file system")
 
     def test_raises_the_fault_of_an_existing_entry(
         self, seat: Collector, tmp_path: pathlib.Path
     ) -> None:
         """An existing file keeps its content."""
         (tmp_path / "a.txt").write_text("old")
-        fault = fault_of(lambda: create(str(tmp_path), {"a.txt": text("new")}))
-        want = f"a.txt: the entry cannot be written: [Errno {errno.EEXIST}]"
-        check.has_prefix(seat, fault, want, "the fault has the path and the error")
+        fault = os_fault(lambda: create(str(tmp_path), {"a.txt": text("new")}))
+        want = ("a.txt: the entry cannot be written", errno.EEXIST)
+        check.equal(seat, fault, want, "the fault has the path and the error")
         check.equal(
             seat, (tmp_path / "a.txt").read_text(), "old", "the file keeps its content"
         )
@@ -215,9 +213,9 @@ class TestCreate:
         """A file is not written through a link at its path."""
         (tmp_path / "target.txt").write_text("kept")
         (tmp_path / "a.txt").symlink_to("target.txt")
-        fault = fault_of(lambda: create(str(tmp_path), {"a.txt": text("new")}))
-        want = f"a.txt: the entry cannot be written: [Errno {errno.EEXIST}]"
-        check.has_prefix(seat, fault, want, "the fault has the path and the error")
+        fault = os_fault(lambda: create(str(tmp_path), {"a.txt": text("new")}))
+        want = ("a.txt: the entry cannot be written", errno.EEXIST)
+        check.equal(seat, fault, want, "the fault has the path and the error")
         check.equal(
             seat,
             (tmp_path / "target.txt").read_text(),
@@ -408,9 +406,9 @@ class TestOverwrite:
     ) -> None:
         """A name past the limit of its length cannot be read."""
         name = "n" * 300
-        fault = fault_of(lambda: overwrite(str(tmp_path), {name: text("a")}))
-        want = f"{name}: the entry cannot be read: [Errno {errno.ENAMETOOLONG}]"
-        check.has_prefix(seat, fault, want, "the fault has the path and the error")
+        fault = os_fault(lambda: overwrite(str(tmp_path), {name: text("a")}))
+        want = (f"{name}: the entry cannot be read", errno.ENAMETOOLONG)
+        check.equal(seat, fault, want, "the fault has the path and the error")
 
     @pytest.mark.skipif(UNENFORCED, reason="every permission is granted here")
     def test_raises_the_fault_of_an_entry_that_cannot_be_written(
@@ -419,21 +417,19 @@ class TestOverwrite:
         """A directory without the write bit does not take a new entry."""
         (tmp_path / "sealed").mkdir()
         (tmp_path / "sealed").chmod(0o500)
-        fault = fault_of(lambda: overwrite(str(tmp_path), {"sealed/a.txt": text("a")}))
+        fault = os_fault(lambda: overwrite(str(tmp_path), {"sealed/a.txt": text("a")}))
         (tmp_path / "sealed").chmod(0o700)
-        want = f"sealed/a.txt: the entry cannot be written: [Errno {errno.EACCES}]"
-        check.has_prefix(seat, fault, want, "the fault has the path and the error")
+        want = ("sealed/a.txt: the entry cannot be written", errno.EACCES)
+        check.equal(seat, fault, want, "the fault has the path and the error")
 
     def test_raises_the_fault_of_a_directory_that_is_a_file(
         self, seat: Collector, tmp_path: pathlib.Path
     ) -> None:
         """A file cannot be opened as a directory."""
         (tmp_path / "file").write_text("a")
-        fault = fault_of(lambda: overwrite(str(tmp_path / "file"), {"a": text("a")}))
-        want = f"the directory cannot be opened: [Errno {errno.ENOTDIR}]"
-        check.has_prefix(
-            seat, fault, want, "the fault has the error of the file system"
-        )
+        fault = os_fault(lambda: overwrite(str(tmp_path / "file"), {"a": text("a")}))
+        want = ("the directory cannot be opened", errno.ENOTDIR)
+        check.equal(seat, fault, want, "the fault has the error of the file system")
 
     def test_raises_the_fault_of_a_tree_that_breaks_a_rule(
         self, seat: Collector, tmp_path: pathlib.Path
@@ -528,13 +524,14 @@ class TestUpdate:
     ) -> None:
         """A file cannot be a parent."""
         (tmp_path / "file").write_text("a")
-        fault = fault_of(
+        fault = os_fault(
             lambda: update(str(tmp_path / "file" / "golden"), {"a": text("a")})
         )
-        want = f"the directory cannot be created: [Errno {errno.ENOTDIR}]"
-        check.has_prefix(
-            seat, fault, want, "the fault has the error of the file system"
-        )
+        # Windows refuses file/golden as a path that does not exist, so
+        # pathlib then creates its parent, which is a file.
+        code = errno.EEXIST if WINDOWS else errno.ENOTDIR
+        want = ("the directory cannot be created", code)
+        check.equal(seat, fault, want, "the fault has the error of the file system")
 
     def test_raises_the_fault_of_a_tree_that_breaks_a_rule(
         self, seat: Collector, tmp_path: pathlib.Path

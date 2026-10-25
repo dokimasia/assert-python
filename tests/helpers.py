@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any, NoReturn
 
 from dokimi_assert import check
 from dokimi_assert._history.history import Call, History
+from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert._override import override
 from dokimi_assert._prop.case import Case as BodyCase
 from dokimi_assert._prop.case import Location
@@ -79,6 +80,43 @@ def refusal(
     error = check.raises(seat, call, "the call refuses")
     check.error_as(seat, error, kind, f"the refusal is a {kind.__name__}")
     return str(error)
+
+
+def os_error(fault: BaseException) -> tuple[str, int | None]:
+    """Return the text of fault before the error of the file system that caused it.
+
+    The text of an OSError depends on the system, such as [Errno 2] on Linux
+    and [WinError 3] on Windows. Python gives both errors the errno ENOENT,
+    so a spec compares the errno.
+
+    Args:
+        fault: The fault. Its chain of causes can end in an OSError.
+
+    Returns:
+        The text of fault up to the colon before the text of the OSError, and
+        the errno of the OSError. For a fault that no OSError caused, the
+        whole text and None.
+    """
+    cause: BaseException | None = fault
+    while cause is not None and not isinstance(cause, OSError):
+        cause = cause.__cause__
+    if cause is None:
+        return str(fault), None
+    return str(fault).removesuffix(f": {cause}"), cause.errno
+
+
+def os_fault(call: Callable[[], object]) -> tuple[str, int | None]:
+    """Return os_error of the FaultError that call raises.
+
+    Raises:
+        AssertionError: call returns without a fault.
+    """
+    try:
+        call()
+    except FaultError as error:
+        return os_error(error)
+    msg = "the call returns without a fault"
+    raise AssertionError(msg)
 
 
 def no_draw(_: object) -> NoReturn:

@@ -17,7 +17,7 @@ from dokimi_assert import check
 from dokimi_assert._files.entry import bytes, directory, executable, link, text
 from dokimi_assert._files.reader import kind_of_mode, read_path, read_tree
 from dokimi_assert._matcher.fault import FaultError
-from helpers import LONG_NAMES_ABSENT, UNENFORCED, WINDOWS
+from helpers import LONG_NAMES_ABSENT, UNENFORCED, WINDOWS, os_fault
 
 if TYPE_CHECKING:
     import builtins
@@ -160,11 +160,9 @@ class TestReadTree:
         self, seat: Collector, tmp_path: pathlib.Path
     ) -> None:
         """A missing root cannot be read."""
-        fault = fault_of(lambda: read_tree(str(tmp_path / "missing"), True))
-        want = f"the tree cannot be read: [Errno {errno.ENOENT}]"
-        check.has_prefix(
-            seat, fault, want, "the fault has the error of the file system"
-        )
+        fault = os_fault(lambda: read_tree(str(tmp_path / "missing"), True))
+        want = ("the tree cannot be read", errno.ENOENT)
+        check.equal(seat, fault, want, "the fault has the error of the file system")
 
     def test_raises_the_fault_of_a_root_that_is_not_a_directory(
         self, seat: Collector, fixture: pathlib.Path
@@ -184,10 +182,10 @@ class TestReadTree:
     ) -> None:
         """A directory without the read bit cannot be listed."""
         make_dir(tmp_path / "sealed", 0o300)
-        fault = fault_of(lambda: read_tree(str(tmp_path), True))
+        fault = os_fault(lambda: read_tree(str(tmp_path), True))
         (tmp_path / "sealed").chmod(0o700)
-        want = f"sealed: the tree cannot be read: [Errno {errno.EACCES}]"
-        check.has_prefix(seat, fault, want, "the fault has the path and the error")
+        want = ("sealed: the tree cannot be read", errno.EACCES)
+        check.equal(seat, fault, want, "the fault has the path and the error")
 
     @pytest.mark.skipif(UNENFORCED, reason="every permission is granted here")
     def test_raises_the_fault_of_a_file_that_cannot_be_read(
@@ -195,9 +193,9 @@ class TestReadTree:
     ) -> None:
         """A file without the read bit cannot be read."""
         write_file(tmp_path / "secret", "s", 0o000)
-        fault = fault_of(lambda: read_tree(str(tmp_path), True))
-        want = f"secret: the entry cannot be read: [Errno {errno.EACCES}]"
-        check.has_prefix(seat, fault, want, "the fault has the path and the error")
+        fault = os_fault(lambda: read_tree(str(tmp_path), True))
+        want = ("secret: the entry cannot be read", errno.EACCES)
+        check.equal(seat, fault, want, "the fault has the path and the error")
 
     @pytest.mark.skipif(WINDOWS, reason="Windows does not have named pipes")
     def test_raises_the_fault_of_an_entry_that_is_not_a_file_a_directory_or_a_link(
@@ -277,11 +275,9 @@ class TestReadPath:
         self, seat: Collector, tmp_path: pathlib.Path
     ) -> None:
         """A name past the limit of its length cannot be read."""
-        fault = fault_of(lambda: read_path(str(tmp_path / ("n" * 300)), True))
-        want = f"the entry cannot be read: [Errno {errno.ENAMETOOLONG}]"
-        check.has_prefix(
-            seat, fault, want, "the fault has the error of the file system"
-        )
+        fault = os_fault(lambda: read_path(str(tmp_path / ("n" * 300)), True))
+        want = ("the entry cannot be read", errno.ENAMETOOLONG)
+        check.equal(seat, fault, want, "the fault has the error of the file system")
 
     @pytest.mark.skipif(WINDOWS, reason="Windows does not have /dev/null")
     def test_raises_the_fault_of_an_entry_that_is_not_a_file_a_directory_or_a_link(
@@ -302,8 +298,6 @@ class TestReadPath:
     ) -> None:
         """A file without the read bit cannot be read."""
         write_file(tmp_path / "secret", "s", 0o000)
-        fault = fault_of(lambda: read_path(str(tmp_path / "secret"), True))
-        want = f"the entry cannot be read: [Errno {errno.EACCES}]"
-        check.has_prefix(
-            seat, fault, want, "the fault has the error of the file system"
-        )
+        fault = os_fault(lambda: read_path(str(tmp_path / "secret"), True))
+        want = ("the entry cannot be read", errno.EACCES)
+        check.equal(seat, fault, want, "the fault has the error of the file system")
