@@ -216,8 +216,30 @@ class TestDetailOf:
                 "others": None,
                 "divergence": None,
                 "coverage": None,
+                "reason": None,
             },
             "the detail of a pass has the counts and the seed alone",
+        )
+
+    def test_returns_the_reason_of_a_run_that_skipped(self, seat: Collector) -> None:
+        """The run skipped."""
+        check.equal(
+            seat,
+            detail_of(outcome("skipped", reason="unsupported")),
+            {
+                "outcome": "skipped",
+                "cases": 3,
+                "rejected": 1,
+                "seed": "7",
+                "counterexample": None,
+                "failure": None,
+                "choices": None,
+                "others": None,
+                "divergence": None,
+                "coverage": None,
+                "reason": "unsupported",
+            },
+            "the detail of a skip has the counts, the seed and the reason",
         )
 
     def test_returns_every_part_of_a_counterexample(self, seat: Collector) -> None:
@@ -689,7 +711,7 @@ class TestSentence:
             EngineDivergence("verdict", 3, key_of(of_record(RECORD)), None),
             (
                 "\ndivergence: the verdict at 3, recorded equal at test_total.py:9, "
-                "replayed a pass"
+                "replayed no failure"
             ),
         ),
     ]

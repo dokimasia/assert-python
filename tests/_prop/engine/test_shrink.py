@@ -502,6 +502,27 @@ class TestConfirm:
             "the divergence compares the identity with a pass",
         )
 
+    def test_returns_a_verdict_divergence_for_a_replay_that_skips(
+        self, seat: Collector
+    ) -> None:
+        """The divergence compares the identity with a skip, as with a pass."""
+        calls = 0
+
+        def once(c: Case) -> None:
+            nonlocal calls
+            calls += 1
+            c.draw(WIDE, "n")
+            if calls > 1:
+                c.skip("after")
+            c.fail("once")
+
+        check.equal(
+            seat,
+            confirm(once, executed(once, integers(5)), MAX_CHOICES),
+            Divergence("verdict", 1, "once", None),
+            "the divergence compares the identity with a skip",
+        )
+
     def test_returns_a_request_divergence_with_the_label_and_the_step_of_the_replay(
         self, seat: Collector
     ) -> None:
@@ -1071,6 +1092,19 @@ class TestShrinkerShrinkAll:
             "the shrink finds 1001 in 22 runs",
         )
 
+    def test_accepts_no_candidate_that_skips(self, seat: Collector) -> None:
+        """The candidate 0 skips, and the shrink finds 101."""
+
+        def skips_at_zero(c: Case) -> None:
+            value = c.draw(SMALL, "x")
+            if value == 0:
+                c.skip("zero")
+            if value >= 101:
+                c.fail("big")
+
+        shrinker = shrunk(skips_at_zero, integers(500))
+        check.equal(seat, drawn(shrinker.best.execution), [101], "the shrink finds 101")
+
     def test_shrinks_the_failure_with_the_smallest_case_first(
         self, seat: Collector
     ) -> None:
@@ -1301,6 +1335,41 @@ class TestExplain:
             explained(limit, integers(1001), 7),
             ([["n", 1001, False, None]], 3),
             "1000 fails too",
+        )
+
+    def test_does_not_report_a_nearest_value_when_the_step_skips(
+        self, seat: Collector
+    ) -> None:
+        """100 skips, which is not a value that passes."""
+
+        def skips_at_hundred(c: Case) -> None:
+            value = c.draw(SMALL, "x")
+            if value == 100:
+                c.skip("a hundred")
+            if value >= 101:
+                c.fail("big")
+
+        explanation, _ = explained(skips_at_hundred, integers(101), 7)
+        check.equal(
+            seat,
+            explanation,
+            [["x", 101, False, None]],
+            "101 matters and has no nearest passing value",
+        )
+
+    def test_finds_that_the_value_matters_for_a_draw_whose_filling_skips(
+        self, seat: Collector
+    ) -> None:
+        """A filling that skips does not fail in the same way."""
+
+        def skips_nonzero(c: Case) -> None:
+            if c.draw(SMALL, "x") != 0:
+                c.skip("nonzero")
+            c.fail("always")
+
+        explanation, _ = explained(skips_nonzero, integers(0), 7)
+        check.equal(
+            seat, explanation, [["x", 0, False, None]], "the value of x matters"
         )
 
     def test_does_not_report_a_nearest_value_for_a_draw_at_its_target(

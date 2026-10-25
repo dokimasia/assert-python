@@ -27,7 +27,7 @@ from dokimi_assert._prop.case import (
     on_engine,
 )
 from dokimi_assert._prop.engine.case import Case as Engine
-from dokimi_assert._prop.engine.case import Failed, Rejected, Replaying
+from dokimi_assert._prop.engine.case import Failed, Rejected, Replaying, Skipped
 from dokimi_assert._prop.engine.choice import UINT64_MAX, IntegerBounds
 from dokimi_assert._prop.engine.generator import Filter, Integer, Mapped
 from dokimi_assert._prop.engine.traces import TraceError
@@ -74,7 +74,15 @@ def ending(c: Case, body: Callable[[Case], object]) -> BaseException | None:
     with Loop("prop-for-all") as loop:
         try:
             execute(c, body, loop)
-        except (Exception, Failed, Rejected, Repeated, Diverged, FaultSignal) as error:
+        except (
+            Exception,
+            Failed,
+            Rejected,
+            Skipped,
+            Repeated,
+            Diverged,
+            FaultSignal,
+        ) as error:
             return error
     return None
 
@@ -396,6 +404,63 @@ class TestCaseAssume:
         """The case passes."""
         c, _ = case_on()
         check.is_none(seat, ending(c, lambda one: one.assume(True)), "the case passes")
+
+
+class TestCaseSkip:
+    """Case.skip ends the run of the property as skipped."""
+
+    def test_skips_the_case_with_its_reason(self, seat: Collector) -> None:
+        """The skip ends the case."""
+        c, _ = case_on()
+        raised = ending(c, lambda one: one.skip("unsupported"))
+        check.error_as(seat, raised, Skipped, "the case skips")
+        check.equal(
+            seat,
+            cast("Skipped", raised).reason,
+            "unsupported",
+            "the skip has the reason",
+        )
+
+    def test_raises_the_skip_again_at_a_later_call(self, seat: Collector) -> None:
+        """A body that catches the skip cannot run past the end of its case."""
+
+        def catches(one: Case) -> None:
+            with contextlib.suppress(Skipped):
+                one.skip("first")
+            one.classify("after")
+
+        c, engine = case_on()
+        raised = ending(c, catches)
+        check.equal(
+            seat,
+            [cast("Skipped", raised).reason, engine.labels],
+            ["first", set()],
+            "the later call raises the first skip again",
+        )
+
+    def test_runs_the_cleanups_of_the_case(self, seat: Collector) -> None:
+        """The cleanup runs after the skip."""
+        ran: list[bool] = []
+
+        def skips(one: Case) -> None:
+            one.cleanup(lambda: ran.append(True))
+            one.skip("unsupported")
+
+        c, _ = case_on()
+        ending(c, skips)
+        check.equal(seat, ran, [True], "the cleanup runs")
+
+    def test_fails_a_case_that_records_a_failure_and_then_skips(
+        self, seat: Collector
+    ) -> None:
+        """A failure before the skip outweighs it."""
+
+        def records_then_skips(one: Case) -> None:
+            one.record("it broke")
+            one.skip("unsupported")
+
+        c, _ = case_on()
+        check.error_as(seat, ending(c, records_then_skips), Failed, "the case fails")
 
 
 class TestCaseClassify:

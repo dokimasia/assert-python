@@ -5,10 +5,10 @@
 
 A case keeps each failure record in call order, and its first record is the
 failure of the case. A failure of an aborting assertion ends the case with a
-signal of the engine. assume, a draw that repeats a tested case and a draw
-past the cap end the case with a signal too. Every later call of the case
-raises the signal again, so a body that catches a signal cannot run past the
-end of its case.
+signal of the engine. assume, skip, a draw that repeats a tested case and a
+draw past the cap end the case with a signal too. Every later call of the
+case raises the signal again, so a body that catches a signal cannot run past
+the end of its case.
 
 However the body ends, the case runs its cleanups. The last registered
 cleanup runs first. A cleanup is part of the case. A failure in a cleanup
@@ -32,7 +32,7 @@ from dokimi_assert._matcher.seat import Seat, clock_of
 from dokimi_assert._matcher.verdict import fault_text, note_fault
 from dokimi_assert._override import override
 from dokimi_assert._prop.engine.case import Case as Engine
-from dokimi_assert._prop.engine.case import Decoder, Failed, Rejected
+from dokimi_assert._prop.engine.case import Decoder, Failed, Rejected, Skipped
 from dokimi_assert._prop.engine.traces import TraceError
 from dokimi_assert._prop.engine.tree import Diverged, Repeated
 from dokimi_assert._prop.identity import Identity, key_of, of_error, of_record
@@ -83,10 +83,10 @@ class FaultSignal(BaseException):
 
 #: The exceptions that end a body or a cleanup as the end of a case.
 #: KeyboardInterrupt and SystemExit are not among them, so a run stops at them.
-_ENDINGS = (Exception, Rejected, Failed, Repeated, Diverged, FaultSignal)
+_ENDINGS = (Exception, Rejected, Skipped, Failed, Repeated, Diverged, FaultSignal)
 
 #: The signals of the engine. Each of them ends a case.
-_SIGNALS = (Rejected, Failed, Repeated, Diverged, TraceError, FaultSignal)
+_SIGNALS = (Rejected, Skipped, Failed, Repeated, Diverged, TraceError, FaultSignal)
 
 #: The step between two values of random(). It is 2^-53.
 _UNIT = 2.0**-53
@@ -424,6 +424,27 @@ class Case:
         if not condition:
             _stop(state, Rejected())
 
+    def skip(self, reason: str) -> NoReturn:
+        """End the run of the property as skipped, with reason.
+
+        The case ends at the call and runs its cleanups. The run does not
+        report a failure record, and it skips the test of the seat of the
+        property where that seat skips its test. Once the run has found a
+        failing case, a case that skips ends as a case that does not fail,
+        and the run goes on.
+
+        A body skips the run where its environment lacks a capability:
+
+            if not direct_io_supported(tmp_path):
+                case.skip("the file system refuses direct I/O")
+
+        Args:
+            reason: The reason of the skip.
+        """
+        state = self._state
+        _check(state)
+        _stop(state, Skipped(reason))
+
     def classify(self, label: str) -> None:
         """Count the case under label for the coverage requirements of prop.require.
 
@@ -482,8 +503,8 @@ class Case:
     def cleanup(self, fn: Callable[[], object]) -> None:
         """Register fn to run when the case ends.
 
-        The case ends after its body returns, fails, raises, rejects the case
-        or stops at a draw. The last registered cleanup runs first. The run
+        The case ends after its body returns, fails, raises, rejects the case,
+        skips or stops at a draw. The last registered cleanup runs first. The run
         awaits a cleanup that returns an awaitable. A failure in a cleanup
         fails the case in the same way as a failure in the body, and the
         later cleanups still run. A cleanup that a cleanup registers runs
@@ -637,8 +658,9 @@ def execute(c: Case, body: Callable[[Case], object], loop: Loop) -> None:
     - A case that repeats a tested case, diverges, meets an entry of a trace
       that it cannot follow, or ends with a fault raises that signal.
     - A case that failed in the body or in a cleanup raises its failure. It
-      raises the failure also when the case was rejected or passed its cap.
-    - A rejected case raises its rejection.
+      raises the failure also when the case was rejected, skipped or passed
+      its cap.
+    - A rejected case raises its rejection, and a skipped case its skip.
     - A case that passed returns.
 
     Args:

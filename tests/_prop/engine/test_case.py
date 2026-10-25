@@ -29,6 +29,7 @@ from dokimi_assert._prop.engine.case import (
     Rejected,
     Replaying,
     Request,
+    Skipped,
     Span,
     Step,
     Trailing,
@@ -127,6 +128,25 @@ class TestOverrun:
     def test_is_a_rejection(self, seat: Collector) -> None:
         """An overrun is a rejection."""
         check.error_as(seat, Overrun(), Rejected, "the signal is a Rejected")
+
+
+class TestSkipped:
+    """Skipped is the signal of a case that skips the run of its property."""
+
+    def test_returns_the_signal_of_a_skip_with_its_reason(
+        self, seat: Collector
+    ) -> None:
+        """A body that catches Exception does not catch the signal."""
+        signal = Skipped("unsupported")
+        check.equal(
+            seat,
+            [str(signal), signal.reason],
+            ["unsupported", "unsupported"],
+            "the signal has its reason as its text",
+        )
+        check.is_false(
+            seat, isinstance(signal, Exception), "the signal is not an Exception"
+        )
 
 
 class TestFailed:
@@ -815,6 +835,18 @@ class TestCaseRepeat:
         c.repeat(4)
         c.repeat(2)
         check.equal(seat, c.repeats, 4, "the case keeps the 4 runs")
+
+
+class TestCaseSkip:
+    """Case.skip skips the run of the property."""
+
+    def test_raises_the_signal_of_a_skip_with_its_reason(self, seat: Collector) -> None:
+        """The signal has the reason."""
+        with pytest.raises(Skipped) as raised:
+            Case(Replaying([])).skip("unsupported")
+        check.equal(
+            seat, raised.value.reason, "unsupported", "the signal has the reason"
+        )
 
 
 class TestCaseRewind:

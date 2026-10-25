@@ -659,6 +659,7 @@ prop.for_all(seat: Seat, contract: str, body: Callable[[Case], object], *options
 prop.fuzz(seat: Seat, contract: str, body: Callable[[Case], object], *options: Option) -> Target
 Case.draw(generator: Decoder[_T], label: str) -> _T
 Case.assume(condition: bool)
+Case.skip(reason: str) -> NoReturn
 Case.classify(label: str)
 Case.target(label: str, score: float)
 Case.note(message: str)

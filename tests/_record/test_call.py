@@ -42,6 +42,21 @@ class TestEncodeCall:
         assert record["detail"] == {"got": {"type": "int", "value": 1}}
         assert "where" not in record
 
+    def test_writes_a_skipped_call_with_the_detail_of_its_run(self) -> None:
+        """The record of a skipped property contains the verdict skip and its run."""
+        call = Call(
+            "prop-for-all",
+            "c",
+            "skip",
+            True,
+            detail={"outcome": "skipped", "reason": "unsupported"},
+        )
+        record = json.loads(encode_call(call, Place(seq=1)))
+        assert (record["verdict"], record["detail"]) == (
+            "skip",
+            {"outcome": "skipped", "reason": "unsupported"},
+        )
+
     def test_writes_the_text_of_the_fault_of_an_error(self) -> None:
         """The record of a faulted call contains the text of the fault."""
         call = Call("prop-for-all", "c", "error", True, error="prop.for_all: no")

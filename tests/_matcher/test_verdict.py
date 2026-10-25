@@ -9,6 +9,8 @@ verdicts with the assert statement of pytest.
 
 from __future__ import annotations
 
+import unittest
+
 import pytest
 
 from dokimi_assert._matcher.seat import Mode
@@ -250,6 +252,64 @@ class TestRunningPassedRun:
         )
 
 
+class _Skipping(Recorder):
+    """A recorder whose test skips: it keeps the reason of each skip."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.skips: list[str] = []
+        self.kept: list[int] = []
+
+    def skip(self, reason: str) -> None:
+        """Keep the reason and the number of call records at the skip."""
+        self.skips.append(reason)
+        self.kept.append(len(self.records))
+
+
+class TestRunningSkippedRun:
+    """Running.skipped_run reports the skip of a property with the detail of its run."""
+
+    def test_writes_the_run_of_a_skipped_property(self) -> None:
+        """The record of a skipped property has the verdict skip and its run."""
+        seat = Recorder()
+        Running.of(seat).skipped_run(
+            Mode.FATAL,
+            "prop-for-all",
+            "c",
+            Where("prop.py", 9),
+            {"outcome": "skipped"},
+            "unsupported",
+        )
+        [record] = records(seat)
+        assert (record["verdict"], record["detail"], record["where"]) == (
+            "skip",
+            {"outcome": "skipped"},
+            {"file": "prop.py", "line": 9},
+        )
+        assert (seat.failed, seat.failures) == (False, [])
+
+    def test_skips_a_seat_that_skips_after_the_record(self) -> None:
+        """The seat skips with the reason once the record is written."""
+        seat = _Skipping()
+        Running.of(seat).skipped_run(
+            Mode.FATAL, "prop-for-all", "c", None, {}, "the disk refuses direct I/O"
+        )
+        assert (seat.skips, seat.kept) == (["the disk refuses direct I/O"], [1])
+
+    def test_skips_a_standard_seat_through_skip_test(self) -> None:
+        """A standard seat raises unittest.SkipTest with the reason."""
+        with pytest.raises(unittest.SkipTest, match=r"^unsupported$"):
+            Running.of(Standard()).skipped_run(
+                Mode.FATAL, "prop-for-all", "c", None, {}, "unsupported"
+            )
+
+    def test_writes_the_skip_of_the_recording_surface_as_not_aborting(self) -> None:
+        """The record has the surface of the call."""
+        seat = Recorder()
+        Running.of(seat).skipped_run(Mode.SOFT, "prop-for-all", "c", None, {}, "x")
+        assert records(seat)[0]["aborting"] is False
+
+
 class TestRunningFailedRun:
     """Running.failed_run reports a failure whose record has the detail of a run."""
 
@@ -275,7 +335,10 @@ def test_ends_every_call_with_the_fault_of_a_switch_without_a_defined_value() ->
         from dokimi_assert.failure import Failure
         from dokimi_assert.seat import Recorder
 
-        for verdict in ("passed", "failed", "faulted", "passed_run", "failed_run"):
+        verdicts = (
+            "passed", "failed", "faulted", "passed_run", "failed_run", "skipped_run"
+        )
+        for verdict in verdicts:
             seat = Recorder()
             call = Running.of(seat)
             if verdict == "passed":
@@ -286,14 +349,23 @@ def test_ends_every_call_with_the_fault_of_a_switch_without_a_defined_value() ->
                 call.faulted(Mode.FATAL, "true", "c", "boom")
             elif verdict == "passed_run":
                 call.passed_run(Mode.FATAL, "prop-for-all", "c", None, {})
-            else:
+            elif verdict == "failed_run":
                 call.failed_run(Mode.FATAL, Failure("true", "c"), {})
+            else:
+                call.skipped_run(Mode.FATAL, "prop-for-all", "c", None, {}, "x")
             print(verdict, seat.message, len(seat.records), len(seat.failures))
         """,
         DOKIMI_ASSERT_RECORD="2",
     )
     fault_line = "DOKIMI_ASSERT_RECORD: '2' is neither 0 nor 1"
+    verdicts = (
+        "passed",
+        "failed",
+        "faulted",
+        "passed_run",
+        "failed_run",
+        "skipped_run",
+    )
     assert child.stdout.splitlines() == [
-        f"{verdict} {fault_line} 0 0"
-        for verdict in ("passed", "failed", "faulted", "passed_run", "failed_run")
+        f"{verdict} {fault_line} 0 0" for verdict in verdicts
     ], child.stderr

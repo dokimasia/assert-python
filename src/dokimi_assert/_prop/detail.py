@@ -3,11 +3,11 @@
 
 """The record of the run of a property, and its sentence.
 
-The detail of the record has the ten fields of prop-for-all: outcome,
-cases, rejected, seed, counterexample, failure, choices, others, divergence
-and coverage. A field that the outcome does not use is None. The call record
-of a property contains the same detail as JSON. Each drawn value in it is a
-typed literal of the type of its generator.
+The detail of the record has the eleven fields of prop-for-all: outcome,
+cases, rejected, seed, counterexample, failure, choices, others, divergence,
+coverage and reason. A field that the outcome does not use is None. The call
+record of a property contains the same detail as JSON. Each drawn value in
+it is a typed literal of the type of its generator.
 """
 
 from __future__ import annotations
@@ -289,6 +289,7 @@ def detail_of(outcome: Outcome) -> dict[str, Any]:
             shortfall.valid,
             shortfall.verdict,
         ),
+        "reason": outcome.reason,
     }
 
 
@@ -428,6 +429,7 @@ def detail_json(outcome: Outcome, detail: Mapping[str, Any]) -> dict[str, Any]:
             "valid": coverage.valid,
             "verdict": coverage.verdict,
         },
+        "reason": detail["reason"],
     }
 
 
@@ -488,7 +490,7 @@ def _replay_line(token: str) -> str:
 _ABSENT = {
     "request": "no request",
     "fingerprint": "no fingerprint",
-    "verdict": "a pass",
+    "verdict": "no failure",
 }
 
 

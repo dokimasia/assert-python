@@ -12,6 +12,7 @@ installs.
 
 from __future__ import annotations
 
+import unittest
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -76,7 +77,9 @@ def fuzz(
     explained in the same way as a failing case of for_all. Its failures are
     written to the store. The target then raises AssertionError with the sentence of
     the record. The sentence contains the replay token. The record of a
-    passing input counts one valid or one rejected case.
+    passing input counts one valid or one rejected case. The target returns
+    for an input whose case skips, and the fuzzer moves on to the next input.
+    Under pytest, a stored case or a seed file that skips skips the test.
 
     fuzz ends the call with a fault for each fault for which for_all ends
     its call without a run, and for seed files that cannot be read. The
@@ -115,6 +118,9 @@ def fuzz(
     def target(data: bytes) -> None:
         __tracebackhide__ = True
         standard = Standard()
-        prop.input(standard, Running.begin(standard, where), body, data)
+        try:
+            prop.input(standard, Running.begin(standard, where), body, data)
+        except unittest.SkipTest:
+            return
 
     return target

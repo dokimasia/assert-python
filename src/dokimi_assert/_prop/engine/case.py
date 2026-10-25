@@ -14,8 +14,9 @@ choice with bounds, and the provider of the case supplies the value.
 The case records every value with its request and the spans of the
 generators that asked for it. The shrinker edits that record.
 
-Rejected, Failed and the signals of the case tree end the body. They derive
-from BaseException, so a body that catches Exception does not catch them.
+Rejected, Skipped, Failed and the signals of the case tree end the body.
+They derive from BaseException, so a body that catches Exception does not
+catch them.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ import copy
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Any, NoReturn, Protocol, TypeVar, cast
 
 from dokimi_assert._override import override
 from dokimi_assert._prop.engine import draw as draws
@@ -57,6 +58,7 @@ __all__ = [
     "Rejected",
     "Replaying",
     "Request",
+    "Skipped",
     "Span",
     "Step",
     "Trailing",
@@ -104,6 +106,26 @@ class Rejected(BaseException):
 
 class Overrun(Rejected):
     """The signal of a case that asked for more choices than its cap allows."""
+
+
+class Skipped(BaseException):
+    """The signal that skips the run of a property, with the reason of the skip.
+
+    A case that skips before the run finds a failing case ends the run. A
+    case that skips after it counts as a case that does not fail.
+
+    Attributes:
+        reason: The reason of the skip.
+    """
+
+    def __init__(self, reason: str) -> None:
+        """Return the signal of a skip.
+
+        Args:
+            reason: The reason of the skip.
+        """
+        super().__init__(reason)
+        self.reason: str = reason
 
 
 class Failed(BaseException):
@@ -825,6 +847,17 @@ class Case:
         """
         if not condition:
             raise Rejected
+
+    def skip(self, reason: str) -> NoReturn:
+        """Skip the run of the property, with a reason.
+
+        Args:
+            reason: The reason of the skip.
+
+        Raises:
+            Skipped: Always.
+        """
+        raise Skipped(reason)
 
     def classify(self, label: str) -> None:
         """Count the case under a label. A label counted twice counts once.

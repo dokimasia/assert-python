@@ -369,6 +369,63 @@ class TestCampaign:
             "the counterexample is the value of the example",
         )
 
+    def test_returns_skipped_for_a_case_that_skips_before_a_failure(
+        self, seat: Collector
+    ) -> None:
+        """The first random case skips."""
+
+        def skips(c: Case) -> None:
+            c.draw(WIDE, "n")
+            c.skip("unsupported")
+
+        outcome, calls = explored(skips, 5)
+        check.equal(
+            seat,
+            [outcome.kind, outcome.cases, outcome.reason, len(calls)],
+            ["skipped", 0, "unsupported", 1],
+            "the campaign ends at the case that skips",
+        )
+
+    def test_returns_skipped_with_the_run_of_a_stored_case_that_skips(
+        self, seat: Collector
+    ) -> None:
+        """The stored case skips before any random case."""
+
+        def skips_at_five(c: Case) -> None:
+            if c.draw(WIDE, "n") == 5:
+                c.skip("five")
+
+        outcome, _ = explored(skips_at_five, 5, Settings(SEED, stored=(recorded(5),)))
+        check.equal(
+            seat,
+            [outcome.kind, outcome.reason, len(outcome.stored)],
+            ["skipped", "five", 1],
+            "the campaign skips with the run of the stored case",
+        )
+
+    def test_goes_on_past_a_case_that_skips_after_its_first_failure(
+        self, seat: Collector
+    ) -> None:
+        """The example fails first, and the later cases above 1 skip."""
+
+        def skips_from_two(c: Case) -> None:
+            n = c.draw(WIDE, "n")
+            if n % 2 == 1:
+                c.fail("odd")
+            if n >= 2:
+                c.skip("two or more")
+
+        outcome, _ = explored(
+            skips_from_two, 30, Settings(SEED, examples=(recorded(3),))
+        )
+        failing = outcome.failing
+        check.equal(
+            seat,
+            [outcome.kind, None if failing is None else failing.case.draws[0].value],
+            ["counterexample", 1],
+            "the failure of the example, shrunk past the cases that skip",
+        )
+
     def test_returns_rejected_for_a_campaign_that_rejects_every_case(
         self, seat: Collector
     ) -> None:

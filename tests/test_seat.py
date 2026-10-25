@@ -8,6 +8,7 @@ It uses pytest's assert alone, because every other spec asserts on a seat.
 
 from __future__ import annotations
 
+import unittest
 from typing import Any, cast
 
 import pytest
@@ -92,6 +93,15 @@ class TestStandardRecord:
         """The seat does not have an end of a test, so it raises the message."""
         with pytest.raises(AssertionError, match=r"^the stated contract$"):
             Standard().record("the stated contract")
+
+
+class TestStandardSkip:
+    """Standard.skip skips the test."""
+
+    def test_raises_skip_test_with_the_reason(self) -> None:
+        """The runner reports the test as skipped."""
+        with pytest.raises(unittest.SkipTest, match=r"^the disk refuses direct I/O$"):
+            Standard().skip("the disk refuses direct I/O")
 
 
 class TestRecorder:
@@ -398,6 +408,15 @@ class TestCollectorRecord:
         seat = Collector()
         seat.record("the stated contract")
         assert seat.collected == ["the stated contract"]
+
+
+class TestCollectorSkip:
+    """Collector.skip skips the test."""
+
+    def test_raises_skip_test_with_the_reason(self) -> None:
+        """The runner reports the test as skipped."""
+        with pytest.raises(unittest.SkipTest, match=r"^the disk refuses direct I/O$"):
+            Collector().skip("the disk refuses direct I/O")
 
 
 class TestCollectorCleanup:

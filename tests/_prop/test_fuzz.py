@@ -72,6 +72,18 @@ class TestFuzz:
             seat, recorder.failures, "the replay without stored cases passes"
         )
 
+    def test_returns_a_target_that_returns_for_an_input_whose_case_skips(
+        self, seat: Collector
+    ) -> None:
+        """The fuzzer moves on to the next input."""
+
+        def skips(c: Case) -> None:
+            c.draw(SHORT, "data")
+            c.skip("unsupported")
+
+        target = fuzz(Recorder(), "skips every input", skips, hermetic(), seed(1))
+        check.does_not_raise(seat, lambda: target(bytes([1, 1])), "the input skips")
+
     def test_returns_a_target_that_raises_the_sentence_of_a_failing_input(
         self, seat: Collector, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

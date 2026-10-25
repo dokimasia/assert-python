@@ -14,7 +14,12 @@ on one worker.
 A body can make its case run more than once through Case.repeat. The steps
 of a machine call it when the clients of a concurrent section run on
 threads, because threads do not replay. Each later run replays the choices
-of the case outside the tree. The first run that fails ends the case.
+of the case outside the tree. The first run that fails or skips ends the
+case.
+
+A case that skips leaves no leaf in the tree. Before the run finds a
+failing case the skip ends the run, and after it the case counts as a case
+that does not fail.
 
 Each call of a body has a phase. The phase is the part of the run that made
 the call. An observer of a run receives every call with its phase. The calls
@@ -35,6 +40,7 @@ from dokimi_assert._prop.engine.case import (
     Provider,
     Rejected,
     Replaying,
+    Skipped,
     Walked,
     Where,
 )
@@ -81,7 +87,7 @@ Phase = Literal[
 ]
 
 #: How one case ended.
-Status = Literal["passed", "failed", "rejected", "repeated", "diverged"]
+Status = Literal["passed", "failed", "rejected", "repeated", "diverged", "skipped"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +141,7 @@ class Execution:
         ran: The cases of the runs of a case that ran more than once. They
             are in the order of the runs. The tuple is empty for a case that
             ran once.
+        reason: The reason of a case that skipped, or None.
     """
 
     case: Case
@@ -144,6 +151,7 @@ class Execution:
     overran: bool = False
     stopped: int | None = None
     ran: tuple[Case, ...] = ()
+    reason: str | None = None
 
     @property
     def runs(self) -> int:
@@ -217,8 +225,9 @@ def execute(
     """Call the body on a case whose values come from a provider.
 
     With a tree, the case walks the tree. A repeat or a divergence then ends
-    the case early. A case that overruns its cap is rejected without a leaf.
-    A case with more than one repeat runs again under the rules of repeat.
+    the case early. A case that overruns its cap is rejected without a leaf,
+    and a case that skips ends without a leaf. A case with more than one
+    repeat runs again under the rules of repeat.
     An error of the body that is not a signal of the case propagates to the
     caller.
 
@@ -274,6 +283,8 @@ def _once(body: Body, c: Case, walker: Walker | None = None) -> Execution:
         return Execution(c, "diverged", divergence=divergence)
     except Overrun:
         return Execution(c, "rejected", overran=True)
+    except Skipped as skipped:
+        return Execution(c, "skipped", reason=skipped.reason)
     except Rejected:
         ending = "rejected"
     except Failed as failed:
@@ -293,9 +304,9 @@ def repeat(execution: Execution, body: Body, limit: int | None = None) -> Execut
     """Run the body again on the choices of a case that passed.
 
     Each later run replays the choices of the case outside the case tree.
-    The runs stop at the first run that fails, after `repeats` runs, or after
-    `limit` runs. The first run that fails ends the case with its record.
-    The execution keeps the case of every run.
+    The runs stop at the first run that fails or skips, after `repeats` runs,
+    or after `limit` runs. The first run that fails or skips ends the case
+    with its record. The execution keeps the case of every run.
 
     Args:
         execution: The first run of the case.
@@ -316,7 +327,7 @@ def repeat(execution: Execution, body: Body, limit: int | None = None) -> Execut
         again = Case(Replaying(c.choices), c.max_choices)
         later = _once(body, again)
         ran.append(again)
-        if later.status == "failed":
+        if later.status in {"failed", "skipped"}:
             return replace(later, ran=tuple(ran))
     return replace(execution, ran=tuple(ran))
 
@@ -334,8 +345,8 @@ def entered(tree: Tree, execution: Execution) -> tuple[Execution, int]:
 
     A stopped case does not keep its later runs, because a run on one worker
     does not make them. A case that the walk does not stop ends in the same
-    way as its first run. It has a leaf unless it overran its cap, and it
-    keeps its later runs.
+    way as its first run. It has a leaf unless it overran its cap or
+    skipped, and it keeps its later runs.
 
     Args:
         tree: The case tree.
@@ -359,7 +370,7 @@ def entered(tree: Tree, execution: Execution) -> tuple[Execution, int]:
                 first, "diverged", divergence=divergence, stopped=number
             )
             return stopped, number
-    if not execution.overran:
+    if not execution.overran and execution.status != "skipped":
         ending = "passed" if execution.ran else execution.status
         try:
             walker.end(cast("Ending", ending))

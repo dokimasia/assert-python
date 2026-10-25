@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, cast
 import pytest
 
 from dokimi_assert import check
-from dokimi_assert._prop.engine.case import Case, Rejected
+from dokimi_assert._prop.engine.case import Case, Rejected, Skipped
 from dokimi_assert.conformance.prop.body import DRAWN, body_of
 from helpers import body_case, refusal, replaying
 
@@ -29,8 +29,8 @@ def ending(spec: object, *choices: int) -> tuple[str, list[str | None], list[str
     """Run the body of spec on a case that replays integer choices.
 
     Returns:
-        How the body ended, ran or rejected, the identities that its ending
-        received, and the labels of the case.
+        How the body ended, ran, rejected or skipped with its reason, the
+        identities that its ending received, and the labels of the case.
     """
     ends: list[str | None] = []
     body = body_of(spec, lambda _, failure: ends.append(failure))
@@ -39,6 +39,8 @@ def ending(spec: object, *choices: int) -> tuple[str, list[str | None], list[str
         body(c)
     except Rejected:
         return "rejected", ends, sorted(engine.labels)
+    except Skipped as skipped:
+        return f"skipped: {skipped.reason}", ends, sorted(engine.labels)
     return "ran", ends, sorted(engine.labels)
 
 
@@ -99,6 +101,39 @@ class TestBodyOf:
             [],
             ("ran", [None], []),
         ),
+        (
+            "skips the run with the reason of the first true entry of skips",
+            {
+                "draw": DIGIT,
+                "skips": [
+                    {"reason": "odd", "when": {**EVEN, "not": True}},
+                    {"reason": "big", "when": {"kind": "at-least", "n": 5}},
+                ],
+                "fails": [{"identity": "every", "when": {"kind": "always"}}],
+            },
+            [7],
+            ("skipped: odd", [], []),
+        ),
+        (
+            "classifies the case before a skip",
+            {
+                "draw": DIGIT,
+                "classify": {"even": EVEN},
+                "skips": [{"reason": "every", "when": {"kind": "always"}}],
+            },
+            [4],
+            ("skipped: every", [], ["even"]),
+        ),
+        (
+            "rejects the case before a skip",
+            {
+                "draw": DIGIT,
+                "rejects-when": {"kind": "always"},
+                "skips": [{"reason": "every", "when": {"kind": "always"}}],
+            },
+            [4],
+            ("rejected", [], []),
+        ),
     ]
 
     @pytest.mark.parametrize(
@@ -150,6 +185,30 @@ class TestBodyOf:
             drawn_case(body, value)
         check.equal(seat, ends, [None, "once", None], "the body fails once")
 
+    def test_returns_a_body_of_fails_then_skips_that_skips_after_its_failure(
+        self, seat: Collector
+    ) -> None:
+        """The first value above 1,000 fails, and every later call skips."""
+        ends: list[str | None] = []
+        body = body_of(
+            {"kind": "fails-then-skips"}, lambda _, failure: ends.append(failure)
+        )
+        calls: list[tuple[str, list[object]]] = []
+        for value in (1000, 1001, 2000):
+            c, engine = body_case(replaying(value))
+            try:
+                body(c)
+            except Skipped as skipped:
+                calls.append((skipped.reason, [d.value for d in engine.draws]))
+                continue
+            calls.append(("ran", [d.value for d in engine.draws]))
+        check.equal(
+            seat,
+            [calls, ends],
+            [[("ran", [1000]), ("ran", [1001]), ("after", [2000])], [None, "once"]],
+            "the body fails at 1001, and skips the next call after its draw",
+        )
+
     refused: ClassVar[list[tuple[str, Any, str]]] = [
         ("raises for a value that is not an object", 5, "prop: 5 is not a body"),
         (
@@ -171,6 +230,16 @@ class TestBodyOf:
             "raises for an identity that is not a string",
             {"draw": DIGIT, "fails": [{"identity": 1, "when": {"kind": "always"}}]},
             "prop: 1 is not an identity",
+        ),
+        (
+            "raises for skips that are not a list",
+            {"draw": DIGIT, "skips": {}},
+            "prop: skips is {}, not a list",
+        ),
+        (
+            "raises for a reason that is not a string",
+            {"draw": DIGIT, "skips": [{"reason": 1, "when": {"kind": "always"}}]},
+            "prop: 1 is not a reason",
         ),
     ]
 

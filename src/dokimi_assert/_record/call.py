@@ -27,7 +27,7 @@ __all__ = ["DEFINITION", "Call", "Phase", "Place", "Verdict", "encode_call"]
 DEFINITION = version()
 
 #: How a call ended.
-Verdict = Literal["pass", "fail", "error"]
+Verdict = Literal["pass", "fail", "error", "skip"]
 
 #: The kind of the case of a property in which a call ran.
 Phase = Literal[

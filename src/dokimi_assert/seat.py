@@ -16,11 +16,16 @@ Recorder       collects    collects
 A fault ends the call on both surfaces. A Recorder keeps the fault, and the
 other two seats raise it. A helper of a test ends its own call with a fault
 through fault.
+
+A property whose run skips skips the test of a Collector or a Standard
+seat. Both raise unittest.SkipTest, which unittest and pytest report as a
+skipped test. A Recorder keeps the call record of the skip alone.
 """
 
 from __future__ import annotations
 
 import threading
+import unittest
 from typing import TYPE_CHECKING
 
 from dokimi_assert._matcher.seat import Seat
@@ -100,6 +105,18 @@ class Standard:
         """
         __tracebackhide__ = True
         raise AssertionError(message)
+
+    def skip(self, reason: str) -> None:
+        """Skip the test with reason.
+
+        Args:
+            reason: The reason of the skip.
+
+        Raises:
+            unittest.SkipTest: Always.
+        """
+        __tracebackhide__ = True
+        raise unittest.SkipTest(reason)
 
 
 class Recorder:
@@ -388,6 +405,18 @@ class Collector:
         """
         with self._guard:
             self._collected.append(message)
+
+    def skip(self, reason: str) -> None:
+        """Skip the test with reason.
+
+        Args:
+            reason: The reason of the skip.
+
+        Raises:
+            unittest.SkipTest: Always.
+        """
+        __tracebackhide__ = True
+        raise unittest.SkipTest(reason)
 
     def cleanup(self, fn: Callable[[], object]) -> None:
         """Register fn to run when the test ends, also when the test fails.

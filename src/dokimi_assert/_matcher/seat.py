@@ -27,12 +27,14 @@ __all__ = [
     "Mode",
     "Reporter",
     "Seat",
+    "Skipper",
     "clock_of",
     "name_test",
     "named_test",
     "report",
     "takes_faults",
     "takes_records",
+    "takes_skips",
 ]
 
 
@@ -40,10 +42,11 @@ __all__ = [
 class Seat(Protocol):
     """The object through which an assertion reports a failure.
 
-    A seat can also have three more methods. report(failure, aborting)
+    A seat can also have four more methods. report(failure, aborting)
     receives the failure record in place of its sentence.
     report_fault(fault, ending) receives a fault as the exception it is.
-    clock() returns the clock that assertions read.
+    clock() returns the clock that assertions read. skip(reason) skips the
+    test of the seat.
     """
 
     def helper(self) -> None:
@@ -147,6 +150,31 @@ def takes_faults(seat: object) -> TypeGuard[FaultReporter]:
         True when the seat has a callable member report_fault.
     """
     return callable(getattr(seat, "report_fault", None))
+
+
+class Skipper(Protocol):
+    """A seat whose test can skip while it runs."""
+
+    def skip(self, reason: str) -> None:
+        """Skip the test of the seat.
+
+        The method might not return.
+
+        Args:
+            reason: The reason of the skip.
+        """
+
+
+def takes_skips(seat: object) -> TypeGuard[Skipper]:
+    """Report whether seat skips its test.
+
+    Args:
+        seat: The seat of a call.
+
+    Returns:
+        True when the seat has a callable member skip.
+    """
+    return callable(getattr(seat, "skip", None))
 
 
 def clock_of(seat: object) -> Clock:

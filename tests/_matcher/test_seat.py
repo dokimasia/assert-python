@@ -13,6 +13,7 @@ from dokimi_assert._matcher.seat import (
     report,
     takes_faults,
     takes_records,
+    takes_skips,
 )
 from dokimi_assert.clock import Controlled, System
 from dokimi_assert.seat import Collector, Recorder, Standard
@@ -56,6 +57,18 @@ class TestTakesFaults:
     def test_reports_false_for_a_seat_without_report_fault(self) -> None:
         """A collector ends the call with the exception."""
         assert not takes_faults(Collector())
+
+
+class TestTakesSkips:
+    """takes_skips reports whether a seat skips its test."""
+
+    def test_reports_true_for_a_seat_with_skip(self) -> None:
+        """A collector skips its test."""
+        assert takes_skips(Collector())
+
+    def test_reports_false_for_a_seat_without_skip(self) -> None:
+        """A recorder has no test to skip."""
+        assert not takes_skips(Recorder())
 
 
 class _Clocked:

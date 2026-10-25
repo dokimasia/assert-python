@@ -46,6 +46,12 @@ than ten times as many cases as were valid. It also fails when no case
 requested an input, or when a coverage requirement is refuted or unmet. The
 checks run in that order.
 
+A case that skips before the run finds a failing case ends the run as
+skipped, in every phase. Once the run has found a failing case, a case that
+skips counts as a case that does not fail. A replay that skips makes the run
+flaky, a shrink candidate that skips is not accepted, and an explain run
+that skips neither fails the way the failure fails nor passes.
+
 A campaign shares the counts, the known cases and the conclusion of a
 failure with a run. This module exports them for the campaign.
 """
@@ -125,9 +131,16 @@ _MAX_PREFIX_CASES = 50
 #: choices.
 _MIN_PREFIXED_CHOICES = 2
 
-#: How a run ended. Every kind but passed fails the test.
+#: How a run ended. passed passes the test, skipped skips it where the test
+#: runner can skip a running test, and every other kind fails it.
 Kind = Literal[
-    "passed", "counterexample", "flaky", "rejected", "coverage-unmet", "vacuous"
+    "passed",
+    "counterexample",
+    "flaky",
+    "rejected",
+    "coverage-unmet",
+    "vacuous",
+    "skipped",
 ]
 
 
@@ -247,6 +260,7 @@ class Outcome:
             Such a counterexample does not have a token.
         stored: The runs of the stored cases in order. They end at the
             stored case that ended the run.
+        reason: The reason of the case that ended a skipped run, or None.
     """
 
     kind: Kind
@@ -262,6 +276,7 @@ class Outcome:
     runs: int = 0
     valued: bool = False
     stored: tuple[Execution, ...] = ()
+    reason: str | None = None
 
 
 class Tally:
@@ -291,8 +306,8 @@ class Tally:
         """Count one execution, and return the outcome when it ends the run.
 
         A failed case ends the run with a counterexample. A diverged case
-        ends it as flaky. A case that repeated an earlier case does not
-        count.
+        ends it as flaky, and a skipped case as skipped with its reason. A
+        case that repeated an earlier case does not count.
 
         Args:
             execution: The execution.
@@ -306,6 +321,8 @@ class Tally:
             return self.outcome("counterexample", failing=execution)
         if execution.status == "diverged":
             return self.outcome("flaky", divergence=execution.divergence)
+        if execution.status == "skipped":
+            return self.outcome("skipped", reason=execution.reason)
         if execution.status == "rejected":
             self.rejected += 1
         elif execution.status == "passed":
@@ -319,6 +336,7 @@ class Tally:
         failing: Execution | None = None,
         divergence: Divergence | None = None,
         shortfall: Shortfall | None = None,
+        reason: str | None = None,
     ) -> Outcome:
         """Return an outcome of a kind with the counts so far.
 
@@ -330,12 +348,20 @@ class Tally:
             failing: The failing case.
             divergence: The divergence.
             shortfall: The shortfall.
+            reason: The reason of a skipped run.
 
         Returns:
             The outcome.
         """
         return Outcome(
-            kind, self.valid, self.rejected, self.seed, failing, divergence, shortfall
+            kind,
+            self.valid,
+            self.rejected,
+            self.seed,
+            failing,
+            divergence,
+            shortfall,
+            reason=reason,
         )
 
     def failure_without_counterexample(self) -> Outcome | None:
@@ -580,7 +606,7 @@ def _try_known(
 
     The result is the outcome of that case, or None. stored receives the
     run of each stored case. A known case runs outside the tree, so it
-    cannot diverge. The outcome is therefore a counterexample.
+    cannot diverge. The outcome is therefore a counterexample or a skip.
     """
     for phase, provider in known_cases(settings):
         execution = execute(body, provider, settings.max_choices)
@@ -649,13 +675,15 @@ def _replay_only(
     """Run the one case that choices record, and report it as found.
 
     The case runs outside a case tree, so it cannot diverge. When it ends
-    the run, the outcome is a counterexample.
+    the run, the outcome is a counterexample with its token, or a skip.
     """
     tally = Tally(settings.seed)
     execution = execute(body, Replaying(choices), settings.max_choices)
     observer("token", execution)
     outcome = tally.take(execution)
     if outcome is not None:
+        if outcome.failing is None:
+            return outcome
         return replace(outcome, token=encode(execution.case.choices))
     without = tally.failure_without_counterexample()
     return tally.outcome("passed") if without is None else without
@@ -691,10 +719,11 @@ def run_stored(
 
     The result is a pass that counts them, or the outcome of the first
     stored case that does not pass. A failing stored case is reported as
-    found with its token. The run does not shrink or explain it. The outcome
-    contains the runs of the stored cases up to the case that ended the run.
-    The traces and the examples of the settings do not run. A stored case
-    runs outside a case tree, so it cannot diverge.
+    found with its token. The run does not shrink or explain it. A stored
+    case that skips ends the run as skipped. The outcome contains the runs
+    of the stored cases up to the case that ended the run. The traces and
+    the examples of the settings do not run. A stored case runs outside a
+    case tree, so it cannot diverge.
 
     Args:
         body: The body.
@@ -710,8 +739,9 @@ def run_stored(
     outcome = _try_known(body, only, tally, observer, stored)
     if outcome is None:
         return replace(tally.outcome("passed"), stored=tuple(stored))
-    failing = cast("Execution", outcome.failing)
-    return replace(outcome, token=encode(failing.case.choices))
+    if outcome.failing is None:
+        return outcome
+    return replace(outcome, token=encode(outcome.failing.case.choices))
 
 
 def conclude_case(

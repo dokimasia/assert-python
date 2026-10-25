@@ -29,6 +29,10 @@ stream of the campaign. That stream is the stream of the seed at index
 2^64 - 1, above the index of every random case.
 
 The definition leaves these odds to each library.
+
+A case that skips before the first failure ends the campaign as skipped.
+After the first failure, a case that skips counts as neither a valid nor a
+rejected case, and the campaign goes on.
 """
 
 from __future__ import annotations
@@ -232,12 +236,16 @@ class _Exploration:
     def _take(self, execution: Execution, valued: bool) -> Outcome | None:
         """Count an execution, conclude a failure, and admit a valid case to the pool.
 
-        The result is the outcome that ends the campaign, or None. When valued
-        is True, the case is an example of values.
+        The result is the outcome that ends the campaign, or None: a skip
+        before the first failure, with the runs of the stored cases, or the
+        flaky outcome of a failure whose replay differs. When valued is True,
+        the case is an example of values.
         """
-        self._tally.take(execution)
+        outcome = self._tally.take(execution)
         if execution.status == "failed":
             return self._fail(execution, valued)
+        if outcome is not None and self._found is None:
+            return replace(outcome, stored=tuple(self._stored))
         if execution.status == "passed":
             self._admit(execution)
         return None

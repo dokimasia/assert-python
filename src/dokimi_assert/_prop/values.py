@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, TypeVar
 
-from dokimi_assert._prop.engine.case import Case, Generating, Rejected
+from dokimi_assert._prop.engine.case import Case, Generating, Rejected, Skipped
 from dokimi_assert._prop.engine.source import case_source
 from dokimi_assert._prop.option import Option, configure
 from dokimi_assert._prop.registry import scope
@@ -71,8 +71,10 @@ def values(generator: Generator[_T], seed: int, n: int, *options: Option) -> lis
 
     Raises:
         ValueError: n is not an int of 0 or more, seed is not an int in
-            [0, 2^64), an option is not an option of using, or the generator
-            rejects more than ten cases for each of the n values.
+            [0, 2^64), an option is not an option of using, the generator
+            rejects more than ten cases for each of the n values, or the
+            generator skips a case. values runs no test that a skip could
+            skip.
     """
     call = f"values(generator, {seed!r}, {n!r})"
     if type(n) is not int or n < 0:
@@ -95,6 +97,12 @@ def values(generator: Generator[_T], seed: int, n: int, *options: Option) -> lis
             index += 1
             try:
                 out.append(generator.decode(case))
+            except Skipped as skipped:
+                msg = (
+                    f"prop: {call} stops at a case that the generator skips: "
+                    f"{skipped.reason}"
+                )
+                raise ValueError(msg) from None
             except Rejected:
                 rejected += 1
                 if rejected > _REJECTIONS_PER_VALUE * n:

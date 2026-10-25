@@ -186,6 +186,32 @@ class TestValues:
             "the error counts the rejected cases",
         )
 
+    def test_raises_value_error_for_a_generator_that_skips_a_case(
+        self, seat: Collector
+    ) -> None:
+        """The call runs no test that a skip could skip."""
+
+        def unsupported(c: prop.Case) -> int:
+            c.skip("the generator is unsupported")
+
+        error = check.raises(
+            seat,
+            lambda: prop.values(prop.composite(unsupported), 42, 2),
+            "values raises at the skip",
+        )
+        check.equal(
+            seat,
+            (type(error), str(error)),
+            (
+                ValueError,
+                (
+                    "prop: values(generator, 42, 2) stops at a case that the "
+                    "generator skips: the generator is unsupported"
+                ),
+            ),
+            "the error states the reason of the skip",
+        )
+
     tests: ClassVar[list[tuple[str, Any, Any, str]]] = [
         (
             "raises value error for a negative count",

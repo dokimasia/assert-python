@@ -20,6 +20,7 @@ from dokimi_assert._prop.engine.choice import Choice, FloatBounds, IntegerBounds
 from dokimi_assert._prop.engine.collection import Sizes
 from dokimi_assert._prop.engine.execution import (
     Body,
+    Divergence,
     Execution,
     Observer,
     Phase,
@@ -62,6 +63,8 @@ DIGITS = List(DIGIT, Sizes(0, 8))
 BOOLEAN = Bool(Fraction(1, 2))
 THREE = SampledFrom([1, 2, 3])
 WIDE = Integer(IntegerBounds(0, 2**32))
+SMALL = Integer(IntegerBounds(0, 1000))
+BILLION = Integer(IntegerBounds(0, 10**9))
 MILLION = 1_000_000
 
 
@@ -156,6 +159,12 @@ def sevens(c: Case) -> None:
 def flag(c: Case) -> None:
     """Draw a boolean and pass."""
     c.draw(BOOLEAN, "flag")
+
+
+def skips_at_thousand(c: Case) -> None:
+    """Skip the run at the integer 1000."""
+    if c.draw(SMALL, "n") == 1000:
+        c.skip("the largest value")
 
 
 class TestDefaultCases:
@@ -268,6 +277,20 @@ class TestTally:
             ],
             [SEED, 0, 0, False, 0],
             "every count is zero",
+        )
+
+    def test_ends_the_run_at_a_case_that_skips_with_its_reason(
+        self, seat: Collector
+    ) -> None:
+        """A skip ends the run after the valid case before it."""
+        tally = Tally(SEED)
+        tally.take(executed(passes, []))
+        outcome = tally.take(executed(lambda c: c.skip("unsupported"), []))
+        check.equal(
+            seat,
+            outcome,
+            Outcome("skipped", 1, 0, SEED, reason="unsupported"),
+            "the run skips with the count of the valid case",
         )
 
 
@@ -638,6 +661,89 @@ class TestRun:
             ],
             ["flaky", "verdict"],
             "the outcome is flaky with a verdict divergence",
+        )
+
+    def test_returns_flaky_for_a_failure_whose_replay_skips(
+        self, seat: Collector
+    ) -> None:
+        """A replay that skips counts as a replay that passes."""
+        failed = False
+
+        def fails_then_skips(c: Case) -> None:
+            nonlocal failed
+            value = c.draw(BILLION, "value")
+            if failed:
+                c.skip("after")
+            if value > 1000:
+                failed = True
+                c.fail("once")
+
+        outcome = ran(fails_then_skips, Settings(SEED))
+        check.equal(
+            seat,
+            [outcome.kind, outcome.cases, outcome.divergence],
+            ["flaky", 1, Divergence("verdict", 1, "once", None)],
+            "the recorded failure against a skip, as against a pass",
+        )
+
+    def test_returns_skipped_at_the_simplest_case_of_a_body_that_skips_every_case(
+        self, seat: Collector
+    ) -> None:
+        """The first case skips before any case is valid."""
+
+        def skips(c: Case) -> None:
+            c.draw(SMALL, "n")
+            c.skip("unsupported")
+
+        outcome = ran(skips, Settings(SEED))
+        check.equal(
+            seat,
+            [outcome.kind, outcome.cases, outcome.reason],
+            ["skipped", 0, "unsupported"],
+            "the run skips at the simplest case",
+        )
+
+    def test_counts_the_valid_cases_before_the_case_that_skips(
+        self, seat: Collector
+    ) -> None:
+        """Three cases pass before a case draws 1000."""
+        outcome = ran(skips_at_thousand, Settings(SEED))
+        check.equal(
+            seat,
+            [outcome.kind, outcome.cases, outcome.reason],
+            ["skipped", 3, "the largest value"],
+            "the run skips after three valid cases",
+        )
+
+    def test_skips_at_a_case_that_skips_where_an_earlier_case_made_a_request(
+        self, seat: Collector
+    ) -> None:
+        """A case that skips at the node of an earlier case leaves no leaf."""
+        calls = 0
+
+        def zero_again(c: Case) -> None:
+            nonlocal calls
+            calls += 1
+            if c.draw(DIGIT, "first") == 0 and calls > 1:
+                c.skip("zero again")
+            c.draw(DIGIT, "second")
+
+        outcome = ran(zero_again, Settings(SEED))
+        check.equal(
+            seat,
+            [outcome.kind, outcome.cases, outcome.reason],
+            ["skipped", 3, "zero again"],
+            "the run skips after three valid cases",
+        )
+
+    def test_skips_a_replay_whose_case_skips(self, seat: Collector) -> None:
+        """The one case of the replay skips."""
+        outcome = ran(skips_at_thousand, Settings(SEED, replay=recorded(1000)))
+        check.equal(
+            seat,
+            [outcome.kind, outcome.cases, outcome.reason],
+            ["skipped", 0, "the largest value"],
+            "the replay skips",
         )
 
     def test_passes_a_requirement_that_the_share_meets(self, seat: Collector) -> None:
@@ -1220,6 +1326,25 @@ class TestRunStored:
             [outcome.kind, len(outcome.stored), outcome.token is None, seen.phases],
             ["counterexample", 2, False, ["stored", "stored"]],
             "the run does not shrink the stored case",
+        )
+
+    def test_skips_at_the_first_stored_case_that_skips(self, seat: Collector) -> None:
+        """The second of three stored cases skips."""
+        outcome = run_stored(
+            skips_at_thousand,
+            Settings(SEED, stored=(recorded(1), recorded(1000), recorded(3))),
+        )
+        check.equal(
+            seat,
+            [
+                outcome.kind,
+                outcome.cases,
+                outcome.reason,
+                len(outcome.stored),
+                outcome.token,
+            ],
+            ["skipped", 1, "the largest value", 2, None],
+            "the run skips at the second stored case, without a token",
         )
 
     def test_runs_neither_a_trace_nor_an_example(self, seat: Collector) -> None:

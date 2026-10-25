@@ -9,6 +9,9 @@ seat receives the sentence of the record. On both surfaces, a fault ends the
 call. A faulted call did not check anything, and a test that continued would
 fail on the same fault again. A seat that takes faults receives the fault as
 the exception it is, and any other seat ends the call with the exception.
+
+The run of a property can also skip. The call then writes its record with
+the verdict skip, and a seat that skips its test skips it.
 """
 
 from __future__ import annotations
@@ -22,6 +25,7 @@ from dokimi_assert._matcher.seat import (
     report,
     takes_faults,
     takes_records,
+    takes_skips,
 )
 from dokimi_assert._record.call import Call
 from dokimi_assert._record.calls import Slot, add, calls_of
@@ -275,6 +279,40 @@ class Running:
         self._write(
             Call(assertion, contract, "pass", mode is Mode.FATAL, _site(where)), run=run
         )
+
+    def skipped_run(
+        self,
+        mode: Mode,
+        assertion: str,
+        contract: str,
+        where: Where | None,
+        run: Mapping[str, Any],
+        reason: str,
+    ) -> None:
+        """Report that the run of a property at where skipped with reason.
+
+        The record of the call has the verdict skip, and run as its detail.
+        run is the detail of the run of the property. The call then skips
+        the test of a seat that skips its test, which might not return. Any
+        other seat receives nothing.
+
+        Args:
+            mode: The surface of the call.
+            assertion: The canonical id.
+            contract: The message of the caller.
+            where: The call site of the property.
+            run: The detail of the run as JSON values.
+            reason: The reason of the skip.
+        """
+        __tracebackhide__ = True
+        if not self._switched():
+            return
+        self._write(
+            Call(assertion, contract, "skip", mode is Mode.FATAL, _site(where)), run=run
+        )
+        seat = self._seat
+        if takes_skips(seat):
+            seat.skip(reason)
 
     def failed_run(self, mode: Mode, failure: Failure, run: Mapping[str, Any]) -> None:
         """Report that a call failed with the record failure.

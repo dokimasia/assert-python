@@ -438,9 +438,9 @@ class Property:
 
         The cases run oldest first. When every case passes, the report is a
         pass with the count of the cases. Otherwise the report is the first
-        case that does not pass, and the run does not shrink it. The property
-        notes each stored case that decodes to other values than its entry
-        records.
+        case that does not pass, and the run does not shrink it. A case that
+        skips skips the test of the seat. The property notes each stored case
+        that decodes to other values than its entry records.
 
         The call ends with a fault in these cases.
 
@@ -479,7 +479,8 @@ class Property:
         """Run the case that the fuzz bridge decodes from data, and report it.
 
         The report of a case that passes counts one valid case. The report of
-        a case that the body rejects counts one rejected case. The property
+        a case that the body rejects counts one rejected case. A case that
+        skips skips the input, and its report counts no case. The property
         replays, shrinks and explains a failing case in the same way as a run.
         It writes each failure of the counterexample to the store.
 
@@ -501,8 +502,11 @@ class Property:
                     )
                     observer("fuzz", execution)
                     tally = Tally(settings.seed)
-                    if tally.take(execution) is None:
+                    ended = tally.take(execution)
+                    if ended is None:
                         return tally.outcome("passed")
+                    if ended.kind == "skipped":
+                        return ended
                     return conclude_case(cases, settings, execution, observer)
 
                 outcome = self._drive(running, bridged)
@@ -689,8 +693,21 @@ class Property:
         return faults
 
     def _report(self, running: Running, outcome: Outcome) -> None:
-        """Report the outcome as the verdict of the call."""
+        """Report the outcome as the verdict of the call.
+
+        A skipped run skips the test of a seat that skips its test.
+        """
         call = self.call
+        if outcome.kind == "skipped":
+            running.skipped_run(
+                Mode.FATAL,
+                call.assertion,
+                call.contract,
+                call.where,
+                detail_json(outcome, detail_of(outcome)),
+                cast("str", outcome.reason),
+            )
+            return
         if outcome.kind == "passed":
             running.passed_run(
                 Mode.FATAL,

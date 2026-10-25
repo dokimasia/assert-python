@@ -81,6 +81,24 @@ def fails_on_run(failing: int) -> Body:
     return body
 
 
+def skips_on_run(skipping: int) -> Body:
+    """Return a body that sets four repeats and skips on one of its calls.
+
+    The calls of the body count from 1.
+    """
+    calls = 0
+
+    def body(c: Case) -> None:
+        nonlocal calls
+        calls += 1
+        c.draw(DIGITS, "n")
+        c.repeat(4)
+        if calls == skipping:
+            c.skip("unsupported")
+
+    return body
+
+
 def run(
     body: Body,
     choices: list[Choice] | None = None,
@@ -107,7 +125,7 @@ class TestDivergence:
 class TestExecution:
     """Execution is one call of the body and how it ended."""
 
-    def test_defaults_the_failure_the_divergence_the_overrun_and_the_stop(
+    def test_defaults_the_failure_the_divergence_the_overrun_the_stop_and_the_reason(
         self, seat: Collector
     ) -> None:
         """The defaults describe a case that passed."""
@@ -119,8 +137,9 @@ class TestExecution:
                 execution.divergence,
                 execution.overran,
                 execution.stopped,
+                execution.reason,
             ),
-            (None, None, False, None),
+            (None, None, False, None, None),
             "the defaults are those of a pass",
         )
 
@@ -186,6 +205,27 @@ class TestExecute:
         """A false assumption rejects the case."""
         execution = run(lambda c: c.assume(False))
         check.equal(seat, execution.status, "rejected", "the case is rejected")
+
+    def test_skips_a_body_that_skips_with_its_reason(self, seat: Collector) -> None:
+        """A skip ends the case with its reason."""
+        execution = run(lambda c: c.skip("unsupported"))
+        check.equal(
+            seat,
+            [execution.status, execution.reason, identity_of(execution)],
+            ["skipped", "unsupported", None],
+            "the case skips with its reason",
+        )
+
+    def test_skips_a_case_without_a_leaf(self, seat: Collector) -> None:
+        """The first choice has a node, and no case ended there."""
+        tree = Tree()
+
+        def skips(c: Case) -> None:
+            c.draw(DIGITS, "n")
+            c.skip("unsupported")
+
+        run(skips, integers(3), tree)
+        check.is_none(seat, tree.root.children[3].ending, "the node is not a leaf")
 
     def test_rejects_a_case_past_its_cap_as_overran(self, seat: Collector) -> None:
         """Two draws exceed one choice."""
@@ -364,6 +404,20 @@ class TestRepeat:
             "the case ends at the second run with its record",
         )
 
+    def test_ends_the_case_at_the_first_later_run_that_skips(
+        self, seat: Collector
+    ) -> None:
+        """The second of four runs skips."""
+        body = skips_on_run(2)
+        first = execute(body, Replaying(integers(4)), MAX_CHOICES, limit=1)
+        execution = repeat(first, body)
+        check.equal(
+            seat,
+            [execution.status, execution.reason, execution.runs],
+            ["skipped", "unsupported", 2],
+            "the case ends at the second run with its reason",
+        )
+
     def test_does_not_run_a_failing_case_again(self, seat: Collector) -> None:
         """The first run fails."""
         body = fails_on_run(1)
@@ -484,6 +538,22 @@ class TestEntered:
             [got is execution, steps, tree.root.children[4].ending],
             [True, 1, "passed"],
             "the leaf of the first run is a pass",
+        )
+
+    def test_does_not_add_a_leaf_for_a_case_that_skips(self, seat: Collector) -> None:
+        """The first choice has a node, and no case ended there."""
+        tree = Tree()
+
+        def skips(c: Case) -> None:
+            c.draw(DIGITS, "n")
+            c.skip("unsupported")
+
+        got, steps = entered(tree, ahead(skips, integers(5)))
+        check.equal(
+            seat,
+            [got.status, steps, tree.root.children[5].ending],
+            ["skipped", 1, None],
+            "the node is not a leaf",
         )
 
     def test_drops_the_later_runs_of_a_case_that_the_walk_stops(

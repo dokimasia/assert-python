@@ -411,6 +411,7 @@ BLOCKS = {
                 "fuzz",
                 "Case.draw",
                 "Case.assume",
+                "Case.skip",
                 "Case.classify",
                 "Case.target",
                 "Case.note",
