@@ -172,7 +172,9 @@ def completes_within(
     call = Running.of(seat, call_site())
     clock = clock_of(seat)
     started = clock.now()
-    waited = time.monotonic()
+    # perf_counter has the highest resolution of the platform. Before Python
+    # 3.13, monotonic on Windows had a resolution of 15.6 milliseconds.
+    waited = time.perf_counter()
     done = threading.Event()
 
     def subject() -> None:
@@ -185,7 +187,7 @@ def completes_within(
 
     threading.Thread(target=subject, name="completes-within", daemon=True).start()
     if not done.wait(max(within, 0.0)):
-        got = round(time.monotonic() - waited, 3)
+        got = round(time.perf_counter() - waited, 3)
         call.failed(mode, "completes-within", msg, {"want": within, "got": got})
         return
     elapsed = clock.now() - started
