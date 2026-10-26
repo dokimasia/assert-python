@@ -32,10 +32,14 @@ class TestSystemSleep:
     """System.sleep, a wait on the platform clock."""
 
     def test_waits_the_duration_on_the_platform(self, seat: Collector) -> None:
-        """The platform clock passes the duration."""
-        before = time.monotonic()
+        """The performance counter passes the duration.
+
+        The monotonic clock of Windows before Python 3.13 ticks every 15.6 ms,
+        so only the performance counter times a sleep of 10 ms.
+        """
+        before = time.perf_counter()
         System().sleep(0.01)
-        check.is_true(seat, time.monotonic() - before >= 0.01, "the time passed")
+        check.is_true(seat, time.perf_counter() - before >= 0.01, "the time passed")
 
 
 class TestControlledNow:
