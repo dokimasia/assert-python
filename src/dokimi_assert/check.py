@@ -790,6 +790,9 @@ def rejects(seat: Seat, msg: str, body: Callable[[Any], object]) -> list[Failure
     the returned records to confirm that the check fails for the reason that
     it was written to catch.
 
+    A check whose environment lacks a capability calls skip of its seat.
+    When it skips before it fails, rejects skips the test with the reason.
+
     Args:
         seat: The seat that receives the failure. Use the seat fixture.
         msg: The contract under test.

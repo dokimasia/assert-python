@@ -19,7 +19,8 @@ through fault.
 
 A property whose run skips skips the test of a Collector or a Standard
 seat. Both raise unittest.SkipTest, which unittest and pytest report as a
-skipped test. A Recorder keeps the call record of the skip alone.
+skipped test. A Recorder keeps the call record of the skip alone. A call of
+rejects whose check skips before it fails skips the test in the same way.
 """
 
 from __future__ import annotations

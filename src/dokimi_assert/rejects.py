@@ -36,7 +36,8 @@ class _Check(Body):
     It keeps each failure record of the check in call order, and whether the
     check failed at all. A failure that stops ends the check in the same way
     as it ends a test. A fault that ends its call ends the check, and the
-    seat keeps the fault.
+    seat keeps the fault. A skip ends the check too, and the seat keeps the
+    reason of the first skip.
     """
 
     def __init__(self, slot: Slot | None, parent: Seat) -> None:
@@ -44,6 +45,7 @@ class _Check(Body):
         super().__init__(slot, parent)
         self.records: list[Failure] = []
         self.fault: BaseException | None = None
+        self.reason: str | None = None
 
     def report(self, failure: Failure, aborting: bool) -> None:
         """Keep failure, and end the check when it came from the aborting surface.
@@ -80,6 +82,22 @@ class _Check(Body):
             self.fault = fault
         raise Ended
 
+    def skip(self, reason: str) -> None:
+        """Keep the reason of the first skip, and end the check.
+
+        A check that skips before it fails ends the call of rejects as
+        skipped.
+
+        Args:
+            reason: The reason of the skip.
+
+        Raises:
+            Ended: Always.
+        """
+        if self.reason is None:
+            self.reason = reason
+        raise Ended
+
 
 def rejects(
     seat: Seat, mode: Mode, msg: str, body: Callable[[Any], object]
@@ -99,6 +117,15 @@ def rejects(
     record of rejects states the verdict error, the seat receives the fault
     as seat.fault passes it, and rejects returns an empty list. A fault that
     the check notes passes to the seat as a noted fault.
+
+    A check that calls skip of its seat before it fails ends the call as
+    skipped, because a check that cannot run in its environment rejects
+    nothing. The record of rejects states the verdict skip and the reason.
+    rejects then calls skip of seat where the seat has the member, which
+    skips the test. On a seat without the member, rejects returns an empty
+    list. A check that fails and then skips passes rejects. A
+    unittest.SkipTest that the check raises propagates out of the call as
+    any other exception does.
 
     Args:
         seat: The seat that receives the failure.
@@ -125,6 +152,9 @@ def rejects(
         call.slot.take(own(check))
     if check.fault is not None:
         call.faulted(mode, "rejects", msg, check.fault)
+        return []
+    if check.reason is not None and not check.failed:
+        call.skipped_run(mode, "rejects", msg, None, None, check.reason)
         return []
     if not check.failed:
         call.failed(mode, "rejects", msg, {})

@@ -680,6 +680,9 @@ def no_task_leaks(seat: Seat, msg: str) -> Callable[[], None]:
 def rejects(seat: Seat, msg: str, body: Callable[[Any], object]) -> list[Failure]:
     """Record a failure when a check passes against a subject that it must reject.
 
+    A check that calls skip of its seat before it fails skips the test with
+    the reason, as it does under check.rejects.
+
     Args:
         seat: The seat that receives the failure. Use the seat fixture.
         msg: The contract under test.

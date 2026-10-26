@@ -5,8 +5,8 @@
 
 A record has the number of the call in its test, the assertion, the
 contract, the verdict, the surface, the call site and the detail of a
-failure. Each record is one JSON object on one line. Its fields are in the
-order of the definition.
+failure. The record of a skip has the reason too. Each record is one JSON
+object on one line. Its fields are in the order of the definition.
 """
 
 from __future__ import annotations
@@ -60,6 +60,7 @@ class Call:
         detail: An object of JSON values. A failure has one, and so does the
             run of a property.
         error: The text of the fault that ended a call of the verdict error.
+        reason: The reason of the skip of a call of the verdict skip.
     """
 
     assertion: str
@@ -69,6 +70,7 @@ class Call:
     where: tuple[str, int] | None = None
     detail: Mapping[str, Any] | None = None
     error: str | None = None
+    reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,4 +119,6 @@ def encode_call(call: Call, place: Place) -> str:
         record["detail"] = dict(call.detail)
     if call.error is not None:
         record["error"] = call.error
+    if call.reason is not None:
+        record["reason"] = call.reason
     return json(record)

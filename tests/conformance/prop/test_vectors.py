@@ -183,7 +183,29 @@ class TestKinds:
             "settings": {"seed": "7", "cases": 1},
             "calls": [],
         }
-        assert KINDS["recording"](raw, str(tmp_path)) == {"verdict": "fail"}
+        assert KINDS["recording"](raw, str(tmp_path)) == {
+            "verdict": "fail",
+            "reason": None,
+        }
+
+    def test_computes_the_reason_of_a_recording_vector_whose_cases_skip(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """Every digit is at least 0, so the first case skips."""
+        raw = {
+            "body": {
+                "draw": DIGIT,
+                "skips": [
+                    {"reason": "unsupported", "when": {"kind": "at-least", "n": 0}}
+                ],
+            },
+            "settings": {"seed": "7"},
+            "calls": [],
+        }
+        assert KINDS["recording"](raw, str(tmp_path)) == {
+            "verdict": "skip",
+            "reason": "unsupported",
+        }
 
     def test_computes_the_detail_of_a_behaviour_vector_with_an_example(
         self, tmp_path: pathlib.Path
@@ -362,6 +384,20 @@ class TestCheckProp:
         assert at == "calls"
         assert reason.startswith(
             'the library records [{"seq": 2, "parent": 1, "run": 1'
+        )
+
+    def test_raises_at_the_reason_of_a_recording_vector_that_differs(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """The case of the run skips for another reason."""
+        raw = vector(
+            "recording",
+            "recording/records-the-cases-before-a-case-that-skips",
+            reason="the disk is full",
+        )
+        assert fault_of("recording", raw, tmp_path) == (
+            "reason",
+            'the library computes "unsupported", want "the disk is full"',
         )
 
     def test_raises_at_the_entry_of_a_store_vector_that_does_not_read_back(

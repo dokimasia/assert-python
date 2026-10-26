@@ -286,7 +286,21 @@ class TestRunningSkippedRun:
             {"outcome": "skipped"},
             {"file": "prop.py", "line": 9},
         )
+        assert record["reason"] == "unsupported"
         assert (seat.failed, seat.failures) == (False, [])
+
+    def test_writes_no_detail_for_a_call_without_a_run(self) -> None:
+        """The record of a skipped call of rejects has the reason alone."""
+        seat = Recorder()
+        Running.begin(seat, Where("check.py", 12)).skipped_run(
+            Mode.FATAL, "rejects", "c", None, None, "the check needs a disk"
+        )
+        [record] = records(seat)
+        assert "detail" not in record
+        assert (record["reason"], record["where"]) == (
+            "the check needs a disk",
+            {"file": "check.py", "line": 12},
+        )
 
     def test_skips_a_seat_that_skips_after_the_record(self) -> None:
         """The seat skips with the reason once the record is written."""

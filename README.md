@@ -1035,6 +1035,13 @@ the check fails for the reason that it was written to catch. Both surfaces
 have it. The `recorder` fixture is the lower-level form. Drive an assertion
 with it, then read `failed`, `message` and `failures`.
 
+A check whose environment lacks a capability calls `skip` of its seat.
+When it skips before it fails, `rejects` skips the test with the reason.
+The check cannot run there, so it has no verdict on the subject. On a
+`Recorder`, which cannot skip, `rejects` returns an empty list. A
+`unittest.SkipTest` that the check raises propagates out of `rejects`
+without a verdict.
+
 ## Call records
 
 With `DOKIMI_ASSERT_RECORD=1`, the seat of each test appends the call

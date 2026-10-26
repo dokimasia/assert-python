@@ -57,6 +57,18 @@ class TestEncodeCall:
             {"outcome": "skipped", "reason": "unsupported"},
         )
 
+    def test_writes_the_reason_of_a_skipped_call_last(self) -> None:
+        """The record of a skipped call of rejects ends with the reason."""
+        call = Call("rejects", "c", "skip", True, reason="the check needs a disk")
+        record = json.loads(encode_call(call, Place(seq=1)))
+        assert list(record)[-2:] == ["aborting", "reason"]
+        assert record["reason"] == "the check needs a disk"
+
+    def test_writes_the_empty_reason_of_a_skipped_call(self) -> None:
+        """A skip without a reason has the field reason too."""
+        call = Call("rejects", "c", "skip", True, reason="")
+        assert json.loads(encode_call(call, Place(seq=1)))["reason"] == ""
+
     def test_writes_the_text_of_the_fault_of_an_error(self) -> None:
         """The record of a faulted call contains the text of the fault."""
         call = Call("prop-for-all", "c", "error", True, error="prop.for_all: no")

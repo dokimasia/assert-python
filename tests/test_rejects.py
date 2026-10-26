@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import unittest
 from typing import TYPE_CHECKING, Any
 
 from dokimi_assert import check, expect
@@ -235,6 +236,116 @@ class TestRejects:
         )
         check.equal(seat, recorder.faults, [noted], "the seat receives the note")
         check.is_false(seat, recorder.failed, "rejects passes")
+
+    def test_ends_as_skipped_for_a_check_that_skips_before_it_fails(
+        self, seat: Collector
+    ) -> None:
+        """A check that cannot run has no verdict on the subject."""
+        recorder = Recorder()
+        reached: list[str] = []
+
+        def body(inner: Any) -> None:
+            inner.skip("the check needs a disk")
+            reached.append("after")
+
+        failures = rejects(recorder, Mode.FATAL, "a check that skips", body)
+        check.is_empty(seat, reached, "the skip ended the check")
+        check.is_empty(seat, failures, "the skip has no record")
+        check.is_false(seat, recorder.failed, "the skip fails nothing")
+        check.equal(
+            seat,
+            [(r["assertion"], r["verdict"], r["reason"]) for r in records(recorder)],
+            [("rejects", "skip", "the check needs a disk")],
+            "the call of rejects ends as skipped",
+        )
+
+    def test_skips_the_test_of_a_seat_that_skips(self, seat: Collector) -> None:
+        """A standard seat raises unittest.SkipTest with the reason of the check."""
+        raised = check.raises(
+            seat,
+            lambda: rejects(
+                Standard(),
+                Mode.SOFT,
+                "a check that skips",
+                lambda inner: inner.skip("the check needs a disk"),
+            ),
+            "rejects skips the test",
+        )
+        check.is_true(seat, isinstance(raised, unittest.SkipTest), "a SkipTest")
+        check.equal(seat, str(raised), "the check needs a disk", "the reason")
+
+    def test_keeps_the_reason_of_the_first_skip(self, seat: Collector) -> None:
+        """A check that suppresses the end of its first skip still ends with it."""
+        recorder = Recorder()
+
+        def body(inner: Any) -> None:
+            with contextlib.suppress(BaseException):
+                inner.skip("the first reason")
+            inner.skip("the second reason")
+
+        rejects(recorder, Mode.FATAL, "a check with two skips", body)
+        check.equal(
+            seat,
+            [r.get("reason") for r in records(recorder)],
+            ["the first reason"],
+            "the call of rejects has the first reason",
+        )
+
+    def test_passes_a_check_that_fails_and_then_skips(self, seat: Collector) -> None:
+        """The failure has already rejected the subject."""
+        recorder = Recorder()
+
+        def body(inner: Any) -> None:
+            expect.is_none(inner, 1, "it fails first")
+            inner.skip("the check needs a disk")
+
+        failures = rejects(recorder, Mode.FATAL, "a check that skips late", body)
+        check.equal(
+            seat, [f.contract for f in failures], ["it fails first"], "the records"
+        )
+        check.equal(
+            seat,
+            [r["verdict"] for r in records(recorder) if r["assertion"] == "rejects"],
+            ["pass"],
+            "rejects passes",
+        )
+
+    def test_passes_a_noted_fault_of_a_check_that_then_skips_to_its_seat(
+        self, seat: Collector
+    ) -> None:
+        """The seat receives the note before the skip ends the call."""
+        recorder = Recorder()
+        noted = OSError("the store skips a file")
+
+        def body(inner: Any) -> None:
+            inner.report_fault(noted, False)
+            inner.skip("the check needs a disk")
+
+        failures = rejects(recorder, Mode.FATAL, "a check with a note", body)
+        check.is_empty(seat, failures, "the skip has no record")
+        check.equal(seat, recorder.faults, [noted], "the seat receives the note")
+        check.equal(
+            seat,
+            [r["verdict"] for r in records(recorder)],
+            ["skip"],
+            "the call of rejects ends as skipped",
+        )
+
+    def test_lets_a_skip_test_of_the_check_leave_the_call(
+        self, seat: Collector
+    ) -> None:
+        """A raised unittest.SkipTest is not a call of skip."""
+        skipped = unittest.SkipTest("the check needs a disk")
+
+        def body(_: Any) -> None:
+            raise skipped
+
+        raised = check.raises(
+            seat,
+            lambda: rejects(Recorder(), Mode.FATAL, "a check that raises", body),
+            "rejects raises the SkipTest of the check",
+        )
+        check.is_true(seat, raised is skipped, "the SkipTest of the check")
 
     def test_lets_an_exception_of_the_check_leave_the_call(
         self, seat: Collector

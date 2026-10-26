@@ -417,12 +417,14 @@ def _behaviour(raw: Mapping[str, Any], directory: str) -> dict[str, Any]:
 
 
 def _recording(raw: Mapping[str, Any], directory: str) -> dict[str, Any]:
-    """Return the verdict of the property of a recording vector.
+    """Return the verdict of the property of a recording vector, and its reason.
 
-    The runner compares the calls of true in the body with the calls of the
-    vector. A call of true has the run of the body that made it, the phase
-    of the run and the verdict of true. The call at position i from 0 has
-    the seq i + 2, and its parent is the property, whose seq is 1.
+    The reason is the reason of a property that skips, and None for any
+    other property. The runner compares the calls of true in the body with
+    the calls of the vector. A call of true has the run of the body that
+    made it, the phase of the run and the verdict of true. The call at
+    position i from 0 has the seq i + 2, and its parent is the property,
+    whose seq is 1.
 
     Raises:
         FaultError: The calls of true differ from the calls of the vector.
@@ -445,7 +447,7 @@ def _recording(raw: Mapping[str, Any], directory: str) -> dict[str, Any]:
         raise FaultError(
             at, f"the library records {json.dumps(got)}, want {json.dumps(want)}"
         )
-    return {"verdict": first["verdict"]}
+    return {"verdict": first["verdict"], "reason": first.get("reason")}
 
 
 #: The function that computes the outputs of each kind, by the kind.

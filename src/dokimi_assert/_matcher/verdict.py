@@ -286,29 +286,40 @@ class Running:
         assertion: str,
         contract: str,
         where: Where | None,
-        run: Mapping[str, Any],
+        run: Mapping[str, Any] | None,
         reason: str,
     ) -> None:
-        """Report that the run of a property at where skipped with reason.
+        """Report that the call ended as skipped with reason.
 
-        The record of the call has the verdict skip, and run as its detail.
-        run is the detail of the run of the property. The call then skips
-        the test of a seat that skips its test, which might not return. Any
-        other seat receives nothing.
+        A property reports it when its run ends at a case that skipped.
+        rejects reports it when its check skips before it fails. The record
+        of the call has the verdict skip, the reason, and run as its detail.
+        The call then skips the test of a seat that skips its test, which
+        might not return. Any other seat receives nothing.
 
         Args:
             mode: The surface of the call.
             assertion: The canonical id.
             contract: The message of the caller.
-            where: The call site of the property.
-            run: The detail of the run as JSON values.
+            where: The call site of the property, or None for the call site
+                of the call.
+            run: The detail of the run of the property as JSON values, or
+                None for a record without detail.
             reason: The reason of the skip.
         """
         __tracebackhide__ = True
         if not self._switched():
             return
         self._write(
-            Call(assertion, contract, "skip", mode is Mode.FATAL, _site(where)), run=run
+            Call(
+                assertion,
+                contract,
+                "skip",
+                mode is Mode.FATAL,
+                _site(where),
+                reason=reason,
+            ),
+            run=run,
         )
         seat = self._seat
         if takes_skips(seat):
@@ -399,6 +410,7 @@ class Running:
             where,
             stated,
             call.error,
+            call.reason,
         )
         if self._slot is not None:
             self._slot.write(record)
