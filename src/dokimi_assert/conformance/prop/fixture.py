@@ -25,6 +25,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta, timezone
 from decimal import Decimal
+from fractions import Fraction
 from typing import TYPE_CHECKING, Annotated, Any, cast
 from zoneinfo import ZoneInfo
 
@@ -306,6 +307,27 @@ class Gateway:
     address: ipaddress.IPv4Address
 
 
+@dataclass(frozen=True)
+class Signal:
+    """A record of the complex field sample.
+
+    A complex reads as a record of the 64-bit floats real and imag.
+    """
+
+    sample: complex
+
+
+@dataclass(frozen=True)
+class Share:
+    """A record of the rational field part.
+
+    A Fraction reads as a record of the signed 64-bit int num and the
+    unsigned 64-bit int den of at least 1.
+    """
+
+    part: Fraction
+
+
 prop.register_values(Status, Status("pending"), Status("paid"), Status("shipped"))
 prop.register_variants(Payment, pending, paid, refunded)
 
@@ -346,6 +368,8 @@ FIXTURES: dict[str, type] = {
     "stamp": Stamp,
     "fee": Fee,
     "gateway": Gateway,
+    "signal": Signal,
+    "share": Share,
 }
 
 

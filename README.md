@@ -1061,7 +1061,7 @@ library against it:
 
 - The 195 cases of the corpus run on `check` and `expect`. Python skips none
   of them.
-- The vectors run too: 57 for files, 80 for histories, 430 for properties
+- The vectors run too: 57 for files, 80 for histories, 432 for properties
   and 14 for machines.
 - `tests/test_definition.py` checks each of the definition's 110
   assertions. An assertion is present, or the overlay declines it and it is

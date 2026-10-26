@@ -29,6 +29,8 @@ datetime with Timezone(...)        zoned-date-time
 ZoneInfo, UUID                     zone, uuid
 IPv4Address, IPv6Address           ip-address of version 4, of version 6
 Decimal with Scale                 decimal
+complex                            record of the floats real and imag
+Fraction                           record of the ints num and den
 =================================  ==========================================
 
 The reader reads a subclass of int, float, str or bytes as its base, and a
@@ -58,6 +60,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+from fractions import Fraction
 from typing import Annotated, Any, Literal, cast
 from zoneinfo import ZoneInfo
 
@@ -756,7 +759,11 @@ def _time_scalar(
 def _domain_scalar(
     t: type, constraints: _Constraints, at: str
 ) -> tuple[Node, Converter] | None:
-    """Return the shape of a timezone, ZoneInfo, UUID, address or Decimal class."""
+    """Return the shape of a domain class or of a number of two parts.
+
+    The domain classes are timezone, ZoneInfo, UUID, the addresses and
+    Decimal. A complex and a Fraction are numbers of two parts.
+    """
     if t is timezone:
         node = {"shape": "offset"}
         _bounds(node, constraints, _offset_bound(at))
@@ -775,7 +782,8 @@ def _domain_scalar(
         return {"shape": "ip-address", "version": number}, ip_converter()
     if t is Decimal:
         return _decimal_shape(constraints, at)
-    return None
+    two_parts = _TWO_PARTS.get(t)
+    return None if two_parts is None else two_parts()
 
 
 def _built(t: type) -> Converter:
@@ -853,6 +861,64 @@ def _decimal_shape(constraints: _Constraints, at: str) -> tuple[Node, Converter]
     node: Node = {"shape": "decimal", "scale": digits}
     _bounds(node, constraints, _decimal_bound(digits, at))
     return node, decimal_converter(digits)
+
+
+def _complex_shape() -> tuple[Node, Converter]:
+    """Return the shape of a complex: a record of the 64-bit floats real and imag."""
+    node: Node = {
+        "shape": "record",
+        "fields": [
+            ["real", {"shape": "float", "width": 64}],
+            ["imag", {"shape": "float", "width": 64}],
+        ],
+    }
+
+    def to(value: Fields) -> complex:
+        (_, real), (_, imag) = value.fields
+        return complex(real, imag)
+
+    def back(value: Any) -> Any:
+        if not isinstance(value, complex):
+            return value
+        return Fields((("real", value.real), ("imag", value.imag)))
+
+    return node, Converter(to, back)
+
+
+def _fraction_shape() -> tuple[Node, Converter]:
+    """Return the shape of a Fraction: a record of the ints num and den.
+
+    num is a signed 64-bit int, and den is an unsigned 64-bit int of at least
+    1. The Fraction of a record is in lowest terms. A Fraction whose
+    numerator or denominator is outside its 64-bit range does not have a
+    record, so the shape refuses its inverse.
+    """
+    node: Node = {
+        "shape": "record",
+        "fields": [
+            ["num", {"shape": "int", "width": 64, "signed": True}],
+            ["den", {"shape": "int", "width": 64, "signed": False, "min": 1}],
+        ],
+    }
+
+    def to(value: Fields) -> Fraction:
+        (_, num), (_, den) = value.fields
+        return Fraction(num, den)
+
+    def back(value: Any) -> Any:
+        if not isinstance(value, Fraction):
+            return value
+        return Fields((("num", value.numerator), ("den", value.denominator)))
+
+    return node, Converter(to, back)
+
+
+#: The shape of each class of numbers of two parts. A number of two parts
+#: does not take a constraint.
+_TWO_PARTS: dict[type, Callable[[], tuple[Node, Converter]]] = {
+    complex: _complex_shape,
+    Fraction: _fraction_shape,
+}
 
 
 def _datetime_shape(constraints: _Constraints, at: str) -> tuple[Node, Converter]:

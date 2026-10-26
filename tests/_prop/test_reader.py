@@ -10,6 +10,7 @@ import math
 from dataclasses import dataclass, field, make_dataclass
 from datetime import UTC, date, datetime, time, timedelta, timezone
 from decimal import Decimal
+from fractions import Fraction
 from ipaddress import IPv4Address, IPv6Address
 from typing import (
     TYPE_CHECKING,
@@ -33,6 +34,7 @@ from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert._prop.engine.choice import IntegerBounds
 from dokimi_assert._prop.engine.float import next_down
 from dokimi_assert._prop.engine.generator import Integer
+from dokimi_assert._prop.engine.inverse import CannotInvertError, invert
 from dokimi_assert._prop.engine.value import Fields, Pairs, canonical
 from dokimi_assert._prop.engine.value import Variant as Neutral
 from dokimi_assert._prop.markers import (
@@ -55,6 +57,7 @@ from dokimi_assert._prop.reader import (
     literal_converter,
     qualified,
 )
+from dokimi_assert._prop.registry import of
 from helpers import refusal
 
 if TYPE_CHECKING:
@@ -63,6 +66,7 @@ if TYPE_CHECKING:
 
 #: The shapes of the scalars that the cases refer to.
 INT: Node = {"shape": "int", "width": 64, "signed": True}
+FLOAT: Node = {"shape": "float", "width": 64}
 STRING: Node = {"shape": "string"}
 BOOL: Node = {"shape": "bool"}
 
@@ -649,6 +653,22 @@ class TestDerive:
             Annotated[Decimal, Scale(1), at.Le("2.5")],
             {"shape": "decimal", "scale": 1, "max": "2.5"},
         ),
+        (
+            "reads a complex as a record of the floats real and imag",
+            complex,
+            {"shape": "record", "fields": [["real", FLOAT], ["imag", FLOAT]]},
+        ),
+        (
+            "reads a Fraction as a record of the ints num and den",
+            Fraction,
+            {
+                "shape": "record",
+                "fields": [
+                    ["num", INT],
+                    ["den", {"shape": "int", "width": 64, "signed": False, "min": 1}],
+                ],
+            },
+        ),
     ]
 
     @pytest.mark.parametrize(
@@ -1092,6 +1112,8 @@ class TestDerive:
             "a tuple of fields",
         ),
         ("refuses a bound of a record", Annotated[Point, at.Ge(0)], "Point"),
+        ("refuses a bound of a complex", Annotated[complex, at.Ge(0)], "complex"),
+        ("refuses a bound of a Fraction", Annotated[Fraction, at.Le(1)], "Fraction"),
     ]
 
     @pytest.mark.parametrize(
@@ -1358,6 +1380,55 @@ class TestDerive:
             "the converter converts both ways",
         )
         unchanged(seat, converter, "b")
+
+    def test_converts_a_complex_both_ways(self, seat: Collector) -> None:
+        """The value is 1.5 - 2j."""
+        converter = converted(complex)
+        neutral = Fields((("real", 1.5), ("imag", -2.0)))
+        check.equal(seat, converter.to(neutral), 1.5 - 2j, "to returns the complex")
+        same(seat, converter.back(1.5 - 2j), neutral, "back returns the neutral value")
+        unchanged(seat, converter, 1.5)
+
+    def test_converts_a_fraction_both_ways_in_lowest_terms(
+        self, seat: Collector
+    ) -> None:
+        """The record -2/4 is the Fraction -1/2."""
+        converter = converted(Fraction)
+        got = converter.to(Fields((("num", -2), ("den", 4))))
+        check.equal(seat, got, Fraction(-1, 2), "to returns the fraction")
+        same(
+            seat,
+            converter.back(got),
+            Fields((("num", -1), ("den", 2))),
+            "back returns the record of the lowest terms",
+        )
+        unchanged(seat, converter, 0.5)
+
+    def test_refuses_the_inverse_of_a_fraction_outside_the_64_bit_ranges(
+        self, seat: Collector
+    ) -> None:
+        """The numerator 2^63 and the denominator 2^64 do not have a record."""
+        generator = of(Fraction)
+        check.equal(
+            seat,
+            [
+                refusal(
+                    seat,
+                    lambda: invert(generator, Fraction(2**63)),
+                    CannotInvertError,
+                ),
+                refusal(
+                    seat,
+                    lambda: invert(generator, Fraction(1, 2**64)),
+                    CannotInvertError,
+                ),
+            ],
+            [
+                f"prop: int:{2**63} is outside integer {-(2**63)} {2**63 - 1}",
+                f"prop: int:{2**64} is outside integer 1 {2**64 - 1}",
+            ],
+            "the int of num and the int of den refuse the parts",
+        )
 
     def test_converts_a_subclass_of_int_to_the_subclass(self, seat: Collector) -> None:
         """The value is an amount."""
