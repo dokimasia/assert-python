@@ -12,7 +12,9 @@ conftest.py has the registrations of a project.
 
 A run of a property can give types other generators through using. A draw of
 of picks the generator of its type in the run where it decodes. The run sets
-its generators with scope on each thread that decodes its draws.
+its generators with scope on each thread that decodes its draws. The stated
+generator of a type and the extension of a recursive generator enter the
+generators of their draws the same way.
 
 The registry is safe for concurrent use. A read of a type locks the registry
 until the read ends.
@@ -31,7 +33,14 @@ from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert._override import override
 from dokimi_assert._prop.convert import converter_of
 from dokimi_assert._prop.engine import literal, shape, strict_json
-from dokimi_assert._prop.engine.generator import Deferred, Generator, Mapped
+from dokimi_assert._prop.engine.generator import (
+    Deferred,
+    Filter,
+    Generator,
+    Mapped,
+    Position,
+    Recursive,
+)
 from dokimi_assert._prop.engine.value import canonical
 from dokimi_assert._prop.reader import (
     Derived,
@@ -47,6 +56,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 __all__ = [
+    "Extending",
     "Generators",
     "Picking",
     "Within",
@@ -104,24 +114,41 @@ def scope(generators: Generators | None) -> collections.abc.Generator[None, None
 class Generators:
     """The generators that the using options of one run give types.
 
-    A draw of of(t) picks the generator of t from them. The methods are safe
-    for concurrent use.
+    A draw of of(t) picks the generator of t from them. Inside the stated
+    generator of a type, the draws pick from the generators of the run
+    without that type. Inside the extension of a recursive generator that
+    the run states for that type, they pick the generator of the position.
+    The methods are safe for concurrent use.
     """
 
-    def __init__(self, stated: Mapping[object, Generator[Any]] | None = None) -> None:
+    def __init__(
+        self,
+        stated: Mapping[object, Generator[Any]] | None = None,
+        inside: frozenset[object] = frozenset(),
+        run: Mapping[object, Generator[Any]] | None = None,
+    ) -> None:
         """Return the generators of a run.
 
         Args:
-            stated: The generator of each type that the run states, or None
-                for a run that states none.
+            stated: The generator of each type, or None for no type.
+            inside: The types whose stated generators decode around the
+                draws.
+            run: The generator of each type that the run states, or None for
+                the generators of stated.
         """
         self._stated: dict[object, Generator[Any]] = dict(stated or {})
+        self._inside: frozenset[object] = inside
+        self._run: Mapping[object, Generator[Any]] = (
+            self._stated if run is None else run
+        )
         self._lock: threading.Lock = threading.Lock()
         self._picked: dict[object, Generator[Any]] = {}
         self._without: dict[object, Generators] = {}
+        self._extended: dict[Position[Any], Generators] = {}
 
-    #: Generators compare by the generators that they state, and they do not
-    #: have a hash.
+    #: Generators compare by the generators that they state and by the types
+    #: whose stated generators decode around the draws. They do not have a
+    #: hash.
     __hash__ = None  # type: ignore[assignment]
 
     @override
@@ -132,9 +159,14 @@ class Generators:
             other: The other value.
 
         Returns:
-            True for generators of the same types with the same generators.
+            True for generators of the same types with the same generators,
+            inside the stated generators of the same types.
         """
-        return isinstance(other, Generators) and other._stated == self._stated
+        return (
+            isinstance(other, Generators)
+            and other._stated == self._stated
+            and other._inside == self._inside
+        )
 
     def read(self, t: object) -> Generator[Any]:
         """Return the generator of t under these generators.
@@ -191,7 +223,9 @@ class Generators:
         return picked
 
     def without(self, t: object) -> Generators:
-        """Return these generators without the generator of t.
+        """Return the generators inside the stated generator of t.
+
+        They are these generators without the generator of t.
 
         Args:
             t: The type.
@@ -202,9 +236,44 @@ class Generators:
         with self._lock:
             rest = self._without.get(t)
             if rest is None:
-                rest = Generators({s: g for s, g in self._stated.items() if s != t})
+                stated = {s: g for s, g in self._stated.items() if s != t}
+                rest = Generators(stated, self._inside | {t}, self._run)
                 self._without[t] = rest
         return rest
+
+    def extending(self, position: Position[Any]) -> Generators:
+        """Return the generators inside the extension of a recursive generator.
+
+        Inside the stated generator of a type, where the run states the
+        recursive generator for the type as it is or through filter, the
+        generators take position as the generator of the type. The position
+        decodes under these generators. Anywhere else, the generators are
+        these.
+
+        Args:
+            position: The generator of the positions of the extension.
+
+        Returns:
+            The generators.
+        """
+        types = [t for t in self._inside if _states(self._run.get(t), position.owner)]
+        if not types:
+            return self
+        with self._lock:
+            inner = self._extended.get(position)
+            if inner is None:
+                stated = self._stated | dict.fromkeys(types, position)
+                inner = Generators(stated, self._inside, self._run)
+                inner._without.update(dict.fromkeys(types, self))
+                self._extended[position] = inner
+        return inner
+
+
+def _states(generator: Generator[Any] | None, recursive: Recursive[Any]) -> bool:
+    """Report whether generator is recursive, as it is or through filter."""
+    while isinstance(generator, Filter):
+        generator = generator.of
+    return generator is recursive
 
 
 class Picking(Deferred[_T]):
@@ -274,6 +343,66 @@ class Within(Deferred[_T]):
         """
         with scope(self._run.without(self._t)):
             yield self.generator
+
+
+class Extending(Deferred[_T]):
+    """The extension of a recursive generator.
+
+    Inside the stated generator of a type, where the run states the recursive
+    generator for the type, a draw of of inside the extension takes each
+    value of the type from the generator of the position.
+
+    Attributes:
+        extension: The extension.
+        position: The generator of the positions of the extension.
+    """
+
+    def __init__(self, extension: Generator[_T], position: Position[_T]) -> None:
+        """Return the extension of a recursive generator.
+
+        Args:
+            extension: The extension.
+            position: The generator of the positions of the extension.
+        """
+        self.extension: Generator[_T] = extension
+        self.position: Position[_T] = position
+
+    @override
+    @contextmanager
+    def picked(self) -> collections.abc.Generator[Generator[_T], None, None]:
+        """Enter the generators of the extension, and return the extension.
+
+        Yields:
+            The extension.
+        """
+        run = _RUN.get()
+        with scope(None if run is None else run.extending(self.position)):
+            yield self.extension
+
+
+class _Refused(Deferred[Any]):
+    """The generator of a type that the reader refuses outside a run.
+
+    A draw raises the TypeError of of.
+    """
+
+    def __init__(self, fault: FaultError) -> None:
+        """Return the generator of a refused type.
+
+        Args:
+            fault: The fault of the reader.
+        """
+        self._fault: FaultError = fault
+
+    @override
+    def picked(self) -> AbstractContextManager[Generator[Any]]:
+        """Raise the TypeError of of.
+
+        Raises:
+            TypeError: Always.
+        """
+        msg = f"prop.of: {self._fault}"
+        raise TypeError(msg) from self._fault
 
 
 def close() -> None:
@@ -483,29 +612,28 @@ def of(t: type[_T]) -> Generator[_T]:
     In a run that gives types generators through using, a draw of the
     generator decodes with the generator that the run gives t. A draw of a
     type that contains such a type reads the type again with the generators
-    of the run in place, once per run. A draw whose type the reader then
-    refuses raises TypeError inside its case.
+    of the run in place, once per run.
+
+    A draw of a type that the reader refuses raises TypeError inside its
+    case. The text of the error contains the part and the constraint. A run
+    that gives the type a generator, or each refused type inside it, draws
+    with those generators instead.
 
     Args:
         t: The type.
 
     Returns:
         The generator.
-
-    Raises:
-        TypeError: The reader does not read a part of t, or a constraint does
-            not apply. The text of the error contains the part and the
-            constraint.
     """
     with _LOCK:
         cached = _OF.get(t)
         if cached is not None:
             return cached
+        default: Generator[Any]
         try:
             default = derived(t, {})
         except FaultError as error:
-            msg = f"prop.of: {error}"
-            raise TypeError(msg) from error
+            default = _Refused(error)
         picking = Picking(t, default)
         _OF[t] = picking
         return picking

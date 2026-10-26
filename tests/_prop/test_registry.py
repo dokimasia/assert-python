@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Annotated, Any, ClassVar
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, cast
 
 import annotated_types as at
 import pytest
@@ -20,10 +20,11 @@ from dokimi_assert import check
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert._prop.engine.case import Case, Replaying
 from dokimi_assert._prop.engine.choice import IntegerBounds
-from dokimi_assert._prop.engine.generator import Integer, Just
+from dokimi_assert._prop.engine.generator import Integer, Just, Position, Recursive
 from dokimi_assert._prop.engine.shape import ShapeError
 from dokimi_assert._prop.reader import qualified
 from dokimi_assert._prop.registry import (
+    Extending,
     Generators,
     Picking,
     Within,
@@ -48,6 +49,12 @@ SEVEN = Just(7)
 def simplest(generator: Any) -> Any:
     """Return the value that generator decodes from a case without choices."""
     return generator.decode(Case(Replaying([])))
+
+
+def sevens() -> tuple[Recursive[int], Position[int]]:
+    """Return a recursive generator of 7 and the generator of its positions."""
+    recursive = Recursive(SEVEN, 100, lambda position: Extending(SEVEN, position))
+    return recursive, cast("Extending[int]", recursive.extend).position
 
 
 #: The types of the child processes of the registrations.
@@ -172,6 +179,16 @@ class TestGeneratorsEq:
             seat, Generators({int: DIGITS}) == stated, "the generators differ"
         )
 
+    def test_reports_false_inside_the_stated_generator_of_another_type(
+        self, seat: Collector
+    ) -> None:
+        """The second generators decode inside the stated generator of str."""
+        check.is_false(
+            seat,
+            Generators({int: DIGITS}) == Generators({int: DIGITS}, frozenset({str})),
+            "the generators differ",
+        )
+
 
 class TestGeneratorsRead:
     """Generators.read returns the generator of a type under the generators."""
@@ -259,8 +276,8 @@ class TestGeneratorsWithout:
         check.equal(
             seat,
             Generators({int: DIGITS, str: letter}).without(int),
-            Generators({str: letter}),
-            "the generators keep str",
+            Generators({str: letter}, frozenset({int})),
+            "the generators keep str inside the stated generator of int",
         )
 
     def test_returns_the_same_generators_for_each_call(self, seat: Collector) -> None:
@@ -269,6 +286,73 @@ class TestGeneratorsWithout:
         check.is_true(
             seat,
             generators.without(int) is generators.without(int),
+            "the two calls return one value",
+        )
+
+
+class TestGeneratorsExtending:
+    """Generators.extending returns the generators inside an extension."""
+
+    def test_takes_the_position_inside_the_stated_generator_of_its_type(
+        self, seat: Collector
+    ) -> None:
+        """The run states the recursive generator for int."""
+        recursive, position = sevens()
+        letter = Just("a")
+        outer = Generators({int: recursive, str: letter}).without(int)
+        inner = outer.extending(position)
+        check.equal(
+            seat,
+            inner,
+            Generators({str: letter, int: position}, frozenset({int})),
+            "the generators take the position as the generator of int",
+        )
+        check.is_true(
+            seat, inner.without(int) is outer, "the position decodes under the outer"
+        )
+
+    def test_takes_the_position_of_a_filtered_recursive_generator(
+        self, seat: Collector
+    ) -> None:
+        """The run states a filter of the recursive generator for int."""
+        recursive, position = sevens()
+        outer = Generators({int: recursive.filter(lambda _: True)}).without(int)
+        check.equal(
+            seat,
+            outer.extending(position),
+            Generators({int: position}, frozenset({int})),
+            "the generators take the position as the generator of int",
+        )
+
+    def test_returns_these_generators_outside_the_stated_generator_of_its_type(
+        self, seat: Collector
+    ) -> None:
+        """The run states the recursive generator, and the draws decode outside it."""
+        recursive, position = sevens()
+        generators = Generators({int: recursive})
+        check.is_true(
+            seat,
+            generators.extending(position) is generators,
+            "the generators are unchanged",
+        )
+
+    def test_returns_these_generators_for_a_recursive_generator_without_a_type(
+        self, seat: Collector
+    ) -> None:
+        """The run states the digits for int."""
+        _, position = sevens()
+        outer = Generators({int: DIGITS}).without(int)
+        check.is_true(
+            seat, outer.extending(position) is outer, "the generators are unchanged"
+        )
+
+    def test_returns_the_same_generators_for_each_call(self, seat: Collector) -> None:
+        """The run makes the generators of an extension once."""
+        recursive, position = sevens()
+        outer = Generators({int: recursive}).without(int)
+        check.is_true(
+            seat,
+            outer.extending(position) is outer.extending(position),
             "the two calls return one value",
         )
 
@@ -330,6 +414,41 @@ class TestWithinPicked:
         with scope(Generators({int: SEVEN, str: of(int).map(str)})):
             value = simplest(of(str))
         check.equal(seat, value, "7", "the inner draw of of(int) decodes 7")
+
+
+class TestExtending:
+    """Extending is the extension of a recursive generator."""
+
+    def test_keeps_the_extension_and_the_position(self, seat: Collector) -> None:
+        """The extension is the generator of 7."""
+        recursive, position = sevens()
+        extending = cast("Extending[int]", recursive.extend)
+        check.is_true(
+            seat,
+            extending.extension is SEVEN and extending.position is position,
+            "the generator keeps both",
+        )
+
+
+class TestExtendingPicked:
+    """Extending.picked enters the generators of the extension."""
+
+    def test_returns_the_extension_outside_a_run(self, seat: Collector) -> None:
+        """The test process states no generator."""
+        recursive, _ = sevens()
+        with cast("Extending[int]", recursive.extend).picked() as picked:
+            check.is_true(seat, picked is SEVEN, "the pick is the extension")
+
+    def test_takes_the_position_inside_the_stated_generator_of_its_type(
+        self, seat: Collector
+    ) -> None:
+        """The value takes the extension, whose draw of of(int) takes the base."""
+        recursive = Recursive(SEVEN, 100, lambda position: Extending(of(int), position))
+        with scope(Generators({int: recursive})):
+            value = of(int).decode(Case(Replaying(integers(1, 0))))
+        check.equal(
+            seat, value, 7, "the draw of of(int) takes the base of the position"
+        )
 
 
 class TestClose:
@@ -680,16 +799,25 @@ class TestOf:
         """The process reads a type once."""
         check.is_true(seat, of(Point) is of(Point), "of returns one generator")
 
-    def test_raises_type_error_for_a_type_that_the_reader_does_not_read(
+    def test_raises_type_error_at_a_draw_of_a_type_that_the_reader_does_not_read(
         self, seat: Collector
     ) -> None:
         """The text has the part."""
+        generator = of(object)
         check.equal(
             seat,
-            refusal(seat, lambda: of(object), TypeError),
+            refusal(seat, lambda: simplest(generator), TypeError),
             "prop.of: object: object is not a type that the reader reads",
-            "of raises TypeError",
+            "the draw raises TypeError",
         )
+
+    def test_draws_a_type_that_the_reader_does_not_read_with_the_generator_of_the_run(
+        self, seat: Collector
+    ) -> None:
+        """The run gives object the generator of 7."""
+        with scope(Generators({object: SEVEN})):
+            value = simplest(of(object))
+        check.equal(seat, value, 7, "the draw decodes with the generator of the run")
 
 
 class TestShapeOf:

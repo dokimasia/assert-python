@@ -51,6 +51,7 @@ from dokimi_assert._prop.engine.generator import (
 )
 from dokimi_assert._prop.engine.pattern import piece
 from dokimi_assert._prop.engine.value import Pairs
+from dokimi_assert._prop.registry import Extending
 
 __all__ = [
     "boolean",
@@ -473,6 +474,20 @@ def recursive(
     taken max_leaves values from the base, every further position takes the
     base. The target is the simplest value of the base.
 
+    A run of using(t, generator), where generator is the recursive generator
+    as it is or through filter, changes what a draw of of decodes in the
+    extension. Inside the stated generator of t, the draw takes each t from
+    the generator of the position. That applies to a draw of t, to a draw of
+    a type that contains t, and to the draws inside the stated generator of
+    another type. The base takes t without the stated generator, as using
+    states:
+
+        nodes = prop.recursive(
+            prop.just(Leaf()),
+            lambda _: prop.composite(lambda c: Branch(c.draw(prop.of(list[Node])))),
+        )
+        prop.for_all(t, "a tree has a depth", body, prop.using(Node, nodes))
+
     Args:
         base: The generator of a leaf.
         extend: The function that returns the extension of the generator of
@@ -489,7 +504,9 @@ def recursive(
     if type(max_leaves) is not int or max_leaves < 1:
         msg = f"prop: recursive(max_leaves={max_leaves!r}) needs an int of 1 or more"
         raise ValueError(msg)
-    return Recursive(base, max_leaves, extend)
+    return Recursive(
+        base, max_leaves, lambda position: Extending(extend(position), position)
+    )
 
 
 def composite(f: Callable[[Case], _T]) -> Generator[_T]:

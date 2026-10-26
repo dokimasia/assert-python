@@ -881,7 +881,7 @@ class Recursive(Generator[_T]):
         self,
         base: Generator[_T],
         max_leaves: int,
-        extend: Callable[[Generator[_T]], Generator[_T]],
+        extend: Callable[[Position[_T]], Generator[_T]],
     ) -> None:
         """Return the generator of recursive values.
 

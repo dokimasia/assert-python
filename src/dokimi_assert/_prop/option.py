@@ -475,6 +475,13 @@ def using(t: type[Any], generator: Generator[Any]) -> Option:
 
         prop.using(Status, prop.of(Status).filter(lambda s: s != Status.CANCELLED))
 
+    A generator of recursive is the exception, as it is or through filter.
+    Inside its extension, a draw of of takes each t from the generator of the
+    position that the extension receives. The draws inside the stated
+    generator of another type do so too. Once one value has taken the base
+    values that max_leaves allows, each further position takes the base, so
+    each value ends.
+
     Args:
         t: The type.
         generator: The generator of its values.

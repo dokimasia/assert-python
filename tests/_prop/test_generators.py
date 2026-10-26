@@ -7,18 +7,23 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
+from dataclasses import dataclass
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
 
 import pytest
 
 from dokimi_assert import check
+from dokimi_assert._override import override
 from dokimi_assert._prop import generators as prop
 from dokimi_assert._prop.engine.case import Case as Engine
 from dokimi_assert._prop.engine.case import Replaying
 from dokimi_assert._prop.engine.choice import Choice
 from dokimi_assert._prop.engine.inverse import invert
 from dokimi_assert._prop.engine.value import Pairs
+from dokimi_assert._prop.option import using
+from dokimi_assert._prop.registry import of
+from dokimi_assert._prop.values import values
 from helpers import integers, refusal
 
 if TYPE_CHECKING:
@@ -53,6 +58,87 @@ def sequence(*values: int) -> Choice:
 
 #: A case of a refusal. It has a name, the call, and the text of its ValueError.
 Refusal = tuple[str, Callable[[], object], str]
+
+
+class Node:
+    """A node of a tree, which the reader does not read."""
+
+    def children(self) -> tuple[Node, ...]:
+        """Return no child."""
+        return ()
+
+
+@dataclass(frozen=True)
+class Leaf(Node):
+    """A node without children."""
+
+
+@dataclass(frozen=True)
+class Branch(Node):
+    """A node with children."""
+
+    kids: tuple[Node, ...]
+
+    @override
+    def children(self) -> tuple[Node, ...]:
+        """Return the kids."""
+        return self.kids
+
+
+@dataclass(frozen=True)
+class Fork:
+    """A record with a field of a node."""
+
+    next: Node
+
+
+@dataclass(frozen=True)
+class Twig:
+    """A record with a field of an optional node."""
+
+    next: Node | None
+
+
+class Forest:
+    """A list of nodes, which the reader does not read."""
+
+    def nodes(self) -> tuple[Node, ...]:
+        """Return no node."""
+        return ()
+
+
+@dataclass(frozen=True)
+class Grove(Forest):
+    """A forest of its members."""
+
+    members: tuple[Node, ...]
+
+    @override
+    def nodes(self) -> tuple[Node, ...]:
+        """Return the members."""
+        return self.members
+
+
+#: The generator of the one leaf.
+LEAVES: Generator[Node] = prop.just(Leaf())
+
+
+def branches(_: Generator[Node]) -> Generator[Node]:
+    """Return the generator of a branch whose children a draw of of decodes."""
+    return prop.composite(lambda c: Branch(tuple(c.draw(of(list[Node]), "children"))))
+
+
+def levels(node: Node) -> int:
+    """Return the number of nodes on the longest path down from node."""
+    return 1 + max(map(levels, node.children()), default=0)
+
+
+def preorder(node: Node) -> list[Node]:
+    """Return the nodes of node in the order that a decode chooses them."""
+    out = [node]
+    for child in node.children():
+        out.extend(preorder(child))
+    return out
 
 
 class TestInteger:
@@ -577,6 +663,86 @@ class TestRecursive:
             refusal(seat, lambda: prop.recursive(DIGITS, lambda g: g, max_leaves=0)),
             "prop: recursive(max_leaves=0) needs an int of 1 or more",
             "the error has the call",
+        )
+
+    def test_takes_each_value_of_a_stated_type_in_its_extension_from_its_position(
+        self, seat: Collector
+    ) -> None:
+        """The extension draws a list of nodes."""
+        nodes = prop.recursive(LEAVES, branches, max_leaves=10)
+        grown = values(of(Node), 7, 100, using(Node, nodes))
+        check.is_true(seat, max(map(levels, grown)) >= 3, "a branch inside a branch")
+
+    def test_takes_the_field_of_a_stated_type_in_its_extension_from_its_position(
+        self, seat: Collector
+    ) -> None:
+        """The extension draws a record with a field of a node."""
+        forks = of(Fork).map(lambda f: Branch((f.next,)))
+        chains = prop.recursive(LEAVES, lambda _: forks)
+        grown = values(of(Node), 7, 100, using(Node, chains))
+        check.is_true(seat, max(map(levels, grown)) >= 3, "a branch inside a branch")
+
+    def test_takes_an_optional_stated_type_in_its_extension_from_its_position(
+        self, seat: Collector
+    ) -> None:
+        """The extension draws a record with a field of a node or None."""
+
+        def chain(twig: Twig) -> Node:
+            return Branch(() if twig.next is None else (twig.next,))
+
+        chains = prop.recursive(LEAVES, lambda _: of(Twig).map(chain))
+        grown = values(of(Node), 7, 100, using(Node, chains))
+        check.is_true(seat, max(map(levels, grown)) >= 3, "a branch inside a branch")
+
+    def test_takes_the_base_at_every_position_of_a_stated_type_past_the_bound(
+        self, seat: Collector
+    ) -> None:
+        """No value takes the extension after its second leaf."""
+
+        def bounded(order: list[Node]) -> bool:
+            leaf_at = [i for i, n in enumerate(order) if isinstance(n, Leaf)]
+            past = order[leaf_at[1] :] if len(leaf_at) > 1 else []
+            return all(isinstance(n, Leaf) for n in past)
+
+        nodes = prop.recursive(LEAVES, branches, max_leaves=2)
+        grown = values(of(Node), 7, 100, using(Node, nodes))
+        orders = [preorder(n) for n in grown]
+        most = max(sum(isinstance(n, Leaf) for n in order) for order in orders)
+        check.is_true(
+            seat, all(map(bounded, orders)), "no branch follows the second leaf"
+        )
+        check.is_true(
+            seat, most > 2, "a value whose positions past the bound take the base"
+        )
+
+    def test_raises_type_error_for_a_stated_type_in_its_base(
+        self, seat: Collector
+    ) -> None:
+        """The base draws a node, which the stated generator does not generate."""
+        inner = prop.composite(lambda c: c.draw(of(Node), "inner"))
+        nodes = prop.recursive(inner, branches)
+        check.equal(
+            seat,
+            refusal(
+                seat, lambda: values(of(Node), 7, 1, using(Node, nodes)), TypeError
+            ),
+            "prop.of: Node: Node is not a type that the reader reads",
+            "the draw in the base raises the error of of",
+        )
+
+    def test_ends_a_cycle_of_two_stated_recursive_generators(
+        self, seat: Collector
+    ) -> None:
+        """A node draws a forest, and a forest draws a list of nodes."""
+        planted = prop.composite(lambda c: Branch(c.draw(of(Forest), "forest").nodes()))
+        groves = prop.composite(
+            lambda c: Grove(tuple(c.draw(of(list[Node]), "members")))
+        )
+        nodes = prop.recursive(LEAVES, lambda _: planted, max_leaves=10)
+        forests = prop.recursive(prop.just(Grove(())), lambda _: groves, max_leaves=10)
+        grown = values(of(Node), 7, 100, using(Node, nodes), using(Forest, forests))
+        check.is_true(
+            seat, max(map(levels, grown)) >= 3, "a node of a forest of a node"
         )
 
 
