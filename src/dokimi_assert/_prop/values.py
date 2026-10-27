@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, TypeVar
 
+from dokimi_assert._prop.case import Faulted
 from dokimi_assert._prop.engine.case import Case, Generating, Rejected, Skipped
 from dokimi_assert._prop.engine.source import case_source
 from dokimi_assert._prop.option import Option, configure
@@ -72,9 +73,10 @@ def values(generator: Generator[_T], seed: int, n: int, *options: Option) -> lis
     Raises:
         ValueError: n is not an int of 0 or more, seed is not an int in
             [0, 2^64), an option is not an option of using, the generator
-            rejects more than ten cases for each of the n values, or the
-            generator skips a case. values runs no test that a skip could
-            skip.
+            rejects more than ten cases for each of the n values, the
+            generator skips a case, or the generator ends a case with a
+            fault. values runs no test that a skip could skip or a fault could
+            end. The cause of the error of a fault is the fault.
     """
     call = f"values(generator, {seed!r}, {n!r})"
     if type(n) is not int or n < 0:
@@ -103,6 +105,9 @@ def values(generator: Generator[_T], seed: int, n: int, *options: Option) -> lis
                     f"{skipped.reason}"
                 )
                 raise ValueError(msg) from None
+            except Faulted as faulted:
+                msg = f"prop: {call} stops at a fault of the generator: {faulted}"
+                raise ValueError(msg) from faulted.fault
             except Rejected:
                 rejected += 1
                 if rejected > _REJECTIONS_PER_VALUE * n:

@@ -34,7 +34,14 @@ from dokimi_assert._matcher.fault import FaultError, of_operation
 from dokimi_assert._matcher.loop import Loop
 from dokimi_assert._matcher.seat import Mode, Seat
 from dokimi_assert._matcher.verdict import Running, note_fault
-from dokimi_assert._prop.case import Case, FaultSignal, Location, case_of, execute
+from dokimi_assert._prop.case import (
+    Case,
+    Faulted,
+    FaultSignal,
+    Location,
+    case_of,
+    execute,
+)
 from dokimi_assert._prop.detail import detail_json, detail_of, record_of
 from dokimi_assert._prop.directory import Loaded, claim, load, save, store_of
 from dokimi_assert._prop.engine import literal, strict_json, tokens
@@ -602,7 +609,9 @@ class Property:
         These faults end the call.
 
         - The body cannot follow an entry of the draws option.
-        - A case ends with a fault.
+        - A fault of a call of the body ends a case, in any phase. The call
+          ends with the same fault.
+        - A case ends with a fault of the run.
         - A fault ends the run. A coroutine body inside a running event loop
           causes such a fault.
         """
@@ -610,6 +619,10 @@ class Property:
             return work()
         except TraceError as error:
             Property.fault(running, self.call, self._refusal(error))
+        except Faulted as signal:
+            running.faulted(
+                Mode.FATAL, self.call.assertion, self.call.contract, signal.fault
+            )
         except FaultSignal as signal:
             Property.fault(running, self.call, signal.fault)
         except FaultError as error:

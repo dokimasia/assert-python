@@ -13,6 +13,7 @@ import pytest
 from dokimi_assert import check, prop
 from dokimi_assert._prop.registry import Generators, scope
 from dokimi_assert.option import equate_empty
+from dokimi_assert.seat import fault as seat_fault
 
 if TYPE_CHECKING:
     from dokimi_assert.seat import Collector
@@ -210,6 +211,35 @@ class TestValues:
                 ),
             ),
             "the error states the reason of the skip",
+        )
+
+    def test_raises_value_error_for_a_generator_that_ends_a_case_with_a_fault(
+        self, seat: Collector
+    ) -> None:
+        """The call runs no test that a fault could end."""
+        fault = OSError("the environment lacks the resource")
+
+        def faulting(c: prop.Case) -> int:
+            seat_fault(c, fault)
+            return 0
+
+        error = check.raises(
+            seat,
+            lambda: prop.values(prop.composite(faulting), 42, 2),
+            "values raises at the fault",
+        )
+        check.equal(
+            seat,
+            (type(error), str(error), getattr(error, "__cause__", None) is fault),
+            (
+                ValueError,
+                (
+                    "prop: values(generator, 42, 2) stops at a fault of the "
+                    "generator: the environment lacks the resource"
+                ),
+                True,
+            ),
+            "the error states the fault, and its cause is the fault",
         )
 
     tests: ClassVar[list[tuple[str, Any, Any, str]]] = [

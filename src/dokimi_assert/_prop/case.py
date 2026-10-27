@@ -28,8 +28,9 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, NoReturn, TypeVar, cast
 
 from dokimi_assert._history.history import History
+from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert._matcher.seat import Seat, clock_of
-from dokimi_assert._matcher.verdict import fault_text, note_fault
+from dokimi_assert._matcher.verdict import note_fault
 from dokimi_assert._override import override
 from dokimi_assert._prop.engine.case import Case as Engine
 from dokimi_assert._prop.engine.case import Decoder, Failed, Rejected, Skipped
@@ -41,7 +42,6 @@ from dokimi_assert.failure import Failure, Where, call_site
 from dokimi_assert.seat import Standard
 
 if TYPE_CHECKING:
-    from dokimi_assert._matcher.fault import FaultError
     from dokimi_assert._matcher.loop import Loop
     from dokimi_assert.clock import Clock
 
@@ -49,6 +49,7 @@ __all__ = [
     "Case",
     "Failing",
     "FaultSignal",
+    "Faulted",
     "Location",
     "case_of",
     "execute",
@@ -81,12 +82,54 @@ class FaultSignal(BaseException):
         self.fault: FaultError = fault
 
 
+class Faulted(BaseException):
+    """The signal of a case that a fault of a call of its body ended.
+
+    The fault ends the run of the property in every phase, and the property
+    ends its call with the same fault. The class derives from BaseException,
+    so a body that catches Exception lets the signal pass.
+
+    Attributes:
+        fault: The fault.
+    """
+
+    def __init__(self, fault: BaseException) -> None:
+        """Return the signal of a fault of a call of the body.
+
+        Args:
+            fault: The fault.
+        """
+        super().__init__(str(fault))
+        self.fault: BaseException = fault
+
+
 #: The exceptions that end a body or a cleanup as the end of a case.
 #: KeyboardInterrupt and SystemExit are not among them, so a run stops at them.
-_ENDINGS = (Exception, Rejected, Skipped, Failed, Repeated, Diverged, FaultSignal)
+_ENDINGS = (
+    Exception,
+    Rejected,
+    Skipped,
+    Failed,
+    Repeated,
+    Diverged,
+    FaultSignal,
+    Faulted,
+)
 
 #: The signals of the engine. Each of them ends a case.
-_SIGNALS = (Rejected, Skipped, Failed, Repeated, Diverged, TraceError, FaultSignal)
+_SIGNALS = (
+    Rejected,
+    Skipped,
+    Failed,
+    Repeated,
+    Diverged,
+    TraceError,
+    FaultSignal,
+    Faulted,
+)
+
+#: The signals that end a case before every failure, because they end the run.
+_FINAL = (Repeated, Diverged, TraceError, FaultSignal, Faulted)
 
 #: The step between two values of random(). It is 2^-53.
 _UNIT = 2.0**-53
@@ -366,9 +409,10 @@ class Case:
     def report_fault(self, fault: BaseException, ending: bool) -> None:
         """Receive a fault of a call of the body.
 
-        A fault that ends its call fails the case with the text of the fault,
-        as fail does. A noted fault passes to the seat of the property, and
-        the body runs on.
+        A fault that ends its call ends the case, also after a failure. The
+        run of the property then ends in every phase, and the property ends
+        its call with the same fault. A noted fault passes to the seat of the
+        property, and the body runs on.
 
         Args:
             fault: The fault.
@@ -377,7 +421,11 @@ class Case:
         if not ending:
             note_fault(self._state.seat, fault)
             return
-        self.fail(fault_text(fault))
+        state = self._state
+        if isinstance(state.stopped, _FINAL):
+            raise state.stopped
+        state.stopped = Faulted(fault)
+        raise state.stopped
 
     def clock(self) -> Clock:
         """Return the clock of the seat of the property.
@@ -588,7 +636,17 @@ def case_of(engine: Engine) -> Case:
 
 
 def _caught(state: _State, error: BaseException) -> None:
-    """Keep the signal or the first exception that a body or a cleanup raised."""
+    """Keep the signal or the first exception that a body or a cleanup raised.
+
+    A FaultError of the library ends the case as a reported fault does. A
+    fault replaces every earlier signal that does not end the run.
+    """
+    if isinstance(error, FaultError):
+        error = Faulted(error)
+    if isinstance(error, Faulted):
+        if not isinstance(state.stopped, _FINAL):
+            state.stopped = error
+        return
     if isinstance(error, _SIGNALS):
         if state.stopped is None:
             state.stopped = error
@@ -656,7 +714,8 @@ def execute(c: Case, body: Callable[[Case], object], loop: Loop) -> None:
     the failure that ended it.
 
     - A case that repeats a tested case, diverges, meets an entry of a trace
-      that it cannot follow, or ends with a fault raises that signal.
+      that it cannot follow, or ends with a fault raises that signal. A fault
+      of a call of the body raises Faulted.
     - A case that failed in the body or in a cleanup raises its failure. It
       raises the failure also when the case was rejected, skipped or passed
       its cap.
@@ -674,7 +733,7 @@ def execute(c: Case, body: Callable[[Case], object], loop: Loop) -> None:
     while state.cleanups:
         _settle(state, state.cleanups.pop(), loop)
     signal = state.stopped
-    if isinstance(signal, (Repeated, Diverged, TraceError, FaultSignal)):
+    if isinstance(signal, _FINAL):
         raise signal
     failed = _failure_of(state)
     if failed is not None:

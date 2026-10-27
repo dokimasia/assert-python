@@ -20,6 +20,7 @@ from dokimi_assert._prop import case as case_module
 from dokimi_assert._prop.case import (
     Case,
     Failing,
+    Faulted,
     FaultSignal,
     Location,
     case_of,
@@ -82,6 +83,7 @@ def ending(c: Case, body: Callable[[Case], object]) -> BaseException | None:
             Repeated,
             Diverged,
             FaultSignal,
+            Faulted,
         ) as error:
             return error
     return None
@@ -118,6 +120,21 @@ class TestFaultSignal:
             seat,
             [signal.fault is fault, str(signal)],
             [True, "sock_recv: the member is not implemented"],
+            "the signal has the fault and its text",
+        )
+
+
+class TestFaulted:
+    """Faulted is the signal of a case that a fault ended."""
+
+    def test_keeps_its_fault_and_its_text(self, seat: Collector) -> None:
+        """The signal has the fault and the text of the fault."""
+        fault = ValueError("the store is gone")
+        signal = Faulted(fault)
+        check.equal(
+            seat,
+            [signal.fault is fault, str(signal)],
+            [True, "the store is gone"],
             "the signal has the fault and its text",
         )
 
@@ -275,23 +292,72 @@ class TestCaseReport:
 class TestCaseReportFault:
     """Case.report_fault receives a fault of a call of the body."""
 
-    def test_ends_the_case_with_the_text_of_a_fault_that_ends_its_call(
+    def test_ends_the_case_with_a_fault_that_ends_its_call(
         self, seat: Collector
     ) -> None:
-        """An ending fault fails the case as fail does."""
+        """An ending fault ends the case with the fault itself."""
         c, _ = case_on()
         after: list[bool] = []
+        fault = ValueError("the seed is not a number")
 
         def body(one: Case) -> None:
-            one.report_fault(ValueError("the seed is not a number"), True)
+            one.report_fault(fault, True)
             after.append(True)
 
-        failure = record_of(ending(c, body)).failure
+        raised = ending(c, body)
         check.equal(
             seat,
-            [failure.assertion, failure.contract, after],
-            ["", "the seed is not a number", []],
+            [type(raised), cast("Faulted", raised).fault is fault, after],
+            [Faulted, True, []],
             "the fault ends the case",
+        )
+
+    def test_keeps_a_fault_signal_of_the_run_over_a_later_fault(
+        self, seat: Collector
+    ) -> None:
+        """A cleanup reports a fault after the run's fault ended the case."""
+        c, _ = case_on()
+        signal = FaultSignal(FaultError("sock_recv", "the member is not implemented"))
+
+        def body(one: Case) -> None:
+            one.cleanup(lambda: one.report_fault(ValueError("late"), True))
+            raise signal
+
+        check.is_true(seat, ending(c, body) is signal, "the run's fault ends the case")
+
+    def test_ends_the_case_at_a_fault_error_that_the_body_raises(
+        self, seat: Collector
+    ) -> None:
+        """A FaultError of the library ends the case as a reported fault does."""
+        c, _ = case_on()
+        fault = FaultError("seed", "the seed is not a number")
+
+        def body(_: Case) -> None:
+            raise fault
+
+        raised = ending(c, body)
+        check.equal(
+            seat,
+            [isinstance(raised, Faulted), cast("Faulted", raised).fault is fault],
+            [True, True],
+            "the raised fault ends the case",
+        )
+
+    def test_keeps_the_fault_over_an_earlier_failure(self, seat: Collector) -> None:
+        """A case that fails and then ends with a fault ends with the fault."""
+        c, _ = case_on()
+        fault = ValueError("the store is gone")
+
+        def body(one: Case) -> None:
+            one.record("the totals differ")
+            one.report_fault(fault, True)
+
+        raised = ending(c, body)
+        check.equal(
+            seat,
+            [isinstance(raised, Faulted), cast("Faulted", raised).fault is fault],
+            [True, True],
+            "the fault outweighs the failure",
         )
 
     def test_passes_a_noted_fault_to_the_seat_of_the_property(

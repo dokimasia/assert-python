@@ -52,6 +52,7 @@ from dokimi_assert._prop.property import Call, Property, PropertyBody
 from dokimi_assert._prop.registry import of
 from dokimi_assert.failure import Where
 from dokimi_assert.seat import Collector, Recorder, Standard
+from dokimi_assert.seat import fault as fault_helper
 from helpers import UNENFORCED, records, refusal, run_python
 
 if TYPE_CHECKING:
@@ -469,6 +470,51 @@ class TestPropertyRun:
             [recorder.message, cleaned],
             ["prop.for_all: the subject opened a socket", ["cleaned"]],
             "the cleanup runs, and the call ends with the fault",
+        )
+
+    def test_ends_the_call_with_the_fault_that_ends_a_case_without_a_shrink(
+        self, seat: Collector
+    ) -> None:
+        """The body ends its first case with a fault of its own."""
+        recorder = Recorder()
+        fault = OSError("the environment lacks the resource")
+        cases: list[int] = []
+
+        def faults(c: Case) -> None:
+            cases.append(c.draw(DIGITS, "x"))
+            fault_helper(c, fault)
+
+        run_on(recorder, faults)
+        verdict = records(recorder)[0]["verdict"]
+        check.equal(
+            seat,
+            [recorder.faults, recorder.failures, len(cases), verdict],
+            [[fault], [], 1, "error"],
+            "the call ends with the same fault after one case",
+        )
+
+    def test_ends_the_call_with_the_fault_of_a_shrink_candidate(
+        self, seat: Collector
+    ) -> None:
+        """After the first failure, every value below 5 ends its case with a fault."""
+        recorder = Recorder()
+        fault = OSError("the environment lacks the resource")
+        failed: list[int] = []
+
+        def faults_after_a_failure(c: Case) -> None:
+            value = c.draw(DIGITS, "x")
+            if failed and value < 5:
+                fault_helper(c, fault)
+            if value >= 5:
+                failed.append(value)
+                c.fail("the digit is 5 or more")
+
+        run_on(recorder, faults_after_a_failure)
+        check.equal(
+            seat,
+            [recorder.faults, recorder.failures],
+            [[fault], []],
+            "the shrink ends the call with the fault",
         )
 
     def test_records_the_calls_of_each_run_of_a_case_as_a_run_of_its_own(
