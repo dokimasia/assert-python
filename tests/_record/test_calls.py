@@ -10,8 +10,9 @@ its verdicts with the assert statement of pytest.
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, cast
 
+from dokimi_assert import check, prop
 from dokimi_assert._record.call import Call
 from dokimi_assert._record.calls import (
     Calls,
@@ -25,6 +26,8 @@ from dokimi_assert._record.calls import (
     run,
     write,
 )
+from dokimi_assert.call import Call as ObservedCall
+from dokimi_assert.seat import Recorder, fault
 
 
 class Seat:
@@ -260,6 +263,112 @@ class TestSlotTake:
             (2, 1, "inner"),
             (3, 2, "in the inner body"),
         ]
+
+
+class Watching:
+    """A seat of another library that observes each assertion call."""
+
+    def __init__(self) -> None:
+        """Return a seat that has observed nothing."""
+        self.seen: list[ObservedCall] = []
+
+    def observe_call(self, call: ObservedCall) -> None:
+        """Keep call.
+
+        Args:
+            call: The assertion call.
+        """
+        self.seen.append(call)
+
+
+class KeepingWatching(Watching):
+    """A seat of this library that keeps its records and observes each call."""
+
+
+class TestObserve:
+    """The observe_call member of a seat receives each assertion call."""
+
+    def test_receives_a_call_on_a_seat_that_records_nothing(self) -> None:
+        """calls_of returns calls that pass each call to the seat."""
+        seat = Watching()
+        calls = calls_of(seat)
+        assert calls is not None
+        add(calls, Call("equal", "the totals match", "fail", True))
+        assert seat.seen == [ObservedCall("equal", "the totals match")]
+
+    def test_receives_a_call_once_on_a_seat_that_keeps_its_records(self) -> None:
+        """The seat observes the call, and its calls keep the record."""
+        seat = KeepingWatching()
+        keep(own(seat))
+        add(cast("Calls", calls_of(seat)), call("kept"))
+        assert [c.contract for c in seat.seen] == ["kept"]
+        assert [r["contract"] for r in decoded(own(seat))] == ["kept"]
+
+    def test_receives_the_calls_of_a_body_when_the_call_takes_them(self) -> None:
+        """The calls of a run, and then the call that ran the body."""
+        seat = Watching()
+        slot = Slot.begin(seat)
+        assert slot is not None
+        body = Calls()
+        run(body, slot)
+        add(body, call("in the body"))
+        assert seat.seen == []
+        slot.take(body, "random")
+        slot.write(Call("prop-for-all", "it holds", "pass", True))
+        assert [c.contract for c in seat.seen] == ["in the body", "it holds"]
+
+    def test_receives_the_calls_of_a_body_once_on_a_seat_that_keeps_them(
+        self,
+    ) -> None:
+        """Each call reaches the seat once, and the calls keep every record."""
+        seat = KeepingWatching()
+        keep(own(seat))
+        slot = Slot.begin(seat)
+        assert slot is not None
+        body = Calls()
+        run(body, slot)
+        add(body, call("in the body"))
+        slot.take(body)
+        slot.write(Call("eventually", "it converges", "pass", True))
+        assert [c.contract for c in seat.seen] == ["in the body", "it converges"]
+        assert len(decoded(own(seat))) == 2
+
+    def test_receives_the_calls_in_the_cases_of_a_property_then_the_property(
+        self,
+    ) -> None:
+        """A recorder that observes receives every call of a run of a property."""
+        seat = ObservingRecorder()
+
+        def small(c: prop.Case) -> None:
+            check.is_true(c, c.draw(prop.integer(0, 9), "x") < 10, "x is small")
+
+        prop.for_all(seat, "every x is small", small, prop.seed(7), prop.cases(3))
+        contracts = [c.contract for c in seat.seen]
+        assert contracts[-1] == "every x is small"
+        assert "x is small" in contracts[:-1]
+
+    def test_does_not_receive_a_call_of_fault(self) -> None:
+        """A fault ends the call of a helper and not an assertion call."""
+        seat = ObservingRecorder()
+        fault(seat, ValueError("the check misses an option"))
+        assert seat.seen == []
+
+
+class ObservingRecorder(Recorder):
+    """A recorder that also observes each assertion call."""
+
+    def __init__(self) -> None:
+        """Return a recorder that has observed nothing."""
+        super().__init__()
+        self.seen: list[ObservedCall] = []
+
+    def observe_call(self, call: ObservedCall) -> None:
+        """Keep call.
+
+        Args:
+            call: The assertion call.
+        """
+        self.seen.append(call)
 
 
 class TestSlotWrite:

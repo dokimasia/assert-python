@@ -42,11 +42,12 @@ __all__ = [
 class Seat(Protocol):
     """The object through which an assertion reports a failure.
 
-    A seat can also have four more methods. report(failure, aborting)
+    A seat can also have five more methods. report(failure, aborting)
     receives the failure record in place of its sentence.
     report_fault(fault, ending) receives a fault as the exception it is.
     clock() returns the clock that assertions read. skip(reason) skips the
-    test of the seat.
+    test of the seat. observe_call(call) receives each assertion call, a
+    passing one included, as a dokimi_assert.call.Call.
     """
 
     def helper(self) -> None:

@@ -34,6 +34,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 import dokimi_assert
 from dokimi_assert import (
     bench,
+    call,
     check,
     clock,
     failure,
@@ -300,6 +301,13 @@ SUPPORT = (
         "Recorder.helper_calls",
         "clean_up",
         "fault",
+    ),
+    _family(
+        call,
+        "Observed calls",
+        "A seat with a method observe_call receives each assertion call, "
+        "a passing one included.",
+        "Call",
     ),
     _family(
         option,

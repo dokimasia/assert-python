@@ -331,6 +331,12 @@ seat.clean_up(collector: Collector)
 seat.fault(seat: Seat, error: BaseException)
 ```
 
+**Observed calls.** A seat with a method observe_call receives each assertion call, a passing one included.
+
+```python
+call.Call(assertion: str, contract: str)
+```
+
 **Options of a comparison.** An option relaxes or narrows equality for the one call that it is passed to.
 
 ```python

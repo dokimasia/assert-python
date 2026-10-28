@@ -15,6 +15,10 @@ one of three things with a record:
 
 A call that runs a body takes its number through Slot.begin before the
 calls of its body. It writes its record through Slot.write when it ends.
+
+A seat with a callable member observe_call receives each call, whatever the
+switch states. calls_of returns calls that pass each call to the seat, once
+the call has ended, and hand its record to the calls of the seat.
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ from dataclasses import dataclass, field
 from typing import Literal, cast
 
 from dokimi_assert._record.call import Call, Phase, Place, encode_call
+from dokimi_assert.call import Call as Observation
 
 __all__ = [
     "Calls",
@@ -42,11 +47,14 @@ __all__ = [
 ]
 
 #: What a set of calls does with a record.
-_State = Literal["off", "keeping", "writing", "running"]
+_State = Literal["off", "keeping", "writing", "running", "observing"]
 
 #: The function through which the calls of a test write a record. It takes
 #: the number of the record and its line of JSON.
 Sink = Callable[[int, str], None]
+
+#: The member observe_call of a seat, which receives each assertion call.
+Observer = Callable[[Observation], object]
 
 
 @dataclass(eq=False, slots=True)
@@ -64,6 +72,9 @@ class _Entry:
         seq: The number of the call. It is 0 until the calls of a test or a
             recorder number it.
         home: The calls that keep the entry now.
+        observer: Receives the call once it has ended. It is None for a call
+            on a seat without observe_call.
+        observed: True once the observer has received the call.
     """
 
     call: Call | None = None
@@ -73,6 +84,16 @@ class _Entry:
     steps: int = 0
     seq: int = 0
     home: Calls | None = None
+    observer: Observer | None = None
+    observed: bool = False
+
+
+def _observe(entry: _Entry) -> None:
+    """Pass the call of entry to its observer once, after the call has ended."""
+    if entry.observer is None or entry.call is None or entry.observed:
+        return
+    entry.observed = True
+    entry.observer(Observation(entry.call.assertion, entry.call.contract))
 
 
 @dataclass(eq=False, slots=True)
@@ -90,6 +111,9 @@ class Calls:
         entries: The calls of a run in the order of their verdicts.
         position: Returns the number of steps that the walk of the case of
             the run has made. Only a run that a property cuts has it.
+        observer: The member observe of the seat of observing calls.
+        to: The calls to which observing calls hand each record, or None
+            when nothing keeps the record.
     """
 
     state: _State = "off"
@@ -99,16 +123,28 @@ class Calls:
     entries: list[_Entry] = field(default_factory=list)
     position: Callable[[], int] | None = None
     lock: threading.RLock = field(default_factory=threading.RLock)
+    observer: Observer | None = None
+    to: Calls | None = None
 
     def add(self, entry: _Entry) -> None:
         """Put entry among the calls.
 
         The calls of a test and of a recorder number the entry and write its
-        record. The calls of a run keep it.
+        record. The calls of a run keep it. Observing calls pass a call that
+        has ended to their observer, and hand entry to the calls after them.
 
         Args:
             entry: The entry.
         """
+        if self.observer is not None:
+            if entry.observer is None:
+                entry.observer = self.observer
+            if self.to is not None:
+                self.to.add(entry)
+            else:
+                entry.home = self
+            _observe(entry)
+            return
         with self.lock:
             entry.home = self
             if self.state == "running":
@@ -193,21 +229,28 @@ def own(seat: object) -> Calls:
 
 
 def calls_of(seat: object) -> Calls | None:
-    """Return the calls that keep the record of a call on seat.
+    """Return the calls that take the record of a call on seat.
+
+    A seat with a callable member observe_call gets new calls that pass each
+    call to observe_call, and hand its record to the calls of the seat.
 
     Args:
         seat: The seat of the call.
 
     Returns:
-        The calls, or None when the call is not recorded. A call is not
-        recorded on a seat that is not a seat of this library, and on a seat
-        whose calls do not record.
+        The calls, or None when the call is neither recorded nor observed. A
+        call is not recorded on a seat that is not a seat of this library,
+        and on a seat whose calls do not record.
     """
     try:
         calls = _SEATS.get(seat)
     except TypeError:
-        return None
-    return None if calls is None or calls.state == "off" else calls
+        calls = None
+    recorded = None if calls is None or calls.state == "off" else calls
+    observer = getattr(seat, "observe_call", None)
+    if not callable(observer):
+        return recorded
+    return Calls(state="observing", observer=observer, to=recorded)
 
 
 def keep(calls: Calls) -> None:
@@ -352,7 +395,9 @@ class Slot:
                 entry.parent = self._entry
                 entry.run = self._runs
                 entry.phase = phase
+            entry.observer = self._entry.observer
             home.add(entry)
+            _observe(entry)
 
     def write(self, call: Call) -> None:
         """End the call of the slot with its record.
@@ -367,3 +412,4 @@ class Slot:
         home = cast("Calls", self._entry.home)
         if self._entry.seq != 0:
             home.emit(self._entry)
+        _observe(self._entry)
