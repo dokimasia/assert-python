@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import gc
 import tracemalloc
+from array import array
 from typing import TYPE_CHECKING, Any
 
 from dokimi_assert._matcher.fault import FaultError
@@ -41,8 +42,10 @@ def max_live_bytes(
 ) -> None:
     """Report when fn keeps more than ceiling bytes reachable at a probe.
 
-    The assertion calls fn once with a probe that reads nothing to warm it.
-    A run then reads the traced memory, and calls fn with a probe that reads
+    The assertion first runs its probe once on a callable that only calls
+    the probe, so the first run of fn reads no memory of a cold probe. It
+    calls fn once with a probe that reads nothing to warm it. A run then
+    reads the traced memory, and calls fn with a probe that reads
     it at each call. The excess of a run is its largest reading less the
     first reading, or 0. A run whose excess exceeds ceiling is taken again,
     ten runs at most. When no run meets ceiling, got is the smallest excess
@@ -63,6 +66,7 @@ def max_live_bytes(
     if not tracing:
         tracemalloc.start()
     try:
+        _run(lambda probe: probe())
         fn(lambda: None)
         runs: list[tuple[int, int]] = []
         while len(runs) < LIVE_RUNS:
@@ -95,19 +99,20 @@ def max_live_bytes(
 def _run(fn: Callable[[Callable[[], None]], Any]) -> tuple[int, int]:
     """Run fn once, and return its excess and the calls of its probe.
 
-    The probe exists before the first reading, so each reading contains it.
+    The probe and its state exist before the first reading, so each reading
+    contains them. The state is an array of machine words, so a reading
+    contains no int object that a reading created.
     """
-    largest = 0
-    probes = 0
+    first, largest, probes = 0, 1, 2
+    state = array("q", [0, 0, 0])
 
     def probe() -> None:
-        nonlocal largest, probes
-        probes += 1
-        largest = max(largest, _live() - first)
+        state[probes] += 1
+        state[largest] = max(state[largest], _live() - state[first])
 
-    first = _live()
+    state[first] = _live()
     fn(probe)
-    return largest, probes
+    return state[largest], state[probes]
 
 
 def _live() -> int:
