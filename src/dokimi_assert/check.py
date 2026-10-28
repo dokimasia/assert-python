@@ -24,7 +24,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from dokimi_assert import rejects as _rejects
-from dokimi_assert._matcher import behaviour, errors, order, relation, value, waiting
+from dokimi_assert._matcher import (
+    behaviour,
+    errors,
+    heap,
+    order,
+    relation,
+    value,
+    waiting,
+)
 from dokimi_assert._matcher import raises as _raises
 from dokimi_assert._matcher.seat import Mode, Seat
 
@@ -75,6 +83,7 @@ __all__ = [
     "is_true",
     "length",
     "matches",
+    "max_live_bytes",
     "no_duplicates",
     "no_error",
     "no_task_leaks",
@@ -658,6 +667,34 @@ def completes_within(
     __tracebackhide__ = True
     seat.helper()
     behaviour.completes_within(seat, _MODE, within, fn, msg)
+
+
+def max_live_bytes(
+    seat: Seat, fn: Callable[[Callable[[], None]], Any], ceiling: int, msg: str
+) -> None:
+    """Fail when fn keeps more than ceiling bytes reachable at a probe.
+
+    The assertion collects and reads the memory that tracemalloc traces
+    before the call and at each call of the probe that fn receives. A run
+    whose largest reading exceeds the first by more than ceiling is taken
+    again, ten runs at most. The failure has the ceiling as want, the
+    smallest excess as got, and the calls of the probe in its run as probes.
+    The readings cover every thread of the interpreter.
+
+    Args:
+        seat: The seat that receives the failure. Use the seat fixture.
+        fn: A callable that takes the probe, and calls it where the ceiling
+            applies.
+        ceiling: The most bytes that fn keeps reachable at a probe.
+        msg: The contract under test.
+
+    Example:
+        check.max_live_bytes(seat, lambda probe: drain(source, probe), 64 << 10,
+                             "the filter keeps at most 64 KiB of a prefix")
+    """
+    __tracebackhide__ = True
+    seat.helper()
+    heap.max_live_bytes(seat, _MODE, fn, ceiling, msg)
 
 
 def is_pure(

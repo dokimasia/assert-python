@@ -200,6 +200,13 @@ CHECK = (
     ),
     _family(
         check,
+        "The live heap",
+        "max_live_bytes hands fn a probe, and reads the memory that "
+        "tracemalloc traces after a collection at each call of the probe.",
+        "max_live_bytes",
+    ),
+    _family(
+        check,
         "Concurrency",
         "Call what it returns where the scope ends. A thread or an "
         "asyncio task that the scope started and that still runs then "

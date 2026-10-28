@@ -47,11 +47,11 @@ class TestSpecDir:
 class TestAssertions:
     """assertions returns the assertions of the definition."""
 
-    def test_returns_the_110_assertions_of_the_definition(
+    def test_returns_the_111_assertions_of_the_definition(
         self, seat: Collector
     ) -> None:
-        """The vendored definition has 110 assertions."""
-        check.length(seat, assertions(), 110, "the definition has 110 assertions")
+        """The vendored definition has 111 assertions."""
+        check.length(seat, assertions(), 111, "the definition has 111 assertions")
 
 
 class TestNames:

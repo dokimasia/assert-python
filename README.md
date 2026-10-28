@@ -238,6 +238,12 @@ check.eventually(seat: Seat, timeout: float, interval: float, body: Callable[[An
 check.eventually_true(seat: Seat, timeout: float, predicate: Callable[[], object], msg: str)
 ```
 
+**The live heap.** max_live_bytes hands fn a probe, and reads the memory that tracemalloc traces after a collection at each call of the probe.
+
+```python
+check.max_live_bytes(seat: Seat, fn: Callable[[Callable[[], None]], Any], ceiling: int, msg: str)
+```
+
 **Concurrency.** Call what it returns where the scope ends. A thread or an asyncio task that the scope started and that still runs then is a leak.
 
 ```python

@@ -454,6 +454,9 @@ FAILING: dict[str, Failing] = {
     "completes_within": lambda s, seat, clock, msg: s.completes_within(
         seat, 1.0, lambda: clock.advance(5), msg
     ),
+    "max_live_bytes": lambda s, seat, _, msg: s.max_live_bytes(
+        seat, lambda probe: (bytearray(1 << 20), probe()), 0, msg
+    ),
     "none_handle_safe": lambda s, seat, _, msg: s.none_handle_safe(
         seat, reads_the_handle, msg
     ),
