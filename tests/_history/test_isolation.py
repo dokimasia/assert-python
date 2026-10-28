@@ -38,6 +38,7 @@ from helpers import (
     records,
     refusal,
     run_txn,
+    write,
     write_skew,
 )
 
@@ -255,6 +256,39 @@ class TestCheckIsolation:
                 ("G-nonadjacent", ("G-nonadjacent",)),
             ],
             "both levels report G-nonadjacent",
+        )
+
+    def test_reports_g2_of_a_register_write_skew_only_at_serializability(
+        self, seat: Collector
+    ) -> None:
+        """Each call reads the initial value of the key that the other call writes."""
+        history = History()
+        calls = [
+            invoke_txn(history, 0, read_of("x", None), write("y", 1)),
+            invoke_txn(history, 1, read_of("y", None), write("x", 2)),
+        ]
+        calls[0].ok([read_of("x", None), write("y", 1)])
+        calls[1].ok([read_of("y", None), write("x", 2)])
+        check.equal(
+            seat,
+            [outcome(history, level) for level in LEVELS],
+            [("G2", ("G2",)), None],
+            "snapshot isolation permits the write skew",
+        )
+
+    def test_passes_a_serial_register_history_at_both_levels(
+        self, seat: Collector
+    ) -> None:
+        """Call 1 reads the 1 that call 0 wrote and overwrites it with 2."""
+        history = History()
+        run_txn(history, 0, write("x", 1))
+        run_txn(history, 1, read_of("x", 1), write("x", 2))
+        run_txn(history, 2, read_of("x", 2))
+        check.equal(
+            seat,
+            [outcome(history, level) for level in LEVELS],
+            [None, None],
+            "neither level reports an anomaly",
         )
 
     def test_lists_the_transactions_of_an_aborted_read_with_their_kinds(
@@ -479,6 +513,71 @@ class TestIsolationJson:
                 }
             ],
             "the explanation has the value that follows 1",
+        )
+
+    def test_returns_the_explanation_of_a_garbage_read_of_a_register(
+        self, seat: Collector
+    ) -> None:
+        """No call wrote the 9 that call 2 reads."""
+        history = History()
+        run_txn(history, 0, write("x", 1))
+        run_txn(history, 1, read_of("x", 9))
+        check.equal(
+            seat,
+            json_of(history, SERIALIZABLE)["explanation"],
+            [
+                {
+                    "call": 2,
+                    "key": literal_of("x"),
+                    "read": literal_of(9),
+                    "value": literal_of(9),
+                }
+            ],
+            "the explanation has the value of the read",
+        )
+
+    def test_returns_the_explanation_of_a_register_read_of_the_initial_value(
+        self, seat: Collector
+    ) -> None:
+        """Call 0 writes 1 to x and then reads the initial value."""
+        history = History()
+        run_txn(history, 0, write("x", 1), read_of("x", None))
+        check.equal(
+            seat,
+            json_of(history, SERIALIZABLE)["explanation"],
+            [
+                {
+                    "call": 0,
+                    "key": literal_of("x"),
+                    "read": None,
+                    "expected": literal_of(1),
+                    "whole": True,
+                    "future": None,
+                }
+            ],
+            "the explanation reads null and expects 1",
+        )
+
+    def test_returns_the_explanation_of_a_register_read_of_a_later_write(
+        self, seat: Collector
+    ) -> None:
+        """Call 0 reads 1 and then writes 1."""
+        history = History()
+        run_txn(history, 0, read_of("x", 1), write("x", 1))
+        check.equal(
+            seat,
+            json_of(history, SERIALIZABLE)["explanation"],
+            [
+                {
+                    "call": 0,
+                    "key": literal_of("x"),
+                    "read": literal_of(1),
+                    "expected": None,
+                    "whole": False,
+                    "future": literal_of(1),
+                }
+            ],
+            "the explanation has the later write of 1",
         )
 
 

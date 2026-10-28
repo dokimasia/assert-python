@@ -138,7 +138,101 @@ class TestIsolationSentence:
             "each edge has a line of its own",
         )
 
+    def test_returns_a_line_for_each_edge_of_a_register_cycle(
+        self, seat: Collector
+    ) -> None:
+        """The cycle has one edge of each relation and a second rw edge."""
+        record = isolated(
+            "G0",
+            (
+                Edge(0, 1, "ww", "x", 1, False, 2, register=True),
+                Edge(1, 2, "wr", "y", 3, False, None, register=True),
+                Edge(2, 3, "rw", "z", None, True, 4, register=True),
+                Edge(3, 0, "rw", "z", 5, False, 6, register=True),
+            ),
+        )
+        check.equal(
+            seat,
+            isolation_sentence(record),
+            (
+                "c: G0\n"
+                "    kinds: G0, G2\n"
+                "    call 0 -ww-> call 1: call 1 wrote 2 to 'x' after 1\n"
+                "    call 1 -wr-> call 2: call 2 read 3 from 'y'\n"
+                "    call 2 -rw-> call 3: call 2 read the initial value of 'z', and "
+                "call 3 wrote 4 to it\n"
+                "    call 3 -rw-> call 0: call 3 read 5 from 'z', and call 0 wrote 6 "
+                "after it"
+            ),
+            "each edge has a line of its own",
+        )
+
     tests: ClassVar[list[tuple[str, Observation, str]]] = [
+        (
+            "a garbage read of a register",
+            Observation(
+                "garbage-read", calls=(0,), key="x", value=9, register=True, read=9
+            ),
+            "call 0 read 9 from 'x', and no transaction wrote it",
+        ),
+        (
+            "a register read that contradicts the known value",
+            Observation(
+                "internal-inconsistency",
+                calls=(0,),
+                key="x",
+                whole=True,
+                register=True,
+                read=1,
+                known=2,
+            ),
+            "call 0 read 1 from 'x', and it knew the value was 2",
+        ),
+        (
+            "a register read of the initial value after a write",
+            Observation(
+                "internal-inconsistency",
+                calls=(0,),
+                key="x",
+                whole=True,
+                register=True,
+                known=2,
+            ),
+            "call 0 read the initial value from 'x', and it knew the value was 2",
+        ),
+        (
+            "a register read of a later write",
+            Observation(
+                "internal-inconsistency",
+                calls=(0,),
+                key="x",
+                future=1,
+                has_future=True,
+                register=True,
+                read=1,
+            ),
+            "call 0 read 1 from 'x', and 1 is a value that call 0 writes later",
+        ),
+        (
+            "an aborted read of a register",
+            Observation(
+                "aborted-read", calls=(2,), key="x", value=1, appender=0, register=True
+            ),
+            "call 2 read 1 from 'x', and call 0 wrote 1 and aborted",
+        ),
+        (
+            "an intermediate read of a register",
+            Observation(
+                "intermediate-read",
+                calls=(2,),
+                key="x",
+                value=1,
+                appender=0,
+                following=2,
+                register=True,
+            ),
+            "call 2 read 1 from 'x', and call 0 wrote 1 and then 2",
+        ),
         (
             "a garbage read",
             Observation("garbage-read", calls=(0,), key="x", reads=([9],), value=9),

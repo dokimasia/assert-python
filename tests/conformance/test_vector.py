@@ -130,7 +130,7 @@ class TestVectors:
 
     counts: ClassVar[list[tuple[str, list[str], int]]] = [
         ("returns the 57 files vectors of the definition", FILE_KINDS, 57),
-        ("returns the 80 history vectors of the definition", HISTORY_KINDS, 80),
+        ("returns the 108 history vectors of the definition", HISTORY_KINDS, 108),
         ("returns the 437 property vectors of the definition", PROP_KINDS, 437),
         ("returns the 14 machines vectors of the definition", STATEFUL_KINDS, 14),
     ]

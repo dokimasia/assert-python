@@ -83,6 +83,8 @@ def _edge_text(e: Edge) -> str:
     prove the edge.
     """
     head = f"call {e.source} -{e.relation}-> call {e.target}: "
+    if e.register:
+        return head + _register_edge_text(e)
     if e.relation == "ww":
         return (
             f"{head}call {e.target} appended {e.following!r} to {e.key!r} after "
@@ -98,6 +100,52 @@ def _edge_text(e: Edge) -> str:
     return (
         f"{head}call {e.source} read {e.key!r} ending in {e.value!r}, and call "
         f"{e.target} appended {e.following!r} after it"
+    )
+
+
+def _register_edge_text(e: Edge) -> str:
+    """Return the values and the calls that prove an edge of a register history."""
+    if e.relation == "ww":
+        return f"call {e.target} wrote {e.following!r} to {e.key!r} after {e.value!r}"
+    if e.relation == "wr":
+        return f"call {e.target} read {e.value!r} from {e.key!r}"
+    if e.empty:
+        return (
+            f"call {e.source} read the initial value of {e.key!r}, and call "
+            f"{e.target} wrote {e.following!r} to it"
+        )
+    return (
+        f"call {e.source} read {e.value!r} from {e.key!r}, and call {e.target} "
+        f"wrote {e.following!r} after it"
+    )
+
+
+def _register_text(value: object) -> str:
+    """Return the text of a register's value, and the initial value for None."""
+    return "the initial value" if value is None else repr(value)
+
+
+def _register_observation_text(o: Observation) -> str:
+    """Return the text of the observation of a register history."""
+    call = o.calls[0]
+    key = repr(o.key)
+    if o.anomaly == "garbage-read":
+        return f"call {call} read {o.read!r} from {key}, and no transaction wrote it"
+    if o.anomaly == "internal-inconsistency":
+        text = f"call {call} read {_register_text(o.read)} from {key}"
+        if o.whole:
+            text += f", and it knew the value was {_register_text(o.known)}"
+        if o.has_future:
+            text += f", and {o.future!r} is a value that call {call} writes later"
+        return text
+    if o.anomaly == "aborted-read":
+        return (
+            f"call {call} read {o.value!r} from {key}, and call {o.appender} wrote "
+            f"{o.value!r} and aborted"
+        )
+    return (
+        f"call {call} read {o.value!r} from {key}, and call {o.appender} wrote "
+        f"{o.value!r} and then {o.following!r}"
     )
 
 
@@ -147,6 +195,15 @@ def _observation_text(o: Observation) -> str:
     )
 
 
+def _evidence_text(e: Evidence) -> str:
+    """Return the text of one entry of an explanation."""
+    if isinstance(e, Edge):
+        return _edge_text(e)
+    if e.register:
+        return _register_observation_text(e)
+    return _observation_text(e)
+
+
 def isolation_sentence(failure: Failure) -> str:
     """Return the sentence of the record of a failing isolation check.
 
@@ -161,10 +218,7 @@ def isolation_sentence(failure: Failure) -> str:
     """
     d = failure.detail
     explanation = cast("Sequence[Evidence]", d["explanation"])
-    lines = "".join(
-        f"\n    {_edge_text(e) if isinstance(e, Edge) else _observation_text(e)}"
-        for e in explanation
-    )
+    lines = "".join(f"\n    {_evidence_text(e)}" for e in explanation)
     return (
         f"{failure.contract}: {d['anomaly']}\n    kinds: {', '.join(d['kinds'])}{lines}"
     )

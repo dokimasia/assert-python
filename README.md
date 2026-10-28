@@ -849,7 +849,11 @@ AssertionError: the register is linearizable: violated in the partition of 'x'
 - `history.spec_from` builds a specification from a factory of the
   subject.
 - `history.is_serializable` and `history.has_snapshot_isolation` check a
-  history of list-append transactions.
+  history of list-append transactions or of register transactions. A
+  history that writes with `["write", key, value]` is a register history.
+  Its reads return the value of the register, or None for the initial
+  value. A register history shows fewer anomalies than a list-append
+  history, because blind writes do not reveal an order between them.
 
 <!-- api-reference:history:start -->
 
@@ -891,7 +895,7 @@ Operation.returned(value: Any) -> bool
 history.spec_from(factory: Callable[[], Subject]) -> SubjectSpec
 ```
 
-**Checks.** is_linearizable checks a history against a spec. is_serializable and has_snapshot_isolation read a history of list-append transactions.
+**Checks.** is_linearizable checks a history against a spec. is_serializable and has_snapshot_isolation read a history of list-append or register transactions.
 
 ```python
 history.is_linearizable(seat: Seat, history: History, spec: Spec[_S], msg: str, *options: Option)
@@ -915,8 +919,8 @@ history.workers(n: int) -> Option
 history.Span(call: int, completion: int | None, process: int, operation: CallOperation)
 history.Transaction(call: int, completion: int | None, kind: Literal['ok', 'fail', 'unknown'] | None, process: int, args: tuple[Any, ...], output: Any, mops: tuple[Mop, ...])
 history.Link(call: int, relations: tuple[Relation, ...])
-history.Edge(source: int, target: int, relation: Relation, key: Any, value: Any, empty: bool, following: Any)
-history.Observation(anomaly: Anomaly, calls: tuple[int, ...], key: Any, reads: tuple[list[Any], ...], value: Any, appender: int | None, following: Any, expected: tuple[Any, ...], whole: bool, future: Any, has_future: bool)
+history.Edge(source: int, target: int, relation: Relation, key: Any, value: Any, empty: bool, following: Any, register: bool)
+history.Observation(anomaly: Anomaly, calls: tuple[int, ...], key: Any, reads: tuple[list[Any], ...], value: Any, appender: int | None, following: Any, expected: tuple[Any, ...], whole: bool, future: Any, has_future: bool, register: bool, read: Any, known: Any)
 history.Evidence = history.Edge | history.Observation
 ```
 
@@ -1073,7 +1077,7 @@ library against it:
 
 - The 195 cases of the corpus run on `check` and `expect`. Python skips none
   of them.
-- The vectors run too: 57 for files, 80 for histories, 432 for properties
+- The vectors run too: 57 for files, 108 for histories, 432 for properties
   and 14 for machines.
 - `tests/test_definition.py` checks each of the definition's 110
   assertions. An assertion is present, or the overlay declines it and it is

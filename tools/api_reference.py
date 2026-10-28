@@ -610,8 +610,8 @@ BLOCKS = {
                 history,
                 "Checks",
                 "is_linearizable checks a history against a spec. is_serializable "
-                "and has_snapshot_isolation read a history of list-append "
-                "transactions.",
+                "and has_snapshot_isolation read a history of list-append or "
+                "register transactions.",
                 "is_linearizable",
                 "is_serializable",
                 "has_snapshot_isolation",

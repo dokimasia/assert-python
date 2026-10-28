@@ -30,6 +30,7 @@ from dokimi_assert._history.history import History
 from dokimi_assert._history.transaction import (
     Transaction,
     TransactionError,
+    registers,
     transaction_json,
     transactions,
 )
@@ -108,11 +109,11 @@ def check_isolation(events: Sequence[Event], level: Level) -> IsolationDetail | 
         the level forbids.
 
     Raises:
-        TransactionError: The history is not a history of list-append
-            transactions.
+        TransactionError: The history is not a history of list-append or of
+            register transactions.
     """
     txns = transactions(events)
-    analysis = Analysis(txns)
+    analysis = Analysis(txns, register=registers(txns))
     found: list[tuple[Anomaly, Instance]] = []
     for kind in _FORBIDS[level]:
         instance = analysis.instance(kind)
@@ -155,8 +156,10 @@ def _observation_json(o: Observation) -> dict[str, Any]:
         return {
             "call": o.calls[0],
             "key": key,
-            "read": literal_of(o.reads[0]),
-            "expected": literal_of(list(o.expected)),
+            "read": _or_null(o.read) if o.register else literal_of(o.reads[0]),
+            "expected": (
+                _or_null(o.known) if o.register else literal_of(list(o.expected))
+            ),
             "whole": o.whole,
             "future": literal_of(o.future) if o.has_future else None,
         }
@@ -184,9 +187,14 @@ def _observation_json(o: Observation) -> dict[str, Any]:
     return {
         "call": o.calls[0],
         "key": key,
-        "read": literal_of(o.reads[0]),
+        "read": _or_null(o.read) if o.register else literal_of(o.reads[0]),
         "value": literal_of(o.value),
     }
+
+
+def _or_null(value: object) -> Any:
+    """Return the typed literal of a register value, or None for the initial value."""
+    return None if value is None else literal_of(value)
 
 
 def evidence_json(evidence: Evidence) -> dict[str, Any]:
@@ -271,19 +279,25 @@ def is_serializable(seat: Seat, history: History, msg: str) -> None:
     for anomalies. The failure is one record of the assertion serializable.
 
     A transaction is a call of the operation "txn" whose arguments are its
-    micro-operations. An append is ["append", key, value]. A read is
-    ["read", key, None]. An ok completion commits the transaction. Its output
-    repeats the micro-operations. Each read in the output has the list that
-    it returned, or None for the empty list. A fail completion aborts the
-    transaction. A transaction whose outcome is unknown is committed when a
-    committed read observed one of its appends. The same rule applies to a
-    pending transaction. A value can be appended to its key only once. Keys
-    and values compare by their typed literals.
+    micro-operations. An append is ["append", key, value], a write to a
+    register is ["write", key, value], and a read is ["read", key, None]. A
+    history whose micro-operations write is a register history, and every
+    other history is a list-append history. An ok completion commits the
+    transaction. Its output repeats the micro-operations. Each read in the
+    output has the list that it returned, or None for the empty list, and
+    each register read has its value, or None for the initial value. A fail
+    completion aborts the transaction. A transaction whose outcome is unknown
+    is committed when a committed read observed one of its appends or writes.
+    The same rule applies to a pending transaction. A value can be appended
+    or written to its key only once. Keys and values compare by their typed
+    literals. Blind writes do not reveal an order between them, so a
+    register history shows fewer anomalies than a list-append history.
 
     The detail of the record has the five fields of the definition. They are
     anomaly, kinds, transactions, cycle and explanation. The call ends with a
-    fault for a history that is not a History, and for a history whose calls
-    are not list-append transactions.
+    fault for a history that is not a History, for a history whose calls are
+    not list-append or register transactions, and for a history that both
+    appends and writes.
 
     Args:
         seat: The seat that receives the failure. Use the seat fixture.

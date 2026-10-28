@@ -1,20 +1,28 @@
 # Copyright Dokimasia B.V. 2026
 # SPDX-License-Identifier: MIT
 
-"""The transactions of a history of list appends. The isolation checks read them.
+"""The transactions of a history of list appends or of registers.
 
-A transaction is one call of the operation txn. Its arguments are its
-micro-operations in the order in which it ran them. An append is
-["append", key, value]. A read is ["read", key, None]. An ok completion
-commits the transaction. Its output repeats the micro-operations. Each read
-in the output has its list, or None for an empty list. A fail completion
-aborts the transaction. A value can be appended to its key only once, so a
-value identifies the append that produced it. Keys and values compare by
-their typed literals.
+The isolation checks read them. A transaction is one call of the operation
+txn. Its arguments are its micro-operations in the order in which it ran
+them. An append is ["append", key, value], a write to a register is
+["write", key, value], and a read is ["read", key, None]. A history whose
+micro-operations write is a register history, and every other history is a
+list-append history. An ok completion commits the transaction. Its output
+repeats the micro-operations. Each read in the output of a list-append
+history has its list, or None for an empty list. Each read in the output of
+a register history has its value, or None for the initial value. A fail
+completion aborts the transaction. A value can be appended or written to its
+key only once, so a value identifies the micro-operation that produced it.
+Keys and values compare by their typed literals.
+
+A read of a register is a read of the list of its one value, or of the
+empty list for the initial value, so the checks read both workloads alike.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Literal
@@ -30,10 +38,12 @@ __all__ = [
     "APPEND",
     "READ",
     "TXN",
+    "WRITE",
     "Mop",
     "Transaction",
     "TransactionError",
     "identity",
+    "registers",
     "transaction_json",
     "transactions",
 ]
@@ -44,15 +54,21 @@ TXN = "txn"
 #: The function of a micro-operation that appends a value to a key.
 APPEND: Final = "append"
 
-#: The function of a micro-operation that reads the list of a key.
+#: The function of a micro-operation that reads the list or the value of a key.
 READ: Final = "read"
 
+#: The function of a micro-operation that writes a value to a register.
+WRITE: Final = "write"
+
 #: The function of a micro-operation.
-Fn = Literal["append", "read"]
+Fn = Literal["append", "read", "write"]
 
 
 class TransactionError(ValueError):
-    """The error for a history that is not a history of list-append transactions."""
+    """The error for a history that is not a history of transactions.
+
+    A history of transactions is a list-append history or a register history.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,8 +78,10 @@ class Mop:
     Attributes:
         fn: The function of the micro-operation.
         key: The key.
-        value: The appended value of an append. A read has the list that it
-            returned, or None when its transaction did not commit.
+        value: The appended value of an append, and the written value of a
+            write. A read has the list that it returned, or the list of the
+            one value of a register, or None when its transaction did not
+            commit.
     """
 
     fn: Fn
@@ -128,7 +146,7 @@ def _parts(raw: object) -> tuple[Fn, Any, Any] | None:
     """Return the function, the key and the value of a micro-operation.
 
     The result is None for a value that is not a sequence of three parts
-    whose first part is append or read.
+    whose first part is append, read or write.
     """
     if not isinstance(raw, (list, tuple)) or len(raw) != _MOP_PARTS:
         return None
@@ -138,6 +156,8 @@ def _parts(raw: object) -> tuple[Fn, Any, Any] | None:
         return APPEND, parts[1], parts[2]
     if fn == READ:
         return READ, parts[1], parts[2]
+    if fn == WRITE:
+        return WRITE, parts[1], parts[2]
     return None
 
 
@@ -147,15 +167,23 @@ def _invoked(call: int, position: int, raw: object) -> Mop:
     if parts is None:
         msg = (
             f"argument {position} of call {call} is {raw!r}, not [append, key, "
-            "value] or [read, key, None]"
+            "value], [write, key, value] or [read, key, None]"
         )
         raise TransactionError(msg)
     fn, key, value = parts
     if fn == READ and value is not None:
-        msg = f"the read at argument {position} of call {call} has a list before it ran"
+        msg = (
+            f"the read at argument {position} of call {call} has a value before it ran"
+        )
+        raise TransactionError(msg)
+    if fn == WRITE and value is None:
+        msg = (
+            f"the write at argument {position} of call {call} writes None, the "
+            "initial value of every key"
+        )
         raise TransactionError(msg)
     identity(call, key)
-    if fn == APPEND:
+    if fn != READ:
         identity(call, value)
     return Mop(fn, key, None if fn == READ else value)
 
@@ -163,7 +191,8 @@ def _invoked(call: int, position: int, raw: object) -> Mop:
 def _repeated(call: int, position: int, mop: Mop, raw: object) -> Mop:
     """Return the micro-operation of an ok output that repeats mop.
 
-    The micro-operation of a read has the list that the read returned.
+    The micro-operation of a read has what the read returned, which the
+    workload of the history reads later.
     """
     parts = _parts(raw)
     repeats = (
@@ -179,21 +208,68 @@ def _repeated(call: int, position: int, mop: Mop, raw: object) -> Mop:
             f"and does not repeat {stated!r}"
         )
         raise TransactionError(msg)
-    if mop.fn == APPEND:
+    if mop.fn != READ:
         return mop
-    value = parts[2]
-    if value is None:
-        return Mop(READ, mop.key, [])
-    if not isinstance(value, (list, tuple)):
+    return Mop(READ, mop.key, parts[2])
+
+
+def _read_as(txn: Transaction, *, register: bool) -> Transaction:
+    """Return an ok transaction with the list of each read.
+
+    A list-append read that returned None returned the empty list. A
+    register read returned the list of its one value, or the empty list for
+    the initial value.
+    """
+    if txn.kind != "ok":
+        return txn
+    mops: list[Mop] = []
+    for position, mop in enumerate(txn.mops):
+        if mop.fn != READ:
+            mops.append(mop)
+            continue
+        value = mop.value
+        if register:
+            items: list[Any] = [] if value is None else [value]
+        elif value is None:
+            items = []
+        elif isinstance(value, (list, tuple)):
+            items = list(value)
+        else:
+            msg = (
+                f"the read at micro-operation {position} of the output of call "
+                f"{txn.call} returned {value!r}, not a list"
+            )
+            raise TransactionError(msg)
+        for item in items:
+            identity(txn.call, item)
+        mops.append(Mop(READ, mop.key, items))
+    return dataclasses.replace(txn, mops=tuple(mops))
+
+
+def registers(txns: Sequence[Transaction]) -> bool:
+    """Report whether a history is a register history: whether it writes.
+
+    Args:
+        txns: The transactions of the history.
+
+    Returns:
+        True when a micro-operation of the history writes.
+
+    Raises:
+        TransactionError: The history both appends and writes.
+    """
+    first: dict[str, int] = {}
+    for txn in txns:
+        for mop in txn.mops:
+            if mop.fn != READ:
+                first.setdefault(mop.fn, txn.call)
+    if len(first) > 1:
         msg = (
-            f"the read at micro-operation {position} of the output of call {call} "
-            f"returned {value!r}, not a list"
+            f"call {first[APPEND]} appends and call {first[WRITE]} writes, and a "
+            "history is either list-append or registers"
         )
         raise TransactionError(msg)
-    items: list[Any] = list(value)
-    for item in items:
-        identity(call, item)
-    return Mop(READ, mop.key, items)
+    return WRITE in first
 
 
 def _returned(call: int, mops: Sequence[Mop], output: object) -> tuple[Mop, ...]:
@@ -237,23 +313,25 @@ def _transaction_of(
     )
 
 
-def _register(txn: Transaction, appended: dict[tuple[str, str], int]) -> None:
-    """Record each value that txn appends, and refuse a second append of a value."""
+def _register(txn: Transaction, produced: dict[tuple[str, str], int]) -> None:
+    """Record each value that txn appends or writes, and refuse a second one."""
     for mop in txn.mops:
-        if mop.fn != APPEND:
+        if mop.fn == READ:
             continue
+        verb = "appends" if mop.fn == APPEND else "writes"
         name = (identity(txn.call, mop.key), identity(txn.call, mop.value))
-        first = appended.get(name)
+        first = produced.get(name)
         if first == txn.call:
-            msg = f"call {txn.call} appends {mop.value!r} to the key {mop.key!r} twice"
+            msg = f"call {txn.call} {verb} {mop.value!r} to the key {mop.key!r} twice"
             raise TransactionError(msg)
         if first is not None:
+            both = "both append" if mop.fn == APPEND else "both write"
             msg = (
-                f"calls {first} and {txn.call} both append {mop.value!r} to the key "
+                f"calls {first} and {txn.call} {both} {mop.value!r} to the key "
                 f"{mop.key!r}"
             )
             raise TransactionError(msg)
-        appended[name] = txn.call
+        produced[name] = txn.call
 
 
 def transactions(events: Sequence[Event]) -> list[Transaction]:
@@ -266,21 +344,23 @@ def transactions(events: Sequence[Event]) -> list[Transaction]:
         The transactions.
 
     Raises:
-        TransactionError: A call is not a list-append transaction, an ok
-            output does not repeat the micro-operations of its invocation, a
-            key or a value does not have a typed literal, or a value is
-            appended to one key twice.
+        TransactionError: A call is not a transaction, an ok output does not
+            repeat the micro-operations of its invocation, a key or a value
+            does not have a typed literal, a value is appended or written to
+            one key twice, the history both appends and writes, or a
+            list-append read returned no list.
     """
     completions = {e.call: e for e in events if isinstance(e, Completion)}
-    appended: dict[tuple[str, str], int] = {}
+    produced: dict[tuple[str, str], int] = {}
     found: list[Transaction] = []
     for event in events:
         if not isinstance(event, Invocation):
             continue
         txn = _transaction_of(event, completions.get(event.index))
-        _register(txn, appended)
+        _register(txn, produced)
         found.append(txn)
-    return found
+    register = registers(found)
+    return [_read_as(txn, register=register) for txn in found]
 
 
 def transaction_json(txn: Transaction) -> dict[str, Any]:

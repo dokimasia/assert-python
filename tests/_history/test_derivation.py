@@ -25,7 +25,15 @@ from dokimi_assert._history.derivation import (
 )
 from dokimi_assert._history.history import History
 from dokimi_assert._history.transaction import transactions
-from helpers import append, invoke_txn, read_of, read_skew, run_txn, write_skew
+from helpers import (
+    append,
+    invoke_txn,
+    read_of,
+    read_skew,
+    run_txn,
+    write,
+    write_skew,
+)
 
 if TYPE_CHECKING:
     from dokimi_assert.seat import Collector
@@ -409,6 +417,28 @@ class TestAnalysisInstance:
                 ),
             ),
             "the instance has the cycle and the evidence of each edge",
+        )
+
+    def test_returns_a_g0_cycle_of_registers_that_each_overwrite_a_read_value(
+        self, seat: Collector
+    ) -> None:
+        """Call 2 overwrites the 1 of call 0, and call 0 overwrites the 3 of call 2."""
+        history = History()
+        run_txn(history, 0, write("x", 1), read_of("y", 3), write("y", 4))
+        run_txn(history, 1, read_of("x", 1), write("x", 2), write("y", 3))
+        check.equal(
+            seat,
+            Analysis(transactions(history.events()), register=True).instance("G0"),
+            Instance(
+                "G0",
+                (0, 2),
+                (Link(0, ("ww",)), Link(2, ("ww",))),
+                (
+                    Edge(0, 2, "ww", "x", 1, False, 2, register=True),
+                    Edge(2, 0, "ww", "y", 3, False, 4, register=True),
+                ),
+            ),
+            "each edge of the cycle is a write dependency of a register",
         )
 
     def test_drops_an_edge_from_a_transaction_to_itself(self, seat: Collector) -> None:

@@ -8,13 +8,17 @@ key, the dependencies between committed transactions, and the first
 instance of each anomaly.
 
 The ok transactions are committed. A transaction whose outcome is unknown is
-committed when a committed read observed one of its appends. The same rule
-applies to a pending transaction. The version order of a key is its longest
-committed read. A key whose committed
+committed when a committed read observed one of its appends or writes. The
+same rule applies to a pending transaction. The version order of a key is
+its longest committed read. A key whose committed
 reads are not prefixes of one list does not have a version order. Every
 committed read is a prefix of the final list of its key, so a committed
 append that no committed read observed follows the last value of the
 version order.
+
+In a register history, the initial value precedes each installed value, and
+a transaction's first read of a register before its write precedes the value
+that its last write installs. The dependencies follow from those pairs.
 """
 
 from __future__ import annotations
@@ -32,7 +36,7 @@ from dokimi_assert._history.cycle import (
     simple,
 )
 from dokimi_assert._history.history import identity_of
-from dokimi_assert._history.transaction import APPEND, READ, Transaction
+from dokimi_assert._history.transaction import APPEND, READ, WRITE, Transaction
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
@@ -103,10 +107,13 @@ class Edge:
         relation: The dependency of target on source.
         key: The key whose list proves the dependency.
         value: The value of source, or the last value of a read.
-        empty: True for an rw edge whose source read the empty list. Such an
-            edge does not have a value.
+        empty: True for an rw edge whose source read the empty list, or the
+            initial value of a register. Such an edge does not have a value.
         following: The value of target after value. Only ww and rw edges
             have it.
+        register: True for an edge of a register history. Its value is the
+            value that source installed for ww, and the value that the
+            reading transaction read for wr and rw.
     """
 
     source: int
@@ -116,6 +123,7 @@ class Edge:
     value: Any
     empty: bool
     following: Any
+    register: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,6 +155,13 @@ class Observation:
         future: The first value of the read that the transaction appends to
             key after the read.
         has_future: True when the read has such a value.
+        register: True for an observation of a register history. Its read
+            is read and not reads, and an internal inconsistency states known
+            and not expected. appender wrote value.
+        read: The value that a register read returned, None for the initial
+            value.
+        known: The value of the register that the transaction knew before
+            the read, None when it knew none or knew the initial value.
     """
 
     anomaly: Anomaly
@@ -160,6 +175,9 @@ class Observation:
     whole: bool = False
     future: Any = None
     has_future: bool = False
+    register: bool = False
+    read: Any = None
+    known: Any = None
 
 
 #: One entry of the explanation of an anomaly.
@@ -356,6 +374,81 @@ def _internal(txn: Transaction) -> Instance | None:
     return None
 
 
+#: The initial value of a register in a version pair and in a read. A read
+#: list without a value states it.
+_INITIAL: Any = object()
+
+
+def _same(a: object, b: object) -> bool:
+    """Report whether two register values, either of which may be _INITIAL, are one."""
+    if a is _INITIAL or b is _INITIAL:
+        return a is b
+    return _id(a) == _id(b)
+
+
+def _external_reads(txn: Transaction) -> dict[str, Any]:
+    """Return the value of each external read of an ok register transaction, by key.
+
+    An external read is the first read of a key before the transaction writes
+    the key. Its value is _INITIAL for the initial value.
+    """
+    if txn.kind != "ok":
+        return {}
+    touched: set[str] = set()
+    found: dict[str, Any] = {}
+    for mop in txn.mops:
+        key = _id(mop.key)
+        if mop.fn == READ and key not in touched:
+            found[key] = mop.value[0] if mop.value else _INITIAL
+        touched.add(key)
+    return found
+
+
+def _external_writes(txn: Transaction) -> dict[str, Any]:
+    """Return the value of the last write of each key of a register transaction."""
+    return {_id(mop.key): mop.value for mop in txn.mops if mop.fn == WRITE}
+
+
+def _internal_register(txn: Transaction) -> Instance | None:
+    """Return the first read of a register that the other micro-operations contradict.
+
+    After a write or a read of a key, the transaction knows the key's value. A
+    later read returns that value, and no read returns a value that the
+    transaction writes to the key after the read.
+    """
+    known: dict[str, Any] = {}
+    for position, mop in enumerate(txn.mops):
+        key = _id(mop.key)
+        if mop.fn == WRITE:
+            known[key] = mop.value
+            continue
+        read = mop.value[0] if mop.value else _INITIAL
+        future = read is not _INITIAL and any(
+            later.fn == WRITE and _id(later.key) == key and _same(later.value, read)
+            for later in txn.mops[position + 1 :]
+        )
+        stale = key in known and not _same(known[key], read)
+        if future or stale:
+            expected = known.get(key, _INITIAL)
+            return _single(
+                "internal-inconsistency",
+                [txn.call],
+                Observation(
+                    "internal-inconsistency",
+                    calls=(txn.call,),
+                    key=mop.key,
+                    register=True,
+                    read=None if read is _INITIAL else read,
+                    known=None if expected is _INITIAL else expected,
+                    whole=key in known,
+                    future=read if future else None,
+                    has_future=future,
+                ),
+            )
+        known[key] = read
+    return None
+
+
 def _longest(reads: Sequence[_Read]) -> tuple[list[Any], tuple[_Read, _Read] | None]:
     """Return the longest of the reads of a key, or the first two reads that clash.
 
@@ -406,12 +499,12 @@ class _Index:
     keys: dict[str, Any] = field(default_factory=dict)
 
     def take(self, txn: Transaction) -> None:
-        """Index the keys that a transaction touches, and the appends that it makes."""
+        """Index the keys that a transaction touches, and its appends or writes."""
         last: dict[str, tuple[str, str]] = {}
         for mop in txn.mops:
             key = _id(mop.key)
             self.keys.setdefault(key, mop.key)
-            if mop.fn != APPEND:
+            if mop.fn == READ:
                 continue
             name = _name_of(mop.key, mop.value)
             self.appender[name] = txn.call
@@ -423,15 +516,22 @@ class _Index:
 
 
 class Analysis:
-    """The derivation over the transactions of one history."""
+    """The derivation over the transactions of one history.
 
-    def __init__(self, txns: Sequence[Transaction]) -> None:
+    A register read is a read of the list of its one value, so the appender
+    of a value is its writer, and the reads show the anomalies that need no
+    graph as the reads of a list-append history do.
+    """
+
+    def __init__(self, txns: Sequence[Transaction], *, register: bool = False) -> None:
         """Derive the dependencies between the committed transactions of txns.
 
         Args:
             txns: The transactions, in the order of their invocations. Each of
                 their keys and values has a typed literal.
+            register: True for a register history.
         """
+        self._register: bool = register
         self._txns: Sequence[Transaction] = txns
         self._index: _Index = _Index()
         for txn in txns:
@@ -455,9 +555,13 @@ class Analysis:
                     committed.add(appender)
         self._committed: frozenset[int] = frozenset(committed)
         self._incompatible: Instance | None = None
-        self._orders: dict[str, list[Any]] = self._version_orders()
         self._edges: dict[tuple[int, int], list[Edge]] = {}
-        self._derive()
+        if register:
+            self._orders: dict[str, list[Any]] = {}
+            self._derive_registers()
+        else:
+            self._orders = self._version_orders()
+            self._derive()
 
     def instance(self, anomaly: Anomaly) -> Instance | None:
         """Return the first instance of an anomaly in the history.
@@ -496,6 +600,8 @@ class Analysis:
                             key=one.key,
                             reads=(one.read,),
                             value=value,
+                            register=self._register,
+                            read=value if self._register else None,
                         ),
                     )
         return None
@@ -522,8 +628,9 @@ class Analysis:
 
     def _internal_inconsistency(self) -> Instance | None:
         """Return the first committed read that contradicts its transaction."""
+        internal = _internal_register if self._register else _internal
         for txn in self._txns:
-            found = _internal(txn) if txn.kind == "ok" else None
+            found = internal(txn) if txn.kind == "ok" else None
             if found is not None:
                 return found
         return None
@@ -543,6 +650,7 @@ class Analysis:
                             key=one.key,
                             value=value,
                             appender=appender,
+                            register=self._register,
                         ),
                     )
         return None
@@ -574,6 +682,7 @@ class Analysis:
                         value=value,
                         appender=appender,
                         following=self._index.later[name],
+                        register=self._register,
                     ),
                 )
         return None
@@ -681,6 +790,102 @@ class Analysis:
                 last,
                 value,
             )
+
+    def _derive_registers(self) -> None:
+        """Derive the dependencies between committed transactions for each register.
+
+        The initial value precedes each installed value, the value of a
+        committed transaction's last write of a register. A committed
+        transaction's external read, its first read of a register before it
+        writes the register, precedes its own installed value. Each pair gives
+        a ww edge from the transaction that installed its first value, and an
+        rw edge from each transaction whose external read returned that value.
+        Each external read gives a wr edge from the transaction that installed
+        its value. A key adds its ww edges in the order of the pairs, then the
+        wr and rw edges of each read in the order of the reading transactions.
+        """
+        reads: dict[str, list[tuple[int, Any]]] = {}
+        installs: dict[str, list[tuple[int, Any]]] = {}
+        for txn in self._txns:
+            if txn.call not in self._committed:
+                continue
+            for key, read in _external_reads(txn).items():
+                _add(reads, key, (txn.call, read))
+            for key, value in _external_writes(txn).items():
+                _add(installs, key, (txn.call, value))
+        for key, stated in self._index.keys.items():
+            read_by = dict(reads.get(key, []))
+            pairs: list[tuple[Any, int, Any]] = []
+            for call, value in installs.get(key, []):
+                pairs.append((_INITIAL, call, value))
+                before = read_by.get(call, _INITIAL)
+                if before is not _INITIAL:
+                    pairs.append((before, call, value))
+            self._register_edges(key, stated, pairs, reads.get(key, []))
+
+    def _register_edges(
+        self,
+        key: str,
+        stated: object,
+        pairs: Sequence[tuple[Any, int, Any]],
+        reads: Sequence[tuple[int, Any]],
+    ) -> None:
+        """Derive the edges of one register from its version pairs and its reads.
+
+        A pair has a value, the transaction that installed a later value, and
+        that later value. A read has the reading transaction and the value it
+        read, _INITIAL for the initial value.
+        """
+        for before, call, value in pairs:
+            if before is not _INITIAL:
+                self._edge(
+                    self._installer(key, before),
+                    call,
+                    lambda s, t, k, v, n: Edge(s, t, "ww", k, v, False, n, True),
+                    stated,
+                    before,
+                    value,
+                )
+        for reader, read in reads:
+            if read is not _INITIAL:
+                self._edge(
+                    self._installer(key, read),
+                    reader,
+                    lambda s, t, k, v, _: Edge(s, t, "wr", k, v, False, None, True),
+                    stated,
+                    read,
+                    None,
+                )
+            for before, call, value in pairs:
+                if _same(before, read):
+                    self._edge(
+                        reader,
+                        call,
+                        lambda s, t, k, v, n: Edge(
+                            s,
+                            t,
+                            "rw",
+                            k,
+                            None if v is _INITIAL else v,
+                            v is _INITIAL,
+                            n,
+                            True,
+                        ),
+                        stated,
+                        read,
+                        value,
+                    )
+
+    def _installer(self, key: str, value: object) -> int | None:
+        """Return the committed transaction that installed value on a register.
+
+        A value that its writer wrote again later in the same transaction was
+        never installed.
+        """
+        name = (key, _id(value))
+        if name in self._index.later:
+            return None
+        return self._writer(key, value)
 
     def _edge(
         self,

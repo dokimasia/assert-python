@@ -18,14 +18,16 @@ from dokimi_assert._history.transaction import (
     APPEND,
     READ,
     TXN,
+    WRITE,
     Mop,
     Transaction,
     TransactionError,
     identity,
+    registers,
     transaction_json,
     transactions,
 )
-from helpers import append, invoke_txn, read_of, refusal, run_txn
+from helpers import append, invoke_txn, read_of, refusal, run_txn, write
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -46,16 +48,50 @@ def appended_twice(history: History) -> None:
     run_txn(history, 0, append("x", 1))
 
 
+def written_twice(history: History) -> None:
+    """Record two calls of client 0 that each write 1 to x."""
+    run_txn(history, 0, write("x", 1))
+    run_txn(history, 0, write("x", 1))
+
+
+def appends_and_writes(history: History) -> None:
+    """Record a call that appends 1 to x and a call that writes 2 to y."""
+    run_txn(history, 0, append("x", 1))
+    run_txn(history, 0, write("y", 2))
+
+
 class TestNames:
-    """TXN, APPEND and READ are the operation and the functions of the workload."""
+    """TXN, APPEND, READ and WRITE are the operation and the workload functions."""
 
     def test_has_the_strings_of_the_workload(self, seat: Collector) -> None:
-        """The workload uses the strings txn, append and read."""
+        """The workload uses the strings txn, append, read and write."""
         check.equal(
             seat,
-            [TXN, APPEND, READ],
-            ["txn", "append", "read"],
-            "the constants are txn, append and read",
+            [TXN, APPEND, READ, WRITE],
+            ["txn", "append", "read", "write"],
+            "the constants are txn, append, read and write",
+        )
+
+
+class TestRegisters:
+    """registers reports whether a history writes."""
+
+    def test_reports_a_history_that_writes(self, seat: Collector) -> None:
+        """Call 0 writes 1 to x."""
+        history = History()
+        run_txn(history, 0, write("x", 1))
+        check.is_true(
+            seat, registers(transactions(history.events())), "the history writes"
+        )
+
+    def test_reports_a_history_that_only_reads(self, seat: Collector) -> None:
+        """A read-only history is a list-append history."""
+        history = History()
+        run_txn(history, 0, read_of("x", None))
+        check.is_false(
+            seat,
+            registers(transactions(history.events())),
+            "the history does not write",
         )
 
 
@@ -191,6 +227,20 @@ class TestTransactions:
             "the read has the list [1, 2]",
         )
 
+    def test_reads_a_register_read_as_the_list_of_its_value(
+        self, seat: Collector
+    ) -> None:
+        """Call 0 writes 1 to x, and call 1 reads 1 and the initial value of y."""
+        history = History()
+        run_txn(history, 0, write("x", 1))
+        run_txn(history, 1, read_of("x", 1), read_of("y", None))
+        check.equal(
+            seat,
+            transactions(history.events())[1].mops,
+            (Mop("read", "x", [1]), Mop("read", "y", [])),
+            "each read has the list of its value",
+        )
+
     def test_accepts_one_value_appended_to_two_keys(self, seat: Collector) -> None:
         """Call 0 appends 1 to x and to y."""
         history = History()
@@ -212,8 +262,8 @@ class TestTransactions:
             "an argument that is not a micro-operation",
             lambda h: h.invoke(0, TXN, [[APPEND, "x"]], "x"),
             (
-                "argument 0 of call 0 is ['append', 'x'], not [append, key, value] or "
-                "[read, key, None]"
+                "argument 0 of call 0 is ['append', 'x'], not [append, key, value], "
+                "[write, key, value] or [read, key, None]"
             ),
         ),
         (
@@ -221,13 +271,39 @@ class TestTransactions:
             lambda h: h.invoke(0, TXN, [["delete", "x", None]], "x"),
             (
                 "argument 0 of call 0 is ['delete', 'x', None], not [append, key, "
-                "value] or [read, key, None]"
+                "value], [write, key, value] or [read, key, None]"
             ),
         ),
         (
-            "a read that has a list before it ran",
+            "a read that has a value before it ran",
             lambda h: h.invoke(0, TXN, [read_of("x", [1])], "x"),
-            "the read at argument 0 of call 0 has a list before it ran",
+            "the read at argument 0 of call 0 has a value before it ran",
+        ),
+        (
+            "a write of None",
+            lambda h: h.invoke(0, TXN, [write("x", None)], "x"),
+            (
+                "the write at argument 0 of call 0 writes None, the initial value of "
+                "every key"
+            ),
+        ),
+        (
+            "a value that two calls write to one key",
+            written_twice,
+            "calls 0 and 2 both write 1 to the key 'x'",
+        ),
+        (
+            "a value that one call writes to one key twice",
+            lambda h: run_txn(h, 0, write("x", 1), write("x", 1)),
+            "call 0 writes 1 to the key 'x' twice",
+        ),
+        (
+            "a history that appends and writes",
+            appends_and_writes,
+            (
+                "call 0 appends and call 2 writes, and a history is either list-append "
+                "or registers"
+            ),
         ),
         (
             "an output that repeats another value",

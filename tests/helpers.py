@@ -241,6 +241,11 @@ def append(key: object, value: object) -> list[object]:
     return ["append", key, value]
 
 
+def write(key: object, value: object) -> list[object]:
+    """Return a micro-operation of a transaction that writes value to key."""
+    return ["write", key, value]
+
+
 def read_of(key: object, values: object) -> list[object]:
     """Return a micro-operation of a transaction that read values from key."""
     return ["read", key, values]
