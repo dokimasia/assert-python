@@ -21,6 +21,12 @@ A property whose run skips skips the test of a Collector or a Standard
 seat. Both raise unittest.SkipTest, which unittest and pytest report as a
 skipped test. A Recorder keeps the call record of the skip alone. A call of
 rejects whose check skips before it fails skips the test in the same way.
+
+A helper registers the release of what it starts through cleanup. The
+Collector runs the releases when the test ends, the Recorder at
+run_cleanups, and the seat that rejects or eventually hands a body when the
+body ends. A Standard has no end of a test, so cleanup ends the call with a
+fault there.
 """
 
 from __future__ import annotations
@@ -29,6 +35,9 @@ import threading
 import unittest
 from typing import TYPE_CHECKING
 
+from dokimi_assert._matcher.cleanup import Cleanups
+from dokimi_assert._matcher.fault import FaultError, of_operation
+from dokimi_assert._matcher.loop import Loop
 from dokimi_assert._matcher.seat import Seat
 from dokimi_assert._matcher.verdict import end, fault_text
 from dokimi_assert._record.calls import keep, lines, own
@@ -38,7 +47,15 @@ from dokimi_assert.failure import Failure, render
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-__all__ = ["Collector", "Recorder", "Seat", "Standard", "clean_up", "fault"]
+__all__ = [
+    "Collector",
+    "Recorder",
+    "Seat",
+    "Standard",
+    "clean_up",
+    "cleanup",
+    "fault",
+]
 
 
 def fault(seat: Seat, error: BaseException) -> None:
@@ -66,6 +83,46 @@ def fault(seat: Seat, error: BaseException) -> None:
         msg = f"seat.fault({error!r}) needs an exception"  # type: ignore[unreachable]
         raise TypeError(msg)  # pyright: ignore[reportUnreachable]
     end(seat, error)
+
+
+def cleanup(seat: Seat, fn: Callable[[], object]) -> None:
+    """Register fn to run when the test, the case or the body of seat ends.
+
+    It calls the member cleanup of seat. The Collector of the seat fixture, a
+    case of a property, a Recorder and the seat that rejects or eventually
+    hands a body have the member. A seat without it ends the call with a
+    fault, and fn does not run.
+
+        def served(seat):
+            server = Server.start()
+            cleanup(seat, server.stop)
+            return server
+
+    Args:
+        seat: The seat of the call of the helper.
+        fn: The release, which may return an awaitable.
+    """
+    __tracebackhide__ = True
+    member = getattr(seat, "cleanup", None)
+    if not callable(member):
+        refused = FaultError("", "the seat has no member cleanup")
+        end(seat, of_operation("seat.cleanup", refused))
+        return
+    member(fn)
+
+
+def _released(
+    fn: Callable[[], object], loop: Loop, record: Callable[[str], None]
+) -> None:
+    """Run fn, and run an awaitable that it returns on loop.
+
+    An error that fn raises goes to record as the failure "a cleanup failed",
+    with the text of the error.
+    """
+    try:
+        loop.resolve(fn())
+    except Exception as error:
+        record(f"a cleanup failed: {fault_text(error)}")
 
 
 class Standard:
@@ -127,7 +184,8 @@ class Recorder:
     recorder, and the assertion does not stop the test. The recorder keeps
     the first message of the aborting surface, because nothing after that
     call runs in a real test. It keeps the call record of every call that it
-    receives, whatever DOKIMI_ASSERT_RECORD states.
+    receives, whatever DOKIMI_ASSERT_RECORD states. It keeps the functions
+    that cleanup registers until run_cleanups runs them.
 
     The methods of Recorder are safe for concurrent use.
     """
@@ -142,8 +200,35 @@ class Recorder:
         self._records: list[Failure] = []
         self._faults: list[BaseException] = []
         self._clock: Clock | None = None
+        self._cleanups: Cleanups = Cleanups()
         self._guard: threading.Lock = threading.Lock()
         keep(own(self))
+
+    def cleanup(self, fn: Callable[[], object]) -> None:
+        """Register fn to run at run_cleanups.
+
+        A helper that a test checks on a recorder registers the release of
+        what it starts, and the recorder keeps the release until the test
+        runs it.
+
+        Args:
+            fn: The release, which may return an awaitable.
+        """
+        self._cleanups.add(fn)
+
+    def run_cleanups(self) -> None:
+        """Run the functions that cleanup registered, the last registered first.
+
+        The recorder forgets them. A function that a function registers runs
+        before the call returns, and a function that arrives after the call
+        waits for the next call. An awaitable that a function returns runs on
+        an event loop of its own. An error that a function raises is a
+        failure of the recorder, "a cleanup failed" with the text of the
+        error, and the later functions still run. The fixture recorder calls
+        run_cleanups when the test ends.
+        """
+        with Loop("run_cleanups") as loop:
+            self._cleanups.run(lambda fn: _released(fn, loop, self.record))
 
     def helper(self) -> None:
         """Count one call of helper."""
@@ -329,7 +414,7 @@ class Collector:
         """Return a collector that has collected nothing."""
         self._collected: list[str] = []
         self._records: list[Failure] = []
-        self._cleanups: list[Callable[[], object]] = []
+        self._cleanups: Cleanups = Cleanups()
         self._clock: Clock | None = None
         self._guard: threading.Lock = threading.Lock()
 
@@ -424,14 +509,15 @@ class Collector:
 
         The seat fixture runs the functions after the test body, the last
         registered first, and reports each function that raises as a
-        failure of the test.
+        failure of the test. A function that a function registers runs in
+        the same pass. An awaitable that a function returns runs on an event
+        loop of its own.
 
         Args:
             fn: The function, such as the removal of a directory that the
                 test created.
         """
-        with self._guard:
-            self._cleanups.append(fn)
+        self._cleanups.add(fn)
 
     @property
     def collected(self) -> list[str]:
@@ -464,25 +550,21 @@ class Collector:
         msg = f"{len(collected)} failures:\n{listed}"
         raise AssertionError(msg)
 
-    def _take_cleanups(self) -> list[Callable[[], object]]:
-        """Return the registered functions, the last first, and forget them."""
-        with self._guard:
-            registered, self._cleanups = self._cleanups, []
-        return registered[::-1]
+    def _run_cleanups(self) -> None:
+        """Run the registered functions, the last first, and forget them."""
+        with Loop("cleanup") as loop:
+            self._cleanups.run(lambda fn: _released(fn, loop, self.record))
 
 
 def clean_up(collector: Collector) -> None:
     """Run the functions that collector registered through cleanup.
 
-    It runs the last registered first, and forgets them. A function that
-    raises does not stop the ones after it: the collector keeps its error as
-    a failure, which the next flush reports.
+    It runs the last registered first, and forgets them. A function that a
+    function registers runs in the same pass. A function that raises does
+    not stop the ones after it: the collector keeps its error as a failure,
+    which the next flush reports.
 
     Args:
         collector: The seat of the test that ended.
     """
-    for fn in collector._take_cleanups():  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
-        try:
-            fn()
-        except Exception as error:
-            collector.record(f"a cleanup failed: {fault_text(error)}")
+    collector._run_cleanups()  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]

@@ -12,7 +12,7 @@ from typing import Any
 from dokimi_assert._matcher import value, waiting
 from dokimi_assert._matcher.seat import Mode
 from dokimi_assert.clock import Controlled
-from dokimi_assert.seat import Collector, Recorder
+from dokimi_assert.seat import Collector, Recorder, cleanup
 from helpers import records
 
 
@@ -57,6 +57,37 @@ class TestEventually:
         count, body = settles_after(3)
         waiting.eventually(seat, Mode.FATAL, 10.0, 1.0, body, "c")
         assert (seat.failed, count[0], clock.now()) == (False, 3, 2.0)
+
+    def test_runs_the_cleanups_of_an_attempt_before_the_next_attempt(self) -> None:
+        """Each attempt's cleanups run when the attempt ends."""
+        seat, _ = controlled()
+        order: list[str] = []
+
+        def body(trial: Any) -> None:
+            attempt = sum(1 for step in order if step.startswith("attempt")) + 1
+            order.append(f"attempt {attempt}")
+            cleanup(trial, lambda: order.append(f"cleanup {attempt}"))
+            if attempt < 2:
+                trial.fail("not yet")
+
+        waiting.eventually(seat, Mode.FATAL, 10.0, 1.0, body, "c")
+        assert (seat.failed, order) == (
+            False,
+            ["attempt 1", "cleanup 1", "attempt 2", "cleanup 2"],
+        )
+
+    def test_fails_an_attempt_at_a_failure_in_its_cleanup(self) -> None:
+        """A failure in a cleanup fails the attempt, and eventually tries again."""
+        seat, _ = controlled()
+        attempts: list[int] = []
+
+        def body(trial: Any) -> None:
+            attempts.append(1)
+            first = len(attempts) == 1
+            cleanup(trial, lambda: trial.fail("the release fails") if first else None)
+
+        waiting.eventually(seat, Mode.FATAL, 10.0, 1.0, body, "c")
+        assert (seat.failed, len(attempts)) == (False, 2)
 
     def test_fails_a_body_that_never_passes(self) -> None:
         """The failure at the timeout has the attempts and the last message."""

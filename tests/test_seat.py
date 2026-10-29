@@ -14,10 +14,19 @@ from typing import Any, cast
 import pytest
 
 from dokimi_assert import check, expect
+from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert.clock import Controlled, System
 from dokimi_assert.failure import Failure
-from dokimi_assert.seat import Collector, Recorder, Seat, Standard, clean_up, fault
-from helpers import records
+from dokimi_assert.seat import (
+    Collector,
+    Recorder,
+    Seat,
+    Standard,
+    clean_up,
+    cleanup,
+    fault,
+)
+from helpers import Uncleaned, records
 
 FAILURE = Failure("equal", "the count is right", {"want": 1, "got": 2})
 
@@ -520,3 +529,120 @@ class TestCleanUp:
         seat = Collector()
         clean_up(seat)
         assert seat.collected == []
+
+    def test_runs_a_function_that_a_function_registers_in_the_same_pass(self) -> None:
+        """A cleanup that registers another runs it before clean_up returns."""
+        seat = Collector()
+        order: list[str] = []
+
+        def registering() -> None:
+            order.append("registering")
+            seat.cleanup(lambda: order.append("registered"))
+
+        seat.cleanup(registering)
+        clean_up(seat)
+        assert order == ["registering", "registered"]
+
+    def test_runs_an_awaitable_that_a_function_returns(self) -> None:
+        """A coroutine function runs to its end on an event loop of its own."""
+        seat = Collector()
+        ran: list[bool] = []
+
+        async def close() -> None:
+            ran.append(True)
+
+        seat.cleanup(close)
+        clean_up(seat)
+        assert ran == [True]
+
+
+class TestCleanup:
+    """cleanup registers a function through the member cleanup of a seat."""
+
+    def test_registers_the_function_with_the_member_of_the_seat(self) -> None:
+        """A recorder runs the function at run_cleanups."""
+        seat = Recorder()
+        ran: list[bool] = []
+        cleanup(seat, lambda: ran.append(True))
+        seat.run_cleanups()
+        assert ran == [True]
+
+    def test_ends_the_call_with_a_fault_on_a_seat_without_the_member(self) -> None:
+        """The seat keeps the fault, and the function does not run."""
+        seat = Uncleaned()
+        ran: list[bool] = []
+        cleanup(seat, lambda: ran.append(True))
+        assert (seat.faults, ran) == (
+            [("seat.cleanup: the seat has no member cleanup", True)],
+            [],
+        )
+
+    def test_raises_the_fault_on_a_standard_seat(self) -> None:
+        """A standard seat has no end of a test, so the call raises the fault."""
+        with pytest.raises(Exception, match=r"^seat\.cleanup: ") as raised:
+            cleanup(Standard(), lambda: None)
+        assert isinstance(raised.value.__cause__, FaultError)
+
+
+class TestRecorderCleanup:
+    """Recorder.cleanup keeps a function until run_cleanups."""
+
+    def test_keeps_the_function_until_run_cleanups(self) -> None:
+        """The recorder does not run the function at its registration."""
+        seat = Recorder()
+        ran: list[bool] = []
+        seat.cleanup(lambda: ran.append(True))
+        assert ran == []
+
+
+class TestRecorderRunCleanups:
+    """Recorder.run_cleanups runs the functions that cleanup registered."""
+
+    def test_runs_the_last_registered_function_first(self) -> None:
+        """The functions run in the reverse order of their registration."""
+        seat = Recorder()
+        order: list[int] = []
+        seat.cleanup(lambda: order.append(1))
+        seat.cleanup(lambda: order.append(2))
+        seat.run_cleanups()
+        assert order == [2, 1]
+
+    def test_leaves_a_function_that_arrives_after_it_to_the_next_call(self) -> None:
+        """A second call runs only the function that arrived after the first."""
+        seat = Recorder()
+        order: list[str] = []
+        seat.cleanup(lambda: order.append("first run"))
+        seat.run_cleanups()
+        seat.cleanup(lambda: order.append("second run"))
+        assert order == ["first run"]
+        seat.run_cleanups()
+        assert order == ["first run", "second run"]
+
+    def test_keeps_the_error_of_a_function_as_a_failure(self) -> None:
+        """A function that raises fails the recorder, and the others still run."""
+        seat = Recorder()
+        ran: list[bool] = []
+
+        def busy() -> None:
+            msg = "the port is busy"
+            raise OSError(msg)
+
+        seat.cleanup(lambda: ran.append(True))
+        seat.cleanup(busy)
+        seat.run_cleanups()
+        assert (ran, seat.messages) == (
+            [True],
+            ["a cleanup failed: the port is busy"],
+        )
+
+    def test_runs_an_awaitable_that_a_function_returns(self) -> None:
+        """A coroutine function runs to its end on an event loop of its own."""
+        seat = Recorder()
+        ran: list[bool] = []
+
+        async def close() -> None:
+            ran.append(True)
+
+        seat.cleanup(close)
+        seat.run_cleanups()
+        assert ran == [True]

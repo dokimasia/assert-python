@@ -7,7 +7,8 @@ eventually makes one for each attempt, and rejects makes one for its check.
 The calls of a body are a run of the call that ran the body, so the record
 of that call contains them. A failure that stops ends the body, as it ends a
 test. A fault that ends its call fails the body with the text of the fault,
-and a fault that a call notes passes to the seat of the assertion.
+and a fault that a call notes passes to the seat of the assertion. The seat
+runs the functions that its member cleanup registers when the body ends.
 """
 
 from __future__ import annotations
@@ -15,13 +16,14 @@ from __future__ import annotations
 import contextlib
 from typing import TYPE_CHECKING, TypeVar
 
+from dokimi_assert._matcher.cleanup import Cleanups
+from dokimi_assert._matcher.loop import Loop
 from dokimi_assert._matcher.verdict import fault_text, note_fault
 from dokimi_assert._record.calls import Slot, own, run
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from dokimi_assert._matcher.loop import Loop
     from dokimi_assert._matcher.seat import Seat
 
 __all__ = ["Body", "Ended", "run_on"]
@@ -55,7 +57,51 @@ class Body:
         self.failed: bool = False
         self.message: str = ""
         self.parent: Seat = parent
+        self._cleanups: Cleanups = Cleanups()
         run(own(self), slot)
+
+    def cleanup(self, fn: Callable[[], object]) -> None:
+        """Register fn to run when the body ends.
+
+        The seat runs the last registered first, on the event loop of the
+        assertion call. A function that arrives after the body's cleanups
+        ran runs at once, and an awaitable that it returns runs on an event
+        loop of its own.
+
+        Args:
+            fn: The function.
+        """
+        if self._cleanups.add(fn):
+            return
+        with Loop("cleanup") as loop:
+            loop.resolve(fn())
+
+    def finish(self, loop: Loop) -> None:
+        """End the body: run the functions that cleanup registered.
+
+        The last registered runs first, and an awaitable that one returns
+        runs on loop. A failure in a function is a failure of the body. An
+        error that a function raises does not stop the later functions.
+
+        Args:
+            loop: The event loop of the assertion call.
+
+        Raises:
+            Exception: The first error that a function raised, once every
+                function ran.
+        """
+        raised: list[Exception] = []
+
+        def run_one(fn: Callable[[], object]) -> None:
+            try:
+                with contextlib.suppress(Ended):
+                    loop.resolve(fn())
+            except Exception as error:
+                raised.append(error)
+
+        self._cleanups.close(run_one)
+        if raised:
+            raise raised[0]
 
     def helper(self) -> None:
         """Do nothing, because the frames of a body are the frames of the test."""
@@ -112,7 +158,8 @@ def run_on(seat: _B, body: Callable[[Seat], object], loop: Loop) -> _B:
 
     A body that returns an awaitable runs on loop to its end. A failure that
     stops ends the run. Any other exception is not a failure of the body,
-    and run_on raises it.
+    and run_on raises it. The seat runs its cleanups when the body ends,
+    however it ended.
 
     Args:
         seat: The seat of the run.
@@ -120,8 +167,11 @@ def run_on(seat: _B, body: Callable[[Seat], object], loop: Loop) -> _B:
         loop: The event loop of the assertion call.
 
     Returns:
-        seat, once the run has ended.
+        seat, once the run and its cleanups have ended.
     """
-    with contextlib.suppress(Ended):
-        loop.resolve(body(seat))
+    try:
+        with contextlib.suppress(Ended):
+            loop.resolve(body(seat))
+    finally:
+        seat.finish(loop)
     return seat

@@ -125,6 +125,42 @@ def no_draw(_: object) -> NoReturn:
     raise AssertionError(msg)
 
 
+class Uncleaned:
+    """A seat without the member cleanup. It keeps the text of each fault.
+
+    Attributes:
+        faults: The text of each fault and whether the fault ends its call,
+            in call order.
+    """
+
+    def __init__(self) -> None:
+        """Return a seat without faults."""
+        self.faults: list[tuple[str, bool]] = []
+
+    def helper(self) -> None:
+        """Do nothing."""
+
+    def fail(self, message: str) -> None:
+        """Raise AssertionError with message.
+
+        Raises:
+            AssertionError: Always.
+        """
+        raise AssertionError(message)
+
+    def record(self, message: str) -> None:
+        """Raise AssertionError with message.
+
+        Raises:
+            AssertionError: Always.
+        """
+        raise AssertionError(message)
+
+    def report_fault(self, fault: BaseException, ending: bool) -> None:
+        """Keep the text of fault and ending."""
+        self.faults.append((str(fault), ending))
+
+
 @dataclass(frozen=True)
 class Decoding:
     """A generator of the engine whose decode is a function of the case.

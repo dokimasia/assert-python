@@ -23,7 +23,7 @@ from dokimi_assert._prop.directory import (
 )
 from dokimi_assert._prop.engine.choice import Choice
 from dokimi_assert._prop.engine.store import Failure, entry, name
-from dokimi_assert.seat import Collector, Recorder, clean_up
+from dokimi_assert.seat import Collector, Recorder, Standard, clean_up
 from helpers import refusal
 
 #: A stored entry with its file name and its object.
@@ -181,10 +181,10 @@ class TestClaim:
 
     def test_succeeds_twice_on_a_seat_without_cleanups(self, seat: Collector) -> None:
         """Both claims succeed."""
-        recorder = Recorder()
+        standard = Standard()
         check.is_true(
             seat,
-            claim(recorder, "dir", "c") and claim(recorder, "dir", "c"),
+            claim(standard, "dir", "c") and claim(standard, "dir", "c"),
             "both claims succeed",
         )
 

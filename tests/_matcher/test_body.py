@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -119,3 +119,91 @@ class TestRunOn:
 
         with Loop("x") as loop, pytest.raises(KeyError):
             run_on(Body(None, Recorder()), body, loop)
+
+    def test_runs_the_cleanups_of_the_body_the_last_registered_first(self) -> None:
+        """The seat runs its cleanups once the body has ended."""
+        order: list[str] = []
+
+        def body(seat: Seat) -> None:
+            cast("Body", seat).cleanup(lambda: order.append("first"))
+            cast("Body", seat).cleanup(lambda: order.append("second"))
+            seat.fail("stops")
+
+        with Loop("x") as loop:
+            run_on(Body(None, Recorder()), body, loop)
+        assert order == ["second", "first"]
+
+    def test_runs_the_cleanups_of_a_body_that_raises(self) -> None:
+        """A body that raises still runs its cleanups before the error leaves."""
+        order: list[str] = []
+
+        def body(seat: Seat) -> None:
+            cast("Body", seat).cleanup(lambda: order.append("released"))
+            msg = "defect"
+            raise KeyError(msg)
+
+        with Loop("x") as loop, pytest.raises(KeyError):
+            run_on(Body(None, Recorder()), body, loop)
+        assert order == ["released"]
+
+
+class TestBodyCleanup:
+    """Body.cleanup registers a function that runs when the body ends."""
+
+    def test_fails_the_body_at_a_failure_in_a_cleanup(self) -> None:
+        """A failure that stops in a cleanup is a failure of the body."""
+        order: list[str] = []
+
+        def body(seat: Seat) -> None:
+            cast("Body", seat).cleanup(lambda: order.append("first"))
+            cast("Body", seat).cleanup(lambda: seat.fail("the release fails"))
+
+        with Loop("x") as loop:
+            seat = run_on(Body(None, Recorder()), body, loop)
+        assert (seat.failed, seat.message, order) == (
+            True,
+            "the release fails",
+            ["first"],
+        )
+
+    def test_raises_the_error_of_a_cleanup_after_the_later_cleanups(self) -> None:
+        """The first error of a cleanup leaves run_on once every cleanup ran."""
+        order: list[str] = []
+
+        def busy() -> None:
+            msg = "the port is busy"
+            raise OSError(msg)
+
+        def body(seat: Seat) -> None:
+            cast("Body", seat).cleanup(lambda: order.append("first"))
+            cast("Body", seat).cleanup(busy)
+
+        with Loop("x") as loop, pytest.raises(OSError, match="the port is busy"):
+            run_on(Body(None, Recorder()), body, loop)
+        assert order == ["first"]
+
+    def test_runs_an_awaitable_of_a_cleanup_on_the_loop_of_the_call(self) -> None:
+        """A coroutine function that a body registers runs on the loop."""
+        order: list[str] = []
+
+        async def close() -> None:
+            order.append("closed")
+
+        def body(seat: Seat) -> None:
+            cast("Body", seat).cleanup(close)
+
+        with Loop("x") as loop:
+            run_on(Body(None, Recorder()), body, loop)
+        assert order == ["closed"]
+
+    def test_runs_a_function_that_arrives_after_the_cleanups_at_once(self) -> None:
+        """A cleanup that a seat receives after its body ended runs at once."""
+        order: list[str] = []
+
+        async def late() -> None:
+            order.append("late")
+
+        with Loop("x") as loop:
+            seat = run_on(Body(None, Recorder()), lambda _: None, loop)
+        seat.cleanup(late)
+        assert order == ["late"]

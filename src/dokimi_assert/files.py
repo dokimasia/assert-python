@@ -118,8 +118,8 @@ def workspace(seat: Seat, tree: Tree) -> str:
     attribute of the file.
 
     The seat must have a method cleanup that runs a function when the test
-    ends. The seat of the fixture and the case of a property have one. When
-    the seat does not have cleanup, the call ends with a fault. When the tree
+    or the body ends. Every seat of this library has one except Standard.
+    When the seat does not have cleanup, the call ends with a fault. When the tree
     breaks a rule of a tree, the call ends with a fault before it writes
     anything. The call also ends with a fault when the file system cannot
     store an entry. Examples are a link on a platform that refuses to create

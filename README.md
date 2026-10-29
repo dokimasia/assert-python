@@ -106,6 +106,24 @@ def restart_of(seat, service):
     return service.restart
 ```
 
+`seat.cleanup(seat, fn)` registers `fn` to release what a helper starts. It
+calls the member `cleanup` of the seat. The `seat` fixture runs `fn` when the
+test body ends. The check of `rejects` and each attempt of `eventually` run
+theirs when the body ends, before the assertion returns. A `Recorder` keeps
+them until `run_cleanups`, and the `recorder` fixture calls it when the test
+ends. `fn` may return an awaitable. A `Standard` has no member `cleanup`, so
+the helper ends the call with a fault there:
+
+```python
+from dokimi_assert.seat import cleanup
+
+
+def served(seat):
+    server = Server.start()
+    cleanup(seat, server.stop)
+    return server
+```
+
 ## Two surfaces
 
 Both modules have the same 48 assertions under the same names. `check`
@@ -333,7 +351,10 @@ Recorder.failures: list[Failure]
 Recorder.faults: list[BaseException]
 Recorder.records: list[str]
 Recorder.helper_calls: int
+Recorder.cleanup(fn: Callable[[], object])
+Recorder.run_cleanups()
 seat.clean_up(collector: Collector)
+seat.cleanup(seat: Seat, fn: Callable[[], object])
 seat.fault(seat: Seat, error: BaseException)
 ```
 
@@ -498,9 +519,9 @@ def test_a_rename_moves_the_draft(seat):
 - `files.text`, `bytes`, `executable`, `directory` and `link` build the
   entries of a tree, a dict from a path to an entry. `Entry.with_mode` sets
   the permission bits where they are part of the contract.
-- `workspace` writes a tree into a new directory and returns its path. The
-  test removes the directory when it ends, so the seat needs `cleanup`, as
-  the `seat` fixture and a `prop.Case` have it.
+- `workspace` writes a tree into a new directory and returns its path. A
+  cleanup of the seat removes the directory, so the seat needs `cleanup`.
+  Every seat of this library has it except `Standard`.
 - `write` writes a tree over a directory that exists, and `read` returns the
   content of a file.
 - `equal`, `contains` and `unchanged` compare a directory with a tree.

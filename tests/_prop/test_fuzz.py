@@ -112,7 +112,9 @@ class TestFuzz:
         """The stored case fails as found."""
         monkeypatch.delenv(MUTANT, raising=False)
         directory = str(tmp_path)
-        for_all(Recorder(), "empty", empty, hermetic(), seed(1), store(directory))
+        first = Recorder()
+        for_all(first, "empty", empty, hermetic(), seed(1), store(directory))
+        first.run_cleanups()
         recorder = Recorder()
         fuzz(recorder, "empty", empty, hermetic(), seed(1), store(directory))
         check.equal(

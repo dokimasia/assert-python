@@ -22,6 +22,7 @@ import pytest
 from dokimi_assert import check
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert._matcher.verdict import Running
+from dokimi_assert._override import override
 from dokimi_assert._prop.case import Case, FaultSignal, on_engine
 from dokimi_assert._prop.detail import FOR_ALL
 from dokimi_assert._prop.engine.choice import Choice, IntegerBounds, SequenceBounds
@@ -89,6 +90,7 @@ class Kept(Recorder):
         super().__init__()
         self._collector: Collector = collector
 
+    @override
     def cleanup(self, fn: Callable[[], object]) -> None:
         """Register fn to run when the test ends."""
         self._collector.cleanup(fn)
@@ -170,8 +172,14 @@ def in_a_running_loop(call: Callable[[], object]) -> None:
 
 
 def stored_by_a_failure(directory: Path) -> str:
-    """Write the entry of a failure of below_five into a store, and return its name."""
-    run_on(Recorder(), below_five, store(str(directory)))
+    """Write the entry of a failure of below_five into a store, and return its name.
+
+    The recorder runs its cleanups after the run, so a later property can claim
+    the entries.
+    """
+    recorder = Recorder()
+    run_on(recorder, below_five, store(str(directory)))
+    recorder.run_cleanups()
     [entry] = directory.iterdir()
     return entry.name
 

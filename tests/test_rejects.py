@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 from dokimi_assert import check, expect
 from dokimi_assert._matcher.seat import Mode
 from dokimi_assert.rejects import rejects
-from dokimi_assert.seat import Collector, Recorder, Seat, Standard, fault
+from dokimi_assert.seat import Collector, Recorder, Seat, Standard, cleanup, fault
 from helpers import records
 
 if TYPE_CHECKING:
@@ -149,6 +149,42 @@ class TestRejects:
         )
         check.is_false(seat, recorder.failed, "the message fails the check")
         check.is_empty(seat, failures, "the message has no record")
+
+    def test_runs_the_cleanups_of_the_check_before_it_returns(
+        self, seat: Collector
+    ) -> None:
+        """The check's cleanups run once the check ends, the last registered first."""
+        order: list[str] = []
+
+        def body(inner: Seat) -> None:
+            cleanup(inner, lambda: order.append("first"))
+            cleanup(inner, lambda: order.append("second"))
+            check.is_true(inner, False, "the check fails")
+
+        rejects(Recorder(), Mode.FATAL, "the check fails", body)
+        check.equal(
+            seat, order, ["second", "first"], "the cleanups ran before rejects returned"
+        )
+
+    def test_returns_the_record_of_a_failure_in_a_cleanup(
+        self, seat: Collector
+    ) -> None:
+        """A failure in a cleanup fails the check, and rejects passes."""
+        recorder = Recorder()
+
+        def body(inner: Seat) -> None:
+            cleanup(inner, lambda: check.is_true(inner, False, "the server stopped"))
+
+        failures = rejects(
+            recorder, Mode.FATAL, "a stopped server fails the check", body
+        )
+        check.equal(
+            seat,
+            [f.contract for f in failures],
+            ["the server stopped"],
+            "rejects returns the record of the cleanup",
+        )
+        check.is_false(seat, recorder.failed, "rejects passes")
 
     def test_runs_a_coroutine_check(self, seat: Collector) -> None:
         """A coroutine function runs on the loop of the call."""

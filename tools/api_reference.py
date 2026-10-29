@@ -306,7 +306,10 @@ SUPPORT = (
         "Recorder.faults",
         "Recorder.records",
         "Recorder.helper_calls",
+        "Recorder.cleanup",
+        "Recorder.run_cleanups",
         "clean_up",
+        "cleanup",
         "fault",
     ),
     _family(

@@ -97,17 +97,20 @@ def seat(request: pytest.FixtureRequest) -> Collector:
 
 
 @pytest.fixture
-def recorder() -> Recorder:
+def recorder() -> Generator[Recorder]:
     """Return a seat that records and fails nothing.
 
     A test of an assertion drives the assertion with the recorder, then reads
     failed, message and failures. Nothing that a test drives with a recorder
-    can fail the test.
+    can fail the test. When the test ends, the fixture runs the cleanups that
+    the recorder still keeps.
 
-    Returns:
+    Yields:
         A seat that records every failure and raises none.
     """
-    return Recorder()
+    seat = Recorder()
+    yield seat
+    seat.run_cleanups()
 
 
 @pytest.hookimpl(wrapper=True)

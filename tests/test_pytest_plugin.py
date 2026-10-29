@@ -195,6 +195,24 @@ class TestRecorder:
         )
         pytester.runpytest().assert_outcomes(passed=1)
 
+    def test_runs_the_cleanups_that_the_recorder_keeps_when_the_test_ends(
+        self, pytester: pytest.Pytester
+    ) -> None:
+        """The fixture runs the cleanups of the recorder after the test."""
+        pytester.makepyfile(
+            """
+            ran = []
+
+            def test_registers(recorder):
+                recorder.cleanup(lambda: ran.append("released"))
+                assert ran == []
+
+            def test_ran():
+                assert ran == ["released"]
+            """
+        )
+        pytester.runpytest().assert_outcomes(passed=2)
+
 
 class TestPytestRuntestCall:
     """pytest_runtest_call runs the cleanups and reports the failures of a test."""

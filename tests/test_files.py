@@ -18,7 +18,7 @@ import pytest
 from dokimi_assert import check, files
 from dokimi_assert._files.entry import Entry
 from dokimi_assert.seat import Collector, Recorder
-from helpers import LONG_NAMES_ABSENT, WINDOWS, os_error, records
+from helpers import LONG_NAMES_ABSENT, WINDOWS, Uncleaned, os_error, records
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -28,24 +28,6 @@ PNG = b"\x89PNG"
 
 #: A name that is longer than a file system allows. A read refuses it.
 TOO_LONG = "n" * 300
-
-
-class Cleaning(Recorder):
-    """A recorder that keeps the cleanups that it receives. A test runs them."""
-
-    def __init__(self) -> None:
-        """Return a recorder without cleanups."""
-        super().__init__()
-        self.cleanups: list[Callable[[], object]] = []
-
-    def cleanup(self, fn: Callable[[], object]) -> None:
-        """Keep fn."""
-        self.cleanups.append(fn)
-
-    def end(self) -> None:
-        """Run the cleanups in reverse order of registration."""
-        for fn in reversed(self.cleanups):
-            fn()
 
 
 def verdicts(recorder: Recorder) -> list[Any]:
@@ -140,9 +122,9 @@ class TestWorkspace:
         self, seat: Collector
     ) -> None:
         """The cleanup removes the directory."""
-        cleaning = Cleaning()
+        cleaning = Recorder()
         directory = files.workspace(cleaning, {"a.txt": files.text("a")})
-        cleaning.end()
+        cleaning.run_cleanups()
         check.is_false(
             seat, pathlib.Path(directory).exists(), "the directory is removed"
         )
@@ -151,7 +133,7 @@ class TestWorkspace:
         self, seat: Collector
     ) -> None:
         """The cleanup gives the owner the permission first."""
-        cleaning = Cleaning()
+        cleaning = Recorder()
         directory = files.workspace(
             cleaning,
             {
@@ -159,23 +141,24 @@ class TestWorkspace:
                 "sealed/a.txt": files.text("a").with_mode(0o400),
             },
         )
-        cleaning.end()
+        cleaning.run_cleanups()
         check.is_false(
             seat, pathlib.Path(directory).exists(), "the directory is removed"
         )
 
     def test_does_not_fail_for_a_directory_that_is_gone(self, seat: Collector) -> None:
         """A test can remove the workspace itself."""
-        cleaning = Cleaning()
+        cleaning = Recorder()
         directory = files.workspace(cleaning, {})
         shutil.rmtree(directory)
-        check.does_not_raise(seat, cleaning.end, "the cleanup does not raise")
+        cleaning.run_cleanups()
+        check.is_false(seat, cleaning.failed, "the cleanup does not fail")
 
     def test_ends_the_call_with_a_fault_for_a_tree_that_breaks_a_rule(
         self, seat: Collector
     ) -> None:
         """The call does not write anything."""
-        cleaning = Cleaning()
+        cleaning = Recorder()
         directory = files.workspace(cleaning, {"a.txt": files.text("a"), "b": Entry()})
         try:
             check.equal(
@@ -191,23 +174,28 @@ class TestWorkspace:
                 "the call ends with a fault and does not write anything",
             )
         finally:
-            cleaning.end()
+            cleaning.run_cleanups()
 
     def test_ends_the_call_with_a_fault_for_a_seat_without_cleanup(
         self, seat: Collector
     ) -> None:
         """A seat that cannot remove the directory does not get one."""
-        recorder = Recorder()
-        directory = files.workspace(recorder, {})
+        uncleaned = Uncleaned()
+        directory = files.workspace(uncleaned, {})
         check.equal(
             seat,
-            [directory, recorder.message],
+            [directory, uncleaned.faults],
             [
                 "",
-                (
-                    "files.workspace: the seat does not have a cleanup method to "
-                    "remove the workspace"
-                ),
+                [
+                    (
+                        (
+                            "files.workspace: the seat does not have a cleanup "
+                            "method to remove the workspace"
+                        ),
+                        True,
+                    )
+                ],
             ],
             "the call returns an empty path and ends with a fault",
         )
@@ -217,7 +205,7 @@ class TestWorkspace:
     ) -> None:
         """The workspace cannot be created in a missing temporary directory."""
         monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / "missing"))
-        cleaning = Cleaning()
+        cleaning = Recorder()
         directory = files.workspace(cleaning, {})
         check.equal(seat, directory, "", "the call returns an empty path")
         fault = os_error(cleaning.faults[0])
