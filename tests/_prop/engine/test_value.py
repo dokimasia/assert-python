@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import dataclasses
-import datetime
+import datetime as dt
 import decimal
 import enum
 import math
@@ -174,8 +174,8 @@ class TestCanonical:
         ),
         (
             "returns one text for two dates of one day",
-            datetime.date(2026, 10, 8),
-            datetime.date(2026, 10, 8),
+            dt.date(2026, 10, 8),
+            dt.date(2026, 10, 8),
         ),
         (
             "returns one text for two decimals of one text",
@@ -246,8 +246,8 @@ class TestCanonical:
         ("returns two texts for a set and a list of the same elements", {1}, [1]),
         (
             "returns two texts for a date and a date and time",
-            datetime.date(2026, 10, 8),
-            datetime.datetime(2026, 10, 8),
+            dt.date(2026, 10, 8),
+            dt.datetime(2026, 10, 8),
         ),
         ("returns two texts for two functions", lambda: 1, lambda: 1),
         ("returns two texts for two instances of a class", Widget(), Widget()),

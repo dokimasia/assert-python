@@ -13,7 +13,7 @@ bits.
 from __future__ import annotations
 
 import dataclasses
-import datetime
+import datetime as dt
 import decimal
 import enum
 import fractions
@@ -34,10 +34,10 @@ __all__ = ["Fields", "Pairs", "Variant", "canonical"]
 #: The types whose repr contains their whole value. Two equal values of one
 #: such type share their text.
 _BY_REPR: tuple[type, ...] = (
-    datetime.date,
-    datetime.time,
-    datetime.timedelta,
-    datetime.tzinfo,
+    dt.date,
+    dt.time,
+    dt.timedelta,
+    dt.tzinfo,
     decimal.Decimal,
     fractions.Fraction,
     uuid.UUID,
