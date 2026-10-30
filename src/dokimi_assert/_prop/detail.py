@@ -47,12 +47,14 @@ __all__ = [
     "Drawn",
     "Entry",
     "Other",
+    "Result",
     "Shortfall",
     "Step",
     "detail_json",
     "detail_of",
     "record_of",
     "register_sentences",
+    "result_of",
     "sentence",
 ]
 
@@ -159,6 +161,44 @@ class Shortfall:
     counted: int
     valid: int
     verdict: str
+
+
+@dataclass(frozen=True, slots=True)
+class Result:
+    """The result of one run of a property.
+
+    The result has the eleven fields of the detail of the run, and on_result
+    hands it to a function when the run ends. A field that the outcome does
+    not use is None. The record of the run has the same values, and its call
+    record has the seed as decimal text.
+
+    Attributes:
+        outcome: How the run ended, such as passed or counterexample.
+        cases: The number of valid cases.
+        rejected: The number of rejected cases.
+        seed: The seed of the run. The option seed takes it.
+        counterexample: The draws and the steps of the failing case of a
+            counterexample or of a flaky run, in request order.
+        failure: The failure record of the failing case.
+        choices: The replay token of a counterexample. The option replay takes
+            it. A counterexample of values does not have one.
+        others: The other failures of a counterexample.
+        divergence: What differed first in a flaky run.
+        coverage: The coverage requirement that the run refuted or left unmet.
+        reason: The reason of a skipped run.
+    """
+
+    outcome: str
+    cases: int
+    rejected: int
+    seed: int
+    counterexample: list[Entry] | None
+    failure: Failure | None
+    choices: str | None
+    others: list[Other] | None
+    divergence: Divergence | None
+    coverage: Shortfall | None
+    reason: str | None
 
 
 #: The notes of the failing case of a record, by the id of the record. Only a
@@ -291,6 +331,34 @@ def detail_of(outcome: Outcome) -> dict[str, Any]:
         ),
         "reason": outcome.reason,
     }
+
+
+def result_of(outcome: Outcome, detail: Mapping[str, Any]) -> Result:
+    """Return the result of a run.
+
+    The result shares the values of the detail. Its seed is the int of the
+    run.
+
+    Args:
+        outcome: The outcome of the run.
+        detail: The detail that detail_of returns for the outcome.
+
+    Returns:
+        The result.
+    """
+    return Result(
+        outcome=detail["outcome"],
+        cases=detail["cases"],
+        rejected=detail["rejected"],
+        seed=outcome.seed,
+        counterexample=detail["counterexample"],
+        failure=detail["failure"],
+        choices=detail["choices"],
+        others=detail["others"],
+        divergence=detail["divergence"],
+        coverage=detail["coverage"],
+        reason=detail["reason"],
+    )
 
 
 def _failure_json(failure: Failure) -> dict[str, Any]:
@@ -434,7 +502,11 @@ def detail_json(outcome: Outcome, detail: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def record_of(
-    outcome: Outcome, assertion: str, contract: str, where: Where | None
+    outcome: Outcome,
+    detail: dict[str, Any],
+    assertion: str,
+    contract: str,
+    where: Where | None,
 ) -> tuple[Failure, dict[str, Any]]:
     """Return the record of a run that did not pass.
 
@@ -444,6 +516,7 @@ def record_of(
 
     Args:
         outcome: The outcome of the run.
+        detail: The detail that detail_of returns for the outcome.
         assertion: prop-for-all, or the id of the property form of the run.
         contract: The contract of the property.
         where: The call site of the property.
@@ -451,7 +524,6 @@ def record_of(
     Returns:
         The record, and its detail in the form of the call record.
     """
-    detail = detail_of(outcome)
     failure = Failure(assertion, contract, detail, where)
     notes = () if outcome.failing is None else tuple(outcome.failing.case.notes)
     if notes:

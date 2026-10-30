@@ -42,6 +42,7 @@ from dokimi_assert._prop.option import (
     configure,
     draws,
     hermetic,
+    on_result,
     replay,
     seed,
     shrink,
@@ -61,6 +62,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from dokimi_assert._matcher.seat import Seat
+    from dokimi_assert._prop.detail import Result
 
 #: The variable that a mutation run sets in every process that it instruments.
 MUTANT = "DOKIMI_MUTATE_MUTANT"
@@ -401,6 +403,103 @@ class TestPropertyRun:
             ],
             [1, FOR_ALL, "c", WHERE, "counterexample", 5],
             "the run fails with one record of the counterexample",
+        )
+
+    def test_hands_the_result_of_the_run_to_the_function_of_on_result_once(
+        self, seat: Collector
+    ) -> None:
+        """The run tests the ten digits and passes."""
+        results: list[Result] = []
+        run_on(Recorder(), any_digit, on_result(results.append))
+        check.equal(
+            seat,
+            [[r.outcome, r.cases, r.rejected, r.seed] for r in results],
+            [["passed", 10, 0, 1]],
+            "the function receives one result of the run",
+        )
+
+    def test_hands_the_result_before_the_seat_receives_the_failure(
+        self, seat: Collector
+    ) -> None:
+        """The run finds a counterexample."""
+        recorder = Recorder()
+        failed: list[bool] = []
+
+        def receive(_: Result) -> None:
+            failed.append(recorder.failed)
+
+        run_on(recorder, below_five, on_result(receive))
+        check.equal(
+            seat,
+            [failed, recorder.failed],
+            [[False], True],
+            "the seat receives the failure after the function returns",
+        )
+
+    def test_hands_the_result_before_the_call_record_is_written(
+        self, seat: Collector
+    ) -> None:
+        """The run passes."""
+        recorder = Recorder()
+        written: list[int] = []
+
+        def receive(_: Result) -> None:
+            written.append(len(records(recorder)))
+
+        run_on(recorder, any_digit, on_result(receive))
+        check.equal(
+            seat,
+            [written, len(records(recorder))],
+            [[0], 1],
+            "the call record of the property follows the function",
+        )
+
+    def test_does_not_hand_a_result_for_a_run_that_a_fault_of_a_case_ends(
+        self, seat: Collector
+    ) -> None:
+        """The body ends its first case with a fault of its own."""
+        recorder = Recorder()
+        results: list[Result] = []
+
+        def faults(c: Case) -> None:
+            c.draw(DIGITS, "x")
+            fault_helper(c, OSError("the environment lacks the resource"))
+
+        run_on(recorder, faults, on_result(results.append))
+        check.equal(
+            seat,
+            [results, len(recorder.faults)],
+            [[], 1],
+            "the fault ends the call without a result",
+        )
+
+    def test_hands_on_four_workers_the_result_that_one_worker_hands(
+        self, seat: Collector
+    ) -> None:
+        """The run finds a counterexample."""
+        four: list[Result] = []
+        one: list[Result] = []
+        run_on(Recorder(), below_five, workers(4), on_result(four.append))
+        run_on(Recorder(), below_five, on_result(one.append))
+        check.equal(
+            seat,
+            [len(four), four],
+            [1, one],
+            "the run on four workers hands the result of one worker",
+        )
+
+    def test_hands_the_result_to_the_function_of_the_later_of_two_on_result_options(
+        self, seat: Collector
+    ) -> None:
+        """The later option replaces the earlier one."""
+        first: list[Result] = []
+        later: list[Result] = []
+        run_on(Recorder(), any_digit, on_result(first.append), on_result(later.append))
+        check.equal(
+            seat,
+            [len(first), len(later)],
+            [0, 1],
+            "the later function alone receives the result",
         )
 
     def test_records_the_calls_of_each_case_under_the_call_with_the_phase_of_the_case(

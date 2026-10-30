@@ -27,6 +27,7 @@ from dokimi_assert._prop.option import (
     explain,
     hermetic,
     max_choices,
+    on_result,
     replay,
     require,
     seed,
@@ -42,12 +43,17 @@ from helpers import refusal
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from dokimi_assert._prop.detail import Result
     from dokimi_assert.seat import Collector
 
 
 def _wrap(run: Callable[[], None]) -> None:
     """Call run once, as a wrapper of the around option does."""
     run()
+
+
+def _receive(_: Result) -> None:
+    """Take a result, as the function of the on_result option does."""
 
 
 class TestOption:
@@ -128,6 +134,7 @@ class TestConfigure:
                     hermetic(),
                     draws("[]"),
                     around(_wrap),
+                    on_result(_receive),
                 ]
             ),
             Config(
@@ -144,6 +151,7 @@ class TestConfigure:
                 hermetic=True,
                 draws="[]",
                 around=_wrap,
+                on_result=_receive,
             ),
             "each option sets its setting",
         )
@@ -496,6 +504,31 @@ class TestAround:
             seat,
             refusal(seat, lambda: around(wrapper)),
             "prop: around(None) needs a callable",
+            "the error has the call",
+        )
+
+
+class TestOnResult:
+    """on_result sets the function that receives the result of each run."""
+
+    def test_returns_the_option_of_the_function(self, seat: Collector) -> None:
+        """The option has the function."""
+        check.equal(
+            seat,
+            on_result(_receive),
+            Option("on-result", _receive),
+            "the option has the function",
+        )
+
+    def test_raises_value_error_for_a_function_that_is_not_callable(
+        self, seat: Collector
+    ) -> None:
+        """The error has the call."""
+        f: Any = None
+        check.equal(
+            seat,
+            refusal(seat, lambda: on_result(f)),
+            "prop: on_result(None) needs a callable",
             "the error has the call",
         )
 

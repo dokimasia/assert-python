@@ -17,12 +17,14 @@ from dokimi_assert._prop.detail import (
     Divergence,
     Drawn,
     Other,
+    Result,
     Shortfall,
     Step,
     detail_json,
     detail_of,
     record_of,
     register_sentences,
+    result_of,
     sentence,
 )
 from dokimi_assert._prop.engine.case import Case, Failed, Place, Replaying
@@ -192,6 +194,117 @@ class TestShortfall:
             ],
             ["even", 0.5, 1, 100, "unmet"],
             "Shortfall keeps its five fields",
+        )
+
+
+class TestResult:
+    """Result is the result of one run of a property."""
+
+    def test_keeps_the_eleven_fields_of_the_detail(self, seat: Collector) -> None:
+        """The result is a counterexample of one draw."""
+        result = Result(
+            "counterexample",
+            3,
+            1,
+            7,
+            [Drawn("x", 5, None)],
+            RECORD,
+            REPLAY,
+            [],
+            None,
+            None,
+            None,
+        )
+        check.equal(
+            seat,
+            [
+                result.outcome,
+                result.cases,
+                result.rejected,
+                result.seed,
+                result.counterexample,
+                result.failure,
+                result.choices,
+                result.others,
+                result.divergence,
+                result.coverage,
+                result.reason,
+            ],
+            [
+                "counterexample",
+                3,
+                1,
+                7,
+                [Drawn("x", 5, None)],
+                RECORD,
+                REPLAY,
+                [],
+                None,
+                None,
+                None,
+            ],
+            "Result keeps its eleven fields",
+        )
+
+
+class TestResultOf:
+    """result_of returns the result of a run from its detail."""
+
+    def test_returns_the_counts_and_the_seed_of_a_run_that_passed(
+        self, seat: Collector
+    ) -> None:
+        """Every other field of a pass is None."""
+        run = outcome("passed")
+        check.equal(
+            seat,
+            result_of(run, detail_of(run)),
+            Result("passed", 3, 1, 7, None, None, None, None, None, None, None),
+            "the result of a pass has the counts and the seed alone",
+        )
+
+    def test_returns_the_seed_of_the_run_as_an_int(self, seat: Collector) -> None:
+        """The seed is the largest seed, which the detail states as text."""
+        run = Outcome("passed", 3, 1, UINT64_MAX)
+        check.equal(
+            seat,
+            result_of(run, detail_of(run)).seed,
+            UINT64_MAX,
+            "the result has the seed of the run",
+        )
+
+    def test_returns_the_values_of_the_detail_of_a_counterexample(
+        self, seat: Collector
+    ) -> None:
+        """The run finds a counterexample and one other failure."""
+        d = detail_of(COUNTEREXAMPLE)
+        result = result_of(COUNTEREXAMPLE, d)
+        check.equal(
+            seat,
+            [
+                result.outcome,
+                result.counterexample,
+                result.failure,
+                result.choices,
+                result.others,
+            ],
+            [
+                d["outcome"],
+                d["counterexample"],
+                d["failure"],
+                d["choices"],
+                d["others"],
+            ],
+            "the result has the values of the detail",
+        )
+
+    def test_returns_the_reason_of_a_run_that_skipped(self, seat: Collector) -> None:
+        """The run skipped."""
+        run = outcome("skipped", reason="unsupported")
+        check.equal(
+            seat,
+            result_of(run, detail_of(run)).reason,
+            "unsupported",
+            "the result has the reason of the skip",
         )
 
 
@@ -587,7 +700,11 @@ class TestRecordOf:
     ) -> None:
         """The record has the call site, and its JSON has the outcome."""
         failure, json = record_of(
-            COUNTEREXAMPLE, FOR_ALL, "every total is positive", WHERE
+            COUNTEREXAMPLE,
+            detail_of(COUNTEREXAMPLE),
+            FOR_ALL,
+            "every total is positive",
+            WHERE,
         )
         check.equal(
             seat,
@@ -615,7 +732,11 @@ class TestSentence:
     def test_renders_every_part_of_a_counterexample(self, seat: Collector) -> None:
         """The sentence has the draw, the failures, the tokens and the note."""
         failure, _ = record_of(
-            COUNTEREXAMPLE, FOR_ALL, "every total is positive", WHERE
+            COUNTEREXAMPLE,
+            detail_of(COUNTEREXAMPLE),
+            FOR_ALL,
+            "every total is positive",
+            WHERE,
         )
         check.equal(
             seat,
@@ -658,7 +779,7 @@ class TestSentence:
             failing=failing(5, fill),
             explanation=(Explained("x", 5, True, None),),
         )
-        failure, _ = record_of(run, FOR_ALL, "c", WHERE)
+        failure, _ = record_of(run, detail_of(run), FOR_ALL, "c", WHERE)
         check.equal(
             seat,
             sentence(failure).split("\n")[1:4],
@@ -684,7 +805,7 @@ class TestSentence:
                 Failed(key_of(identity), Failing(message, identity)),
             ),
         )
-        failure, _ = record_of(run, FOR_ALL, "c", WHERE)
+        failure, _ = record_of(run, detail_of(run), FOR_ALL, "c", WHERE)
         check.equal(
             seat,
             sentence(failure),
@@ -725,7 +846,8 @@ class TestSentence:
         self, seat: Collector, give: EngineDivergence, want: str
     ) -> None:
         """The divergence is the last line."""
-        failure, _ = record_of(flaky(give), FOR_ALL, "c", WHERE)
+        run = flaky(give)
+        failure, _ = record_of(run, detail_of(run), FOR_ALL, "c", WHERE)
         check.has_suffix(
             seat, sentence(failure), want, "the last line is the divergence"
         )
@@ -733,9 +855,8 @@ class TestSentence:
     def test_renders_the_requirement_that_a_run_missed(self, seat: Collector) -> None:
         """The last line is the coverage line."""
         shortfall = EngineShortfall(Requirement("even", 0.5), 1, 100, "unmet")
-        failure, _ = record_of(
-            outcome("coverage-unmet", shortfall=shortfall), FOR_ALL, "c", WHERE
-        )
+        run = outcome("coverage-unmet", shortfall=shortfall)
+        failure, _ = record_of(run, detail_of(run), FOR_ALL, "c", WHERE)
         check.equal(
             seat,
             sentence(failure),

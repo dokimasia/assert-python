@@ -30,14 +30,16 @@ body inside a wrapper, such as a frozen clock, so that each run gets an
 environment of its own. values returns the values of a generator for a
 seed outside a property, so a benchmark measures the same inputs on every
 run. run_seed returns the seed that a run takes without the option seed, so
-a tool can run many properties under one seed.
+a tool can run many properties under one seed. on_result hands the Result of
+each run to a function, so a tool reads the counts, the seed and the
+counterexample of each run.
 """
 
 from __future__ import annotations
 
 from dokimi_assert._prop.case import Case
 from dokimi_assert._prop.convert import Variant, WallTime
-from dokimi_assert._prop.detail import FOR_ALL, register_sentences
+from dokimi_assert._prop.detail import FOR_ALL, Result, register_sentences
 from dokimi_assert._prop.engine.generator import Generator
 from dokimi_assert._prop.environment import run_seed
 from dokimi_assert._prop.forall import for_all
@@ -123,6 +125,7 @@ from dokimi_assert._prop.option import (
     explain,
     hermetic,
     max_choices,
+    on_result,
     replay,
     require,
     seed,
@@ -152,6 +155,7 @@ __all__ = [
     "Generator",
     "Option",
     "Pattern",
+    "Result",
     "Scale",
     "Unit",
     "Variant",
@@ -214,6 +218,7 @@ __all__ = [
     "not_equal",
     "of",
     "of_shape",
+    "on_result",
     "one_of",
     "optional",
     "pairwise",

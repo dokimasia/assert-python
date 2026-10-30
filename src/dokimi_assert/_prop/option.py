@@ -24,6 +24,7 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Literal
 
 from dokimi_assert._matcher.option import Option as Relaxation
+from dokimi_assert._prop.detail import Result
 from dokimi_assert._prop.engine.case import MAX_CHOICES
 from dokimi_assert._prop.engine.runner import DEFAULT_CASES, Requirement
 from dokimi_assert._prop.engine.shrink import DEFAULT_BUDGET
@@ -48,6 +49,7 @@ __all__ = [
     "explain",
     "hermetic",
     "max_choices",
+    "on_result",
     "replay",
     "require",
     "seed",
@@ -93,6 +95,7 @@ class Option:
         "hermetic",
         "draws",
         "around",
+        "on-result",
         "using",
     ]
     value: Any = None
@@ -135,6 +138,7 @@ class Config:
         hermetic: When True, the run ignores the variables of the engine.
         draws: The JSON array of entries that the first case follows, or None.
         around: The wrapper of each run of the body, or None.
+        on_result: The function that receives the result of each run, or None.
         using: The generators that the run gives types.
     """
 
@@ -151,6 +155,7 @@ class Config:
     hermetic: bool = False
     draws: str | None = None
     around: Wrapper | None = None
+    on_result: Callable[[Result], object] | None = None
     using: Generators = field(default_factory=Generators)
 
 
@@ -457,6 +462,40 @@ def around(wrapper: Wrapper) -> Option:
         # Every option refuses an argument with ValueError.
         raise ValueError(msg)  # noqa: TRY004  # pyright: ignore[reportUnreachable]
     return Option("around", wrapper)
+
+
+def on_result(f: Callable[[Result], object]) -> Option:
+    """Hand the result of each run to f.
+
+    A call of for_all, of a property form or of fuzz calls f once for each
+    run. It calls f after the run ends and before the call reports its
+    verdict, so the notes of the failing case, the call record, and the
+    failure or the skip that the seat receives all come after f returns. fuzz
+    calls f for the replay of the stored cases and for each input.
+
+    f runs on the thread of the call, whatever the number of workers. A run
+    that a fault ends does not call f, and neither does a call that a fault
+    ends before its run. An error that f raises passes through the call, and
+    the call does not report a verdict.
+
+    The result shares its entries, its failure records and its other failures
+    with the record that the call reports after f returns, so f must not
+    change them.
+
+    Args:
+        f: The function. It takes the result of a run.
+
+    Returns:
+        The option.
+
+    Raises:
+        ValueError: f is not callable.
+    """
+    if not callable(f):
+        msg = f"prop: on_result({f!r}) needs a callable"  # type: ignore[unreachable]
+        # Every option refuses an argument with ValueError.
+        raise ValueError(msg)  # noqa: TRY004  # pyright: ignore[reportUnreachable]
+    return Option("on-result", f)
 
 
 def using(t: type[Any], generator: Generator[Any]) -> Option:

@@ -42,7 +42,7 @@ from dokimi_assert._prop.case import (
     case_of,
     execute,
 )
-from dokimi_assert._prop.detail import detail_json, detail_of, record_of
+from dokimi_assert._prop.detail import detail_json, detail_of, record_of, result_of
 from dokimi_assert._prop.directory import Loaded, claim, load, save, store_of
 from dokimi_assert._prop.engine import literal, strict_json, tokens
 from dokimi_assert._prop.engine.bridge import Bridging
@@ -69,6 +69,7 @@ from dokimi_assert._record.calls import Slot, cut, own
 from dokimi_assert.failure import Where
 
 if TYPE_CHECKING:
+    from dokimi_assert._prop.detail import Result
     from dokimi_assert._prop.engine.choice import Choice
     from dokimi_assert._prop.option import Config, Wrapper
 
@@ -294,6 +295,7 @@ class Property:
         directory: str,
         around: Wrapper | None,
         using: Generators,
+        on_result: Callable[[Result], object] | None,
     ) -> None:
         """Return a property. Call Property.of instead.
 
@@ -310,6 +312,8 @@ class Property:
                 property without one.
             around: The wrapper of each run of the body, or None.
             using: The generators that the runs give types.
+            on_result: The function that receives the result of each run, or
+                None.
         """
         self.call: Call = call
         self._settings: Settings = settings
@@ -319,6 +323,7 @@ class Property:
         self._directory: str = directory
         self._around: Wrapper | None = around
         self._using: Generators = using
+        self._on_result: Callable[[Result], object] | None = on_result
 
     @staticmethod
     def of(
@@ -374,6 +379,7 @@ class Property:
             store_of(seat, config.store),
             config.around,
             config.using,
+            config.on_result,
         )
 
     def run(self, seat: Seat, running: Running, body: PropertyBody) -> None:
@@ -708,16 +714,21 @@ class Property:
     def _report(self, running: Running, outcome: Outcome) -> None:
         """Report the outcome as the verdict of the call.
 
-        A skipped run skips the test of a seat that skips its test.
+        The function of the on_result option receives the result of the run
+        before the call reports its verdict. A skipped run skips the test of a
+        seat that skips its test.
         """
         call = self.call
+        detail = detail_of(outcome)
+        if self._on_result is not None:
+            self._on_result(result_of(outcome, detail))
         if outcome.kind == "skipped":
             running.skipped_run(
                 Mode.FATAL,
                 call.assertion,
                 call.contract,
                 call.where,
-                detail_json(outcome, detail_of(outcome)),
+                detail_json(outcome, detail),
                 cast("str", outcome.reason),
             )
             return
@@ -727,10 +738,10 @@ class Property:
                 call.assertion,
                 call.contract,
                 call.where,
-                detail_json(outcome, detail_of(outcome)),
+                detail_json(outcome, detail),
             )
             return
         failure, json_detail = record_of(
-            outcome, call.assertion, call.contract, call.where
+            outcome, detail, call.assertion, call.contract, call.where
         )
         running.failed_run(Mode.FATAL, failure, json_detail)

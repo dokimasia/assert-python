@@ -15,7 +15,7 @@ from dokimi_assert._prop.engine.generator import Bytes
 from dokimi_assert._prop.environment import PROFILE_VARIABLE
 from dokimi_assert._prop.forall import for_all
 from dokimi_assert._prop.fuzz import fuzz
-from dokimi_assert._prop.option import hermetic, seed, store
+from dokimi_assert._prop.option import hermetic, on_result, seed, store
 from dokimi_assert.seat import Collector, Recorder
 from helpers import records
 
@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     import pytest
 
     from dokimi_assert._prop.case import Case
+    from dokimi_assert._prop.detail import Result
 
 #: The variable that a mutation run sets in every process that it instruments.
 MUTANT = "DOKIMI_MUTATE_MUTANT"
@@ -83,6 +84,27 @@ class TestFuzz:
 
         target = fuzz(Recorder(), "skips every input", skips, hermetic(), seed(1))
         check.does_not_raise(seat, lambda: target(bytes([1, 1])), "the input skips")
+
+    def test_hands_the_result_of_each_call_to_the_function_of_on_result(
+        self, seat: Collector
+    ) -> None:
+        """The store is empty, and the target runs one input that passes."""
+        results: list[Result] = []
+        target = fuzz(
+            Recorder(),
+            "no leading seven",
+            no_leading_seven,
+            hermetic(),
+            seed(1),
+            on_result(results.append),
+        )
+        target(bytes([1, 1]))
+        check.equal(
+            seat,
+            [[r.outcome, r.cases] for r in results],
+            [["passed", 0], ["passed", 1]],
+            "the function receives the result of the replay, then of the input",
+        )
 
     def test_returns_a_target_that_raises_the_sentence_of_a_failing_input(
         self, seat: Collector, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

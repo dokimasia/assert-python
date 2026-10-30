@@ -462,6 +462,8 @@ BLOCKS = {
                 "draws",
                 "around",
                 "Wrapper",
+                "on_result",
+                f"{TYPE}Result",
                 "using",
             ),
             _family(

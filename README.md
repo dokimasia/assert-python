@@ -701,6 +701,22 @@ def test_ledger(seat):
     prop.for_all(seat, "a delete hides the key", delete_hides, chosen)
 ```
 
+`prop.on_result(f)` hands the `prop.Result` of each run to `f`. The call
+runs `f` after the run ends and before it reports its verdict, so `f` also
+receives the result of a run that fails the test. The result has the
+eleven fields of the detail of the run, such as the outcome, the counts of
+valid and rejected cases, the seed and the counterexample of a failing
+case. A tool that runs many properties writes them into a record of its
+own:
+
+```python
+def test_ledger(seat):
+    results = []
+    prop.for_all(
+        seat, "a write is read back", write_read, prop.on_result(results.append)
+    )
+```
+
 <!-- api-reference:prop:start -->
 
 **Running a property.** for_all runs the body against generated cases, and the body draws its inputs from its case.
@@ -740,6 +756,8 @@ prop.hermetic() -> Option
 prop.draws(entries: str) -> Option
 prop.around(wrapper: Wrapper) -> Option
 prop.Wrapper = Callable[[Callable[[], None]], object]
+prop.on_result(f: Callable[[Result], object]) -> Option
+prop.Result
 prop.using(t: type[Any], generator: Generator[Any]) -> Option
 ```
 
