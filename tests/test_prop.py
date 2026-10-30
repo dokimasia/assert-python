@@ -34,7 +34,7 @@ class TestProp:
     """prop is the module of the property engine."""
 
     def test_exports_the_names_of_the_property_engine(self, seat: Collector) -> None:
-        """The module exports 94 names, and each name is an attribute."""
+        """The module exports 95 names, and each name is an attribute."""
         check.equal(
             seat,
             [sorted(prop.__all__), [n for n in prop.__all__ if not hasattr(prop, n)]],
@@ -123,6 +123,7 @@ class TestProp:
                     "replay",
                     "require",
                     "round_trip",
+                    "run_seed",
                     "sampled_from",
                     "seed",
                     "shape_of",

@@ -173,6 +173,29 @@ class TestSeat:
             "got": {"type": "int", "value": 1},
         }
 
+    def test_writes_each_record_of_another_kind_as_a_property_with_recording_off(
+        self, pytester: pytest.Pytester, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The JUnit XML report has the records of a tool without the switch."""
+        monkeypatch.delenv("DOKIMI_ASSERT_RECORD", raising=False)
+        pytester.makepyfile(
+            """
+            from dokimi_assert.seat import write_record
+
+            def test_it(seat):
+                write_record(seat, "dokimi.suite", '{"seed": "7"}')
+                write_record(seat, "dokimi.suite", '{"seed": "8"}')
+            """
+        )
+        pytester.runpytest_subprocess("--junitxml=report.xml").assert_outcomes(passed=1)
+        # pytest wrote the report of the run of this spec.
+        report = ET.parse(pytester.path / "report.xml")  # noqa: S314
+        properties = report.findall(".//testcase/properties/property")
+        assert [(p.get("name"), p.get("value")) for p in properties] == [
+            ("dokimi.suite.1", '{"seed": "7"}'),
+            ("dokimi.suite.2", '{"seed": "8"}'),
+        ]
+
 
 class TestRecorder:
     """recorder supplies a seat that does not fail the test."""

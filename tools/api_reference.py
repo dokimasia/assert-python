@@ -311,6 +311,7 @@ SUPPORT = (
         "clean_up",
         "cleanup",
         "fault",
+        "write_record",
     ),
     _family(
         call,
@@ -439,6 +440,7 @@ BLOCKS = {
                 "Case.rand",
                 "Case.history",
                 "values",
+                "run_seed",
             ),
             _family(
                 prop,

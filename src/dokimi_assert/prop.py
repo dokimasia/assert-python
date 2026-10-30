@@ -29,7 +29,8 @@ testdata/prop. Later runs replay it first. around runs each run of the
 body inside a wrapper, such as a frozen clock, so that each run gets an
 environment of its own. values returns the values of a generator for a
 seed outside a property, so a benchmark measures the same inputs on every
-run.
+run. run_seed returns the seed that a run takes without the option seed, so
+a tool can run many properties under one seed.
 """
 
 from __future__ import annotations
@@ -38,6 +39,7 @@ from dokimi_assert._prop.case import Case
 from dokimi_assert._prop.convert import Variant, WallTime
 from dokimi_assert._prop.detail import FOR_ALL, register_sentences
 from dokimi_assert._prop.engine.generator import Generator
+from dokimi_assert._prop.environment import run_seed
 from dokimi_assert._prop.forall import for_all
 from dokimi_assert._prop.forms import (
     FORM_IDS,
@@ -224,6 +226,7 @@ __all__ = [
     "replay",
     "require",
     "round_trip",
+    "run_seed",
     "sampled_from",
     "seed",
     "shape_of",

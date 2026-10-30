@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 import pytest
 
-from dokimi_assert import check
+from dokimi_assert import check, prop
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert._prop.engine.source import mix
 from dokimi_assert._prop.environment import (
@@ -21,10 +21,12 @@ from dokimi_assert._prop.environment import (
     budget_of,
     mutated,
     profile_of,
+    run_seed,
     seed_of,
     token_of,
 )
-from helpers import refusal
+from dokimi_assert.seat import Recorder
+from helpers import records, refusal
 
 if TYPE_CHECKING:
     from dokimi_assert.seat import Collector
@@ -209,6 +211,130 @@ class TestSeedOf:
             PROFILE_FAULT,
             "the profile is checked first",
         )
+
+
+class TestRunSeed:
+    """run_seed returns the seed of a run without a seed option."""
+
+    def test_returns_the_seed_of_the_variable_over_the_ci_profile(
+        self, seat: Collector, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The variable comes first."""
+        put(monkeypatch, PROFILE_VARIABLE, "ci")
+        put(monkeypatch, SEED_VARIABLE, "7")
+        check.equal(
+            seat, run_seed(seat, "a contract"), 7, "run_seed returns the seed 7"
+        )
+
+    def test_derives_the_seed_from_the_contract_under_the_ci_profile(
+        self, seat: Collector, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A run under the ci profile derives its seed from the contract."""
+        put(monkeypatch, SEED_VARIABLE, None)
+        put(monkeypatch, PROFILE_VARIABLE, "ci")
+        check.equal(
+            seat,
+            run_seed(seat, "a contract"),
+            DERIVED,
+            "run_seed returns the seed of the contract",
+        )
+
+    def test_derives_the_seed_from_the_contract_in_a_process_of_a_mutation_run(
+        self, seat: Collector, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A run in a process of a mutation run derives its seed from the contract."""
+        put(monkeypatch, SEED_VARIABLE, None)
+        put(monkeypatch, PROFILE_VARIABLE, None)
+        put(monkeypatch, MUTANT, "1")
+        check.equal(
+            seat,
+            run_seed(seat, "a contract"),
+            DERIVED,
+            "run_seed returns the seed of the contract",
+        )
+
+    def test_draws_a_new_random_seed_for_each_call(
+        self, seat: Collector, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Two calls under the default profile return two seeds."""
+        put(monkeypatch, SEED_VARIABLE, None)
+        put(monkeypatch, PROFILE_VARIABLE, None)
+        put(monkeypatch, MUTANT, None)
+        check.not_equal(
+            seat,
+            run_seed(seat, "a contract"),
+            run_seed(seat, "a contract"),
+            "each call draws a new seed",
+        )
+
+    tests: ClassVar[list[tuple[str, str | None, str | None, str]]] = [
+        (
+            "ends the call with a fault for a seed that is not a decimal number",
+            "0x10",
+            None,
+            'DOKIMI_ASSERT_PROP_SEED: "0x10" is not a decimal number below 2^64',
+        ),
+        (
+            "ends the call with a fault for an unknown profile",
+            None,
+            "fast",
+            PROFILE_FAULT,
+        ),
+    ]
+
+    @pytest.mark.parametrize(
+        ("give_seed", "give_profile", "want"),
+        [t[1:] for t in tests],
+        ids=[t[0] for t in tests],
+    )
+    def test_ends_the_call_with_a_fault(
+        self,
+        seat: Collector,
+        monkeypatch: pytest.MonkeyPatch,
+        give_seed: str | None,
+        give_profile: str | None,
+        want: str,
+    ) -> None:
+        """The recorder keeps the fault of prop.run_seed, and run_seed returns 0."""
+        put(monkeypatch, SEED_VARIABLE, give_seed)
+        put(monkeypatch, PROFILE_VARIABLE, give_profile)
+        recorder = Recorder()
+        check.equal(
+            seat,
+            [run_seed(recorder, "a contract"), recorder.message],
+            [0, f"prop.run_seed: {want}"],
+            "run_seed returns 0 after the fault",
+        )
+
+    runs: ClassVar[list[tuple[str, str | None, str | None]]] = [
+        ("under the seed variable", "7", None),
+        ("under the ci profile", None, "ci"),
+    ]
+
+    @pytest.mark.parametrize(
+        ("give_seed", "give_profile"),
+        [t[1:] for t in runs],
+        ids=[t[0] for t in runs],
+    )
+    def test_gives_a_run_the_seed_of_a_run_without_a_seed_option(
+        self,
+        seat: Collector,
+        monkeypatch: pytest.MonkeyPatch,
+        give_seed: str | None,
+        give_profile: str | None,
+    ) -> None:
+        """Both runs state one seed in their call records."""
+        put(monkeypatch, MUTANT, None)
+        put(monkeypatch, SEED_VARIABLE, give_seed)
+        put(monkeypatch, PROFILE_VARIABLE, give_profile)
+        recorder = Recorder()
+        prop.for_all(recorder, "a contract", lambda c: c.draw(prop.integer(0, 9), "n"))
+        chosen = prop.seed(run_seed(seat, "a contract"))
+        prop.for_all(
+            recorder, "a contract", lambda c: c.draw(prop.integer(0, 9), "n"), chosen
+        )
+        seeds = [r["detail"]["seed"] for r in records(recorder)]
+        check.equal(seat, seeds[0], seeds[1], "both runs state one seed")
 
 
 class TestBudgetOf:

@@ -13,7 +13,9 @@ belongs to the test and not to its teardown.
 
 With DOKIMI_ASSERT_RECORD=1, the seat appends the call record of every call
 to the user_properties of the test's item, one property per record, named
-dokimi.assert.<seq>. pytest's JUnit XML report writes each user property of
+dokimi.assert.<seq>. seat.write_record appends each record of another kind
+to the same user_properties, named <kind>.<n>, and it ignores
+DOKIMI_ASSERT_RECORD. pytest's JUnit XML report writes each user property of
 a test as a property element of the test's testcase element.
 """
 
@@ -25,6 +27,7 @@ import pytest
 
 from dokimi_assert._matcher.seat import name_test
 from dokimi_assert._record.calls import Sink, own, write
+from dokimi_assert._record.kinds import CALL_KIND, attach
 from dokimi_assert._record.switch import reading
 from dokimi_assert.seat import Collector, Recorder, clean_up
 
@@ -34,7 +37,7 @@ if TYPE_CHECKING:
 __all__ = ["RECORDS", "SEATS", "pytest_runtest_call", "recorder", "seat"]
 
 #: The prefix of the name of the user property of a call record.
-RECORDS = "dokimi.assert."
+RECORDS = f"{CALL_KIND}."
 
 #: Every collector that the fixture handed out during one test.
 SEATS: pytest.StashKey[list[Collector]] = pytest.StashKey()
@@ -83,10 +86,12 @@ def seat(request: pytest.FixtureRequest) -> Collector:
     collector = Collector()
     node: pytest.Item = request.node  # pyright: ignore[reportUnknownMemberType]
     name_test(collector, _path_of(node))
+    # pytest's Item declares user_properties in __init__ without a type that
+    # the language server can read.
+    properties: list[tuple[str, object]] = node.user_properties  # pyright: ignore[reportUnknownMemberType]
+    attach(collector, properties)
     if reading().on:
-        # pytest's Item declares user_properties in __init__ without a type
-        # that the language server can read.
-        write(own(collector), _sink(node.user_properties))  # pyright: ignore[reportUnknownMemberType]
+        write(own(collector), _sink(properties))
 
     # pytest ships no complete type for Stash.setdefault, so a checker reads
     # the result as partly unknown.

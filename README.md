@@ -356,6 +356,7 @@ Recorder.run_cleanups()
 seat.clean_up(collector: Collector)
 seat.cleanup(seat: Seat, fn: Callable[[], object])
 seat.fault(seat: Seat, error: BaseException)
+seat.write_record(seat: Seat, kind: str, record: str)
 ```
 
 **Observed calls.** A seat with a method observe_call receives each assertion call, a passing one included.
@@ -685,6 +686,21 @@ open_orders = prop.of(Status).filter(lambda s: s is not Status.CANCELLED)
 orders = prop.values(prop.of(Order), 42, 100, prop.using(Status, open_orders))
 ```
 
+`prop.run_seed(seat, contract)` returns the seed that a run of `contract`
+takes without `prop.seed`. It returns the value of
+`DOKIMI_ASSERT_PROP_SEED` when the variable is set. In a mutation run and
+under the profile `ci`, it returns the seed that a run derives from the
+contract. Otherwise each call returns a new random seed. A tool that runs
+many properties under one seed passes the result to `prop.seed` in each
+run:
+
+```python
+def test_ledger(seat):
+    chosen = prop.seed(prop.run_seed(seat, "the suite of the ledger"))
+    prop.for_all(seat, "a write is read back", write_read, chosen)
+    prop.for_all(seat, "a delete hides the key", delete_hides, chosen)
+```
+
 <!-- api-reference:prop:start -->
 
 **Running a property.** for_all runs the body against generated cases, and the body draws its inputs from its case.
@@ -703,6 +719,7 @@ Case.cleanup(fn: Callable[[], object])
 Case.rand() -> Random
 Case.history() -> History
 prop.values(generator: Generator[_T], seed: int, n: int, *options: Option) -> list[_T]
+prop.run_seed(seat: Seat, contract: str) -> int
 ```
 
 **Options of a run.** A later option of one kind replaces an earlier one. Each require and each using adds to the earlier ones.
@@ -1089,6 +1106,24 @@ report writes each user property as a `property` element of the test's
 
 A `Recorder` keeps the records of its calls as lines of JSON, and
 `Recorder.records` returns them.
+
+A tool of dokimasia writes its own records into the same `user_properties`
+with `seat.write_record`. Each record is one property, named
+`<kind>.<n>`. The kind matches `dokimi\.[a-z][a-z0-9-]*`, and
+`write_record` numbers the records of each kind of a test from 1:
+
+```python
+from dokimi_assert.seat import write_record
+
+
+def test_suite(seat):
+    write_record(seat, "dokimi.suite", '{"suite": "ledger", "seed": "7"}')
+```
+
+`write_record` ignores `DOKIMI_ASSERT_RECORD`, and it does not write on a
+`Recorder`. A kind outside the pattern, the kind `dokimi.assert` of the
+call records and a record that is not one JSON object end the call with a
+fault.
 
 ## The standard
 

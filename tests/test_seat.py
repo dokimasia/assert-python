@@ -9,7 +9,7 @@ It uses pytest's assert alone, because every other spec asserts on a seat.
 from __future__ import annotations
 
 import unittest
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 import pytest
 
@@ -25,6 +25,7 @@ from dokimi_assert.seat import (
     clean_up,
     cleanup,
     fault,
+    write_record,
 )
 from helpers import Uncleaned, records
 
@@ -581,6 +582,139 @@ class TestCleanup:
         """A standard seat has no end of a test, so the call raises the fault."""
         with pytest.raises(Exception, match=r"^seat\.cleanup: ") as raised:
             cleanup(Standard(), lambda: None)
+        assert isinstance(raised.value.__cause__, FaultError)
+
+
+class TestWriteRecord:
+    """write_record writes a record of another kind into the artifact of a test."""
+
+    def test_writes_each_record_of_a_kind_into_the_properties_of_the_test(
+        self, seat: Collector, request: pytest.FixtureRequest
+    ) -> None:
+        """The item of the test has the records, numbered from 1."""
+        write_record(seat, "dokimi.suite", '{"seed": "7"}')
+        write_record(seat, "dokimi.suite", ' \n{"seed": "8"}')
+        properties: list[tuple[str, object]] = request.node.user_properties  # pyright: ignore[reportUnknownMemberType]
+        assert [p for p in properties if p[0].startswith("dokimi.suite.")] == [
+            ("dokimi.suite.1", '{"seed": "7"}'),
+            ("dokimi.suite.2", ' \n{"seed": "8"}'),
+        ]
+
+    def test_writes_a_record_of_a_kind_with_each_boundary_character_of_the_pattern(
+        self, seat: Collector, request: pytest.FixtureRequest
+    ) -> None:
+        """The kind dokimi.zaz-09 matches the pattern."""
+        write_record(seat, "dokimi.zaz-09", "{}")
+        properties: list[tuple[str, object]] = request.node.user_properties  # pyright: ignore[reportUnknownMemberType]
+        assert ("dokimi.zaz-09.1", "{}") in properties
+
+    tests: ClassVar[list[tuple[str, str, str, str]]] = [
+        (
+            "ends the call with a fault for a kind without the prefix dokimi.",
+            "suite",
+            "{}",
+            r'kind: "suite" does not match dokimi\.[a-z][a-z0-9-]*',
+        ),
+        (
+            "ends the call with a fault for a kind that ends after the prefix",
+            "dokimi.",
+            "{}",
+            r'kind: "dokimi." does not match dokimi\.[a-z][a-z0-9-]*',
+        ),
+        (
+            "ends the call with a fault for a kind that starts with a digit",
+            "dokimi.1suite",
+            "{}",
+            r'kind: "dokimi.1suite" does not match dokimi\.[a-z][a-z0-9-]*',
+        ),
+        (
+            "ends the call with a fault for a kind that starts with a brace",
+            "dokimi.{suite",
+            "{}",
+            r'kind: "dokimi.{suite" does not match dokimi\.[a-z][a-z0-9-]*',
+        ),
+        (
+            "ends the call with a fault for a kind with a brace",
+            "dokimi.su{te",
+            "{}",
+            r'kind: "dokimi.su{te" does not match dokimi\.[a-z][a-z0-9-]*',
+        ),
+        (
+            "ends the call with a fault for a kind with a capital letter",
+            "dokimi.suIte",
+            "{}",
+            r'kind: "dokimi.suIte" does not match dokimi\.[a-z][a-z0-9-]*',
+        ),
+        (
+            "ends the call with a fault for a kind with a second dot",
+            "dokimi.suite.x",
+            "{}",
+            r'kind: "dokimi.suite.x" does not match dokimi\.[a-z][a-z0-9-]*',
+        ),
+        (
+            "ends the call with a fault for the kind of the call records",
+            "dokimi.assert",
+            "{}",
+            "kind: dokimi.assert is the kind of the call records of assert",
+        ),
+        (
+            "ends the call with a fault for a record that is a JSON array",
+            "dokimi.suite",
+            "[{}]",
+            "record: the record is not one JSON object",
+        ),
+        (
+            "ends the call with a fault for a record that is not JSON",
+            "dokimi.suite",
+            '{"seed":',
+            "record: the record is not one JSON object",
+        ),
+        (
+            "ends the call with a fault for a record of two objects",
+            "dokimi.suite",
+            "{} {}",
+            "record: the record is not one JSON object",
+        ),
+        (
+            "ends the call with a fault for a record with the constant NaN",
+            "dokimi.suite",
+            '{"ratio": NaN}',
+            "record: the record is not one JSON object",
+        ),
+    ]
+
+    @pytest.mark.parametrize(
+        ("give_kind", "give_record", "want"),
+        [t[1:] for t in tests],
+        ids=[t[0] for t in tests],
+    )
+    def test_ends_the_call_with_a_fault(
+        self, give_kind: str, give_record: str, want: str
+    ) -> None:
+        """A recorder keeps the fault of seat.write_record."""
+        seat = Recorder()
+        write_record(seat, give_kind, give_record)
+        assert [str(f) for f in seat.faults] == [f"seat.write_record: {want}"]
+
+    def test_does_not_write_a_refused_record_into_the_properties_of_the_test(
+        self, seat: Collector, request: pytest.FixtureRequest
+    ) -> None:
+        """The collector raises the fault, and the item does not have the record."""
+        with pytest.raises(Exception, match=r"^seat\.write_record: record: "):
+            write_record(seat, "dokimi.suite", "[]")
+        properties: list[tuple[str, object]] = request.node.user_properties  # pyright: ignore[reportUnknownMemberType]
+        assert [p for p in properties if p[0].startswith("dokimi.suite.")] == []
+
+    def test_does_not_write_on_a_recorder(self) -> None:
+        """A recorder keeps no record of another kind, and it does not fail."""
+        seat = Recorder()
+        write_record(seat, "dokimi.suite", "{}")
+        assert (seat.failed, seat.faults, seat.records) == (False, [], [])
+
+    def test_raises_the_fault_on_a_standard_seat(self) -> None:
+        """A standard seat ends the call with the fault itself."""
+        with pytest.raises(Exception, match=r"^seat\.write_record: kind: ") as raised:
+            write_record(Standard(), "suite", "{}")
         assert isinstance(raised.value.__cause__, FaultError)
 
 

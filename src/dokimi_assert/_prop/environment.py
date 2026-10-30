@@ -26,10 +26,14 @@ import json
 import os
 import re
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-from dokimi_assert._matcher.fault import FaultError
+from dokimi_assert._matcher.fault import FaultError, of_operation
+from dokimi_assert._matcher.verdict import end
 from dokimi_assert._prop.engine.source import mix, utf8
+
+if TYPE_CHECKING:
+    from dokimi_assert._matcher.seat import Seat
 
 __all__ = [
     "BUDGET_VARIABLE",
@@ -41,6 +45,7 @@ __all__ = [
     "budget_of",
     "mutated",
     "profile_of",
+    "run_seed",
     "seed_of",
     "token_of",
 ]
@@ -167,6 +172,39 @@ def seed_of(contract: str, given: int | None, hermetic: bool) -> int:
     if mutated() or profile == "ci":
         return mix(utf8(contract))
     return int.from_bytes(os.urandom(8), "little")
+
+
+def run_seed(seat: Seat, contract: str) -> int:
+    """Return the seed that a run of contract takes without the option seed.
+
+    The run is not hermetic. run_seed returns the value of
+    DOKIMI_ASSERT_PROP_SEED when the variable is set. In a process of a
+    mutation run, and under the ci profile, it returns the seed that a run
+    derives from the contract. Otherwise each call returns a new random seed.
+    A caller that passes the result to seed in each of its runs gives every
+    run the seed that its first run would take:
+
+        chosen = prop.seed(prop.run_seed(seat, "the suite of the ledger"))
+        prop.for_all(seat, "a write is read back", write_read, chosen)
+        prop.for_all(seat, "a delete hides the key", delete_hides, chosen)
+
+    A malformed DOKIMI_ASSERT_PROP_SEED and a profile other than default, ci
+    and campaign end the call with a fault of prop.run_seed, as seat.fault
+    ends one. run_seed then returns 0.
+
+    Args:
+        seat: The seat of the call.
+        contract: The contract of the property.
+
+    Returns:
+        The seed, or 0 after a fault.
+    """
+    __tracebackhide__ = True
+    try:
+        return seed_of(contract, None, False)
+    except FaultError as error:
+        end(seat, of_operation("prop.run_seed", error))
+        return 0
 
 
 def budget_of(hermetic: bool) -> int:

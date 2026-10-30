@@ -27,13 +27,19 @@ Collector runs the releases when the test ends, the Recorder at
 run_cleanups, and the seat that rejects or eventually hands a body when the
 body ends. A Standard has no end of a test, so cleanup ends the call with a
 fault there.
+
+A tool of dokimasia writes its own records into the report of a test through
+write_record. Only the Collector of the fixture seat has a test, so the
+other seats do not write such a record.
 """
 
 from __future__ import annotations
 
+import json
+import re
 import threading
 import unittest
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 
 from dokimi_assert._matcher.cleanup import Cleanups
 from dokimi_assert._matcher.fault import FaultError, of_operation
@@ -41,6 +47,7 @@ from dokimi_assert._matcher.loop import Loop
 from dokimi_assert._matcher.seat import Seat
 from dokimi_assert._matcher.verdict import end, fault_text
 from dokimi_assert._record.calls import keep, lines, own
+from dokimi_assert._record.kinds import CALL_KIND, append
 from dokimi_assert.clock import Clock, System
 from dokimi_assert.failure import Failure, render
 
@@ -55,7 +62,11 @@ __all__ = [
     "clean_up",
     "cleanup",
     "fault",
+    "write_record",
 ]
+
+#: The pattern of the kind of a record.
+_KIND = re.compile(r"dokimi\.[a-z][a-z0-9-]*")
 
 
 def fault(seat: Seat, error: BaseException) -> None:
@@ -109,6 +120,63 @@ def cleanup(seat: Seat, fn: Callable[[], object]) -> None:
         end(seat, of_operation("seat.cleanup", refused))
         return
     member(fn)
+
+
+def write_record(seat: Seat, kind: str, record: str) -> None:
+    r"""Write record into the user properties of the test of seat.
+
+    record is the JSON text of one record of kind. The item of the test
+    receives the user property <kind>.<n>, and write_record numbers the
+    records of each kind of a test from 1. A tool of dokimasia writes its own
+    records into the report of a test this way:
+
+        write_record(seat, "dokimi.suite", '{"suite": "ledger", "seed": "7"}')
+
+    The Collector of the fixture seat is the one seat with a test. On a
+    Recorder, a Standard, the case of a property and the seat that rejects or
+    eventually hands a body, write_record does not write. It ignores
+    DOKIMI_ASSERT_RECORD.
+
+    write_record ends the call with a fault and does not write the record in
+    these cases:
+
+    - kind does not match dokimi\.[a-z][a-z0-9-]*.
+    - kind is dokimi.assert, the kind of the call records of this library.
+    - record is not the JSON text of one object.
+
+    Args:
+        seat: The seat of the call of the tool.
+        kind: The kind of the record.
+        record: The JSON text of the record.
+    """
+    __tracebackhide__ = True
+    refused = _refusal(kind, record)
+    if refused is not None:
+        end(seat, of_operation("seat.write_record", refused))
+        return
+    append(seat, kind, record)
+
+
+def _refusal(kind: str, record: str) -> FaultError | None:
+    """Return the fault of a kind or a record that write_record refuses, or None."""
+    if _KIND.fullmatch(kind) is None:
+        reason = f"{json.dumps(kind)} does not match {_KIND.pattern}"
+        return FaultError("kind", reason)
+    if kind == CALL_KIND:
+        return FaultError("kind", f"{kind} is the kind of the call records of assert")
+    try:
+        value = json.loads(record, parse_constant=_not_json)
+    except ValueError:
+        value = None
+    if not isinstance(value, dict):
+        return FaultError("record", "the record is not one JSON object")
+    return None
+
+
+def _not_json(constant: str) -> NoReturn:
+    """Refuse NaN, Infinity and -Infinity, which JSON does not have."""
+    msg = f"{constant} is not JSON"
+    raise ValueError(msg)
 
 
 def _released(
