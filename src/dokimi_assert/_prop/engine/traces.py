@@ -15,6 +15,9 @@ come from the entries.
   of the draw. Its value runs backwards through the generator of the draw,
   and the draw decodes the resulting choices. A draw past the last entry
   takes its targets.
+- A draw of a composite takes no entry when it starts, and its own draws
+  take theirs. Once it decodes, it takes the next entry by its label and
+  does not read the value. A case records a composite after its draws.
 - A machine turns each step entry into the choices of one step. Tracing
   serves those choices as the machine requests them.
 - Every other request takes its target.
@@ -37,6 +40,7 @@ from typing import TYPE_CHECKING, Any, Final, NoReturn, TypeGuard, cast, final
 from dokimi_assert._override import override
 from dokimi_assert._prop.engine.case import Case, Decoder, Provider, Request, Step
 from dokimi_assert._prop.engine.choice import Choice, Value
+from dokimi_assert._prop.engine.generator import Composite
 from dokimi_assert._prop.engine.inverse import inverse_of
 
 if TYPE_CHECKING:
@@ -183,6 +187,9 @@ class Tracing(Provider):
     def drawing(self, generator: Decoder[Any], label: str) -> None:
         """Prepare the choices of the next entry for a draw under a label.
 
+        A composite takes no entry here. Its draws take theirs, and it takes
+        its own entry once it decodes.
+
         Args:
             generator: The generator of the draw.
             label: The label of the draw.
@@ -192,18 +199,43 @@ class Tracing(Provider):
                 does not record a value, or the generator cannot produce its
                 value.
         """
-        if self._at >= len(self._entries):
+        if isinstance(generator, Composite) or self._at >= len(self._entries):
             return
+        entry = self._take(label)
+        if entry.value is UNSTATED:
+            raise TraceError(self._at - 1, label, "value")
+        choices = inverse_of(cast("Generator[Any]", generator), entry.value)
+        if choices is None:
+            raise TraceError(self._at - 1, label, "value")
+        self._queue.extend(choices)
+
+    @override
+    def drawn(self, generator: Decoder[Any], label: str) -> None:
+        """Take the next entry for a composite under a label, by its label alone.
+
+        Every other draw takes its entry before it decodes.
+
+        Args:
+            generator: The generator of the draw.
+            label: The label of the draw.
+
+        Raises:
+            TraceError: The next entry is not a draw entry with the label.
+        """
+        if isinstance(generator, Composite) and self._at < len(self._entries):
+            self._take(label)
+
+    def _take(self, label: str) -> Draw:
+        """Take the next entry, a draw entry with the label.
+
+        Raises:
+            TraceError: The next entry is not a draw entry with the label.
+        """
         entry = self._entries[self._at]
         if not isinstance(entry, Draw) or entry.label != label:
             raise TraceError(self._at, label, "label")
-        if entry.value is UNSTATED:
-            raise TraceError(self._at, label, "value")
-        choices = inverse_of(cast("Generator[Any]", generator), entry.value)
-        if choices is None:
-            raise TraceError(self._at, label, "value")
-        self._queue.extend(choices)
         self._at += 1
+        return entry
 
     def next_step(self) -> Step | None:
         """Return the next entry when it is a step entry, and None otherwise.

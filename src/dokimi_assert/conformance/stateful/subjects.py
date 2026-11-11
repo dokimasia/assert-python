@@ -61,6 +61,11 @@ without keys, and completes the call as ok with its output:
 - spins-until-a-flag: a subject whose action spin spawns a task that yields
   until a flag is set, and runs the scheduler. No action sets the flag, and
   the machine does not have a spec.
+- pair-fails-at-7-and-3: a machine without a spec. Its actions are noop,
+  which does nothing, and put, whose input is a composite that the case
+  draws under the label pair. The composite draws a digit under the label a
+  and then one under the label b, and returns the list of the two. put fails
+  with a record of pair for the list [7, 3]. Neither action records a call.
 
 Each run builds its subjects anew, so a subject that counts over the cases
 of a run starts each run at 0. A subject that spawns tasks of its own
@@ -168,6 +173,16 @@ _MILLISECOND = 0.001
 #: store-loses-on-crash.
 _LOST = "lost-write"
 _DURABLE = "the store keeps every acknowledged put"
+
+#: The composite input of the put of pair-fails-at-7-and-3. It draws a digit
+#: under the label a and then one under the label b.
+_DIGITS = prop.integer(0, 9)
+_PAIRS = prop.composite(lambda c: [c.draw(_DIGITS, "a"), c.draw(_DIGITS, "b")])
+
+#: The assertion of the record of the failure of pair-fails-at-7-and-3, and
+#: the pair that its put fails for.
+_PAIR = "pair"
+_FAILING_PAIR = [7, 3]
 
 
 @dataclass(slots=True)
@@ -543,6 +558,23 @@ def _spinner(c: prop.Case, setup: Setup) -> None:
     stateful.steps(c, _Machine(setup.marked(actions)), *setup.steps)
 
 
+def _pair_fails(c: prop.Case, setup: Setup) -> None:
+    """Run the machine whose put fails for the composite pair 7 and 3."""
+
+    def noop(_c: prop.Case, _client: int, _: object) -> None:
+        """Do nothing."""
+
+    def put(c: prop.Case, _client: int, pair: list[int]) -> None:
+        if pair == _FAILING_PAIR:
+            c.report(Failure(_PAIR, f"put of the pair {_FAILING_PAIR}"), True)
+
+    actions: list[stateful.Action[Any]] = [
+        stateful.Action("noop", noop),
+        stateful.Action("put", put, input=lambda c, _: c.draw(_PAIRS, "pair")),
+    ]
+    stateful.steps(c, _Machine(setup.marked(actions)), *setup.steps)
+
+
 #: The subjects of the definition, by name. Each entry returns the subject of
 #: one run.
 SUBJECTS: dict[str, Callable[[], Subject]] = {
@@ -560,4 +592,5 @@ SUBJECTS: dict[str, Callable[[], Subject]] = {
     "ticker-skips-its-first-tick": lambda: lambda c, setup: _ticker(c, setup, True),
     "ticker": lambda: lambda c, setup: _ticker(c, setup, False),
     "spins-until-a-flag": lambda: _spinner,
+    "pair-fails-at-7-and-3": lambda: _pair_fails,
 }

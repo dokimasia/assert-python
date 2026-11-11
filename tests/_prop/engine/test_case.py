@@ -195,6 +195,7 @@ class TestProvider:
         """A plain provider does not give a value."""
         provider = Provider()
         provider.drawing(DIGITS, "a")
+        provider.drawn(DIGITS, "a")
         check.equal(
             seat,
             [
@@ -979,7 +980,7 @@ class TestCaseDraw:
     def test_tells_a_provider_that_serves_a_trace_the_label_of_each_draw(
         self, seat: Collector
     ) -> None:
-        """The provider hears each label before the values."""
+        """The provider hears each label before and after the values."""
         heard: list[tuple[str, int]] = []
         replay = Replaying(integers(4, 5, 6))
 
@@ -996,12 +997,17 @@ class TestCaseDraw:
                 del generator
                 heard.append((label, self.served))
 
+            @override
+            def drawn(self, generator: Decoder[Any], label: str) -> None:
+                del generator
+                heard.append((f"{label} drawn", self.served))
+
         c = Case(Serving())
         check.equal(
             seat,
             [[c.draw(DIGITS, "a"), c.draw(DIGITS, "b")], heard],
-            [[4, 5], [("a", 0), ("b", 1)]],
-            "the provider hears each label before the values",
+            [[4, 5], [("a", 0), ("a drawn", 1), ("b", 1), ("b drawn", 2)]],
+            "the provider hears each label before and after the values",
         )
 
     def test_records_the_label_of_the_draw_with_each_of_its_requests(

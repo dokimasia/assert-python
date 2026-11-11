@@ -18,8 +18,11 @@ from dokimi_assert.seat import Collector, Recorder
 SETUP = Setup([], [stateful.clients(2)], stateful.uniform())
 
 
-def run_of(name: str, setup: Setup = SETUP) -> dict[str, Any]:
-    """Return the verdict and the failure of a run of the subject of a name."""
+def run_of(name: str, setup: Setup = SETUP, *options: prop.Option) -> dict[str, Any]:
+    """Return the verdict and the failure of a run of the subject of a name.
+
+    The run also takes the options.
+    """
     subject = SUBJECTS[name]()
     recorder = Recorder()
     prop.for_all(
@@ -29,6 +32,7 @@ def run_of(name: str, setup: Setup = SETUP) -> dict[str, Any]:
         prop.seed(1),
         prop.hermetic(),
         prop.store(""),
+        *options,
     )
     record = json.loads(recorder.records[0])
     failure = record.get("detail", {}).get("failure")
@@ -51,6 +55,7 @@ class TestSubjects:
                 "correct-queue",
                 "counter-overflows",
                 "counter-refuses-every-third",
+                "pair-fails-at-7-and-3",
                 "queue-loses-on-wrap",
                 "racy-counter",
                 "register-flushes",
@@ -156,6 +161,24 @@ class TestSubjects:
             run_of(give, give_setup),
             want,
             "the subject behaves as the definition describes it",
+        )
+
+    def test_builds_a_machine_whose_put_fails_for_a_composite_pair(
+        self, seat: Collector
+    ) -> None:
+        """The trace puts the pair 7 and 3 through the composite."""
+        trace = [
+            {"step": "put"},
+            {"label": "a", "value": {"type": "int", "value": 7}},
+            {"label": "b", "value": {"type": "int", "value": 3}},
+            {"label": "pair", "value": {"type": "list", "of": "int", "value": [7, 3]}},
+        ]
+        setup = Setup([stateful.swarm(False)], [], stateful.uniform())
+        check.equal(
+            seat,
+            run_of("pair-fails-at-7-and-3", setup, prop.draws(json.dumps(trace))),
+            {"verdict": "fail", "failure": "pair"},
+            "the put of the pair fails",
         )
 
     def test_builds_a_queue_whose_steps_take_the_setup(self, seat: Collector) -> None:

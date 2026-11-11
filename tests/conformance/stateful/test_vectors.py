@@ -84,6 +84,15 @@ class TestRunners:
             fault_of(vector(vector_id, setup={}))[0],
         ] == ["", "detail"]
 
+    def test_takes_the_shrink_budget_of_the_settings(self) -> None:
+        """A run without a shrink reports the failing case of the trace as found."""
+        vector_id = "pair-fails-at-7-and-3/a-trace-of-a-composite-replays-its-draws"
+        settings = {"seed": "1"}
+        assert [
+            fault_of(vector(vector_id))[0],
+            fault_of(vector(vector_id, settings=settings))[0],
+        ] == ["", "detail"]
+
     def test_takes_the_stored_cases_of_the_settings(
         self, tmp_path: pathlib.Path
     ) -> None:
@@ -134,8 +143,8 @@ class TestRunners:
         ),
         (
             "raises at a setting that the runner does not take",
-            vector(FAILING, settings={"seed": "1", "shrink": 0}),
-            ("settings.shrink", "the runner does not take the setting"),
+            vector(FAILING, settings={"seed": "1", "examples": [[1]]}),
+            ("settings.examples", "the runner does not take the setting"),
         ),
         (
             "raises at a stored case of choices alone",

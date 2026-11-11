@@ -5,15 +5,18 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, ClassVar, cast
+
+import pytest
 
 from dokimi_assert import check
 from dokimi_assert._prop.engine.case import Case, Replaying, Step
 from dokimi_assert._prop.engine.choice import IntegerBounds
-from dokimi_assert._prop.engine.generator import Integer, Mapped, Optional
+from dokimi_assert._prop.engine.generator import Composite, Integer, Mapped, Optional
 from dokimi_assert._prop.engine.traces import (
     UNSTATED,
     Draw,
+    Entry,
     TraceError,
     Tracing,
     entries,
@@ -28,6 +31,9 @@ if TYPE_CHECKING:
 
 #: The generator that most draws use.
 DIGIT = Integer(IntegerBounds(0, 9))
+
+#: A composite of two digits drawn under a and b. Its value is their list.
+PAIR = Composite(lambda c: [c.draw(DIGIT, "a"), c.draw(DIGIT, "b")])
 
 
 def refused(seat: Collector, call: Callable[[], object]) -> list[object]:
@@ -184,6 +190,83 @@ class TestTracingDrawing:
             seat, lambda: c.draw(Mapped(DIGIT, broke, int), "x"), "the draw raises"
         )
         check.error_as(seat, error, TypeError, "the error is the error of the map")
+
+
+class TestTracingDrawn:
+    """Tracing.drawn takes the entry of a composite once its draws have taken theirs."""
+
+    def test_takes_the_entry_of_a_composite_after_the_entries_of_its_draws(
+        self, seat: Collector
+    ) -> None:
+        """The draws decode their values, and the pair takes its entry by its label."""
+        trace = Tracing([Draw("a", 7), Draw("b", 3), Draw("pair", UNSTATED)])
+        c = Case(trace)
+        check.equal(
+            seat,
+            [c.draw(PAIR, "pair"), trace.taken, values_of(c.choices)],
+            [[7, 3], 3, [("integer", 7), ("integer", 3)]],
+            "the pair takes the three entries",
+        )
+
+    def test_takes_the_entry_of_an_inner_composite_before_the_outer_one(
+        self, seat: Collector
+    ) -> None:
+        """The inner pair takes its entry before the draw of c."""
+        outer = Composite(lambda c: [c.draw(PAIR, "pair"), c.draw(DIGIT, "c")])
+        trace = Tracing(
+            [
+                Draw("a", 1),
+                Draw("b", 2),
+                Draw("pair", [1, 2]),
+                Draw("c", 5),
+                Draw("outer", UNSTATED),
+            ]
+        )
+        check.equal(
+            seat,
+            [Case(trace).draw(outer, "outer"), trace.taken],
+            [[[1, 2], 5], 5],
+            "the composites take every entry",
+        )
+
+    def test_takes_no_entry_for_a_composite_past_the_last_entry(
+        self, seat: Collector
+    ) -> None:
+        """The second draw of the pair takes its target."""
+        trace = Tracing([Draw("a", 7)])
+        check.equal(
+            seat,
+            [Case(trace).draw(PAIR, "pair"), trace.taken],
+            [[7, 0], 1],
+            "the pair takes one entry",
+        )
+
+    def test_takes_no_entry_after_a_draw_that_is_not_a_composite(
+        self, seat: Collector
+    ) -> None:
+        """The digit takes its entry when its draw starts."""
+        trace = Tracing([Draw("x", 7), Draw("y", 1)])
+        Case(trace).draw(DIGIT, "x")
+        check.equal(seat, trace.taken, 1, "the digit takes one entry")
+
+    ends: ClassVar[list[tuple[str, Entry]]] = [
+        (
+            "raises trace error for an entry of another label after the draws",
+            Draw("other", [7, 3]),
+        ),
+        ("raises trace error for a step entry after the draws", Step("put")),
+    ]
+
+    @pytest.mark.parametrize("give", [t[1] for t in ends], ids=[t[0] for t in ends])
+    def test_raises_trace_error_for_another_entry_at_the_end_of_a_composite(
+        self, seat: Collector, give: Entry
+    ) -> None:
+        """The entry follows the draws of the pair."""
+        c = Case(Tracing([Draw("a", 7), Draw("b", 3), give]))
+        got = refused(seat, lambda: c.draw(PAIR, "pair"))
+        check.equal(
+            seat, got, [2, "pair", "label"], "the error is at entry 2 for the label"
+        )
 
 
 class TestTracingValue:

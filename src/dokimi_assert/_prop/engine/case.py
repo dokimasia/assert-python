@@ -206,6 +206,18 @@ class Provider:
         """
         del generator, label
 
+    def drawn(self, generator: Decoder[Any], label: str) -> None:
+        """Take what the draw of a generator under a label takes once it decodes.
+
+        A provider that serves a trace takes the entry of a composite. Any
+        other provider does nothing.
+
+        Args:
+            generator: The generator of the draw.
+            label: The label of the draw.
+        """
+        del generator, label
+
     def valued(self) -> tuple[object] | None:
         """Return the value of the next draw from a provider that gives the values.
 
@@ -803,9 +815,10 @@ class Case:
 
         The span of the draw is the first span that the generator opens. Two
         draws can share a label. A provider that serves a trace prepares the
-        values of the draw first. A provider that gives the values of the
-        draws gives the draw its value. Such a draw does not make a choice or
-        open a span. Every request of the draw has its label.
+        values of the draw first, and takes what the draw takes once it
+        decodes. A provider that gives the values of the draws gives the draw
+        its value. Such a draw does not make a choice or open a span. Every
+        request of the draw has its label.
 
         Args:
             generator: The generator.
@@ -825,6 +838,7 @@ class Case:
             value = generator.decode(self)
         finally:
             self._drawing.pop()
+        self._provider.drawn(generator, label)
         self.draws.append(Drawn(label, value, span, generator))
         return value
 

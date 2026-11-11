@@ -472,8 +472,11 @@ def draws(entries: str) -> Option:
     The entries are a JSON array in request order. A draw entry has a label
     and a typed literal in the same form as a draw of a store entry. A step
     entry has the action of a step. It also has the client of the step in a
-    concurrent section, and the drain mark in the drain. The call ends with a
-    fault before any other case runs in these cases.
+    concurrent section, and the drain mark in the drain. A draw of a
+    composite takes no entry when it starts. Its draws take theirs, and the
+    composite then takes its own entry by its label, as a store entry records
+    a composite after its draws. The call ends with a fault before any other
+    case runs in these cases.
 
     - A draw meets a step entry or an entry of another label.
     - The generator of a draw does not produce the value of its entry.

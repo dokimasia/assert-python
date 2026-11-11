@@ -129,9 +129,9 @@ def _settings_of(written: Mapping[str, Any], directory: str) -> list[prop.Option
     settings is an entry of the store.
 
     Raises:
-        FaultError: The settings have a setting other than seed, cases and
-            stored, or a stored case that is not an object of its choices and
-            its counterexample.
+        FaultError: The settings have a setting other than seed, cases, shrink
+            and stored, or a stored case that is not an object of its choices
+            and its counterexample.
     """
     options = [prop.hermetic(), prop.store(directory)]
     for name, value in written.items():
@@ -139,6 +139,8 @@ def _settings_of(written: Mapping[str, Any], directory: str) -> list[prop.Option
             options.append(prop.seed(seed_of(value)))
         elif name == "cases":
             options.append(prop.cases(value))
+        elif name == "shrink":
+            options.append(prop.shrink(value))
         elif name == "stored":
             write_stored(value, directory, CONTRACT)
         else:
