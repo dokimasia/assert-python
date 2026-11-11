@@ -64,6 +64,12 @@ class TestRunners:
         )
         assert fault_of(raw) == ("", "")
 
+    def test_takes_a_limit_of_releases(self) -> None:
+        """A spin fails its case at a limit of 20 releases."""
+        vector_id = "spins-until-a-flag/fails-the-case-at-the-release-limit"
+        raw = vector(vector_id, setup={"max-releases": 20})
+        assert fault_of(raw)[0] == "detail"
+
     def test_takes_a_strategy_of_pct(self) -> None:
         """A setup can run the clients of a scheduler under PCT of a depth."""
         raw = vector(

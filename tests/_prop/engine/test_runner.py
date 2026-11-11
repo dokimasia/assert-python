@@ -207,9 +207,21 @@ class TestSettings:
                 s.workers,
                 s.replay,
                 s.confirm,
+                s.replays,
             ],
-            [SEED, 100, MAX_CHOICES, (), (), (), (), 2000, 0.0, True, 1, None, 0],
+            [SEED, 100, MAX_CHOICES, (), (), (), (), 2000, 0.0, True, 1, None, 0, 1],
             "the settings have the defaults of the definition",
+        )
+
+    def test_raises_value_error_for_a_run_of_zero_replays(
+        self, seat: Collector
+    ) -> None:
+        """A run of zero replays is refused."""
+        check.equal(
+            seat,
+            refusal(seat, lambda: Settings(SEED, replays=0)),
+            "prop: a run of 0 replays does not replay a failing case",
+            "the error has the reason",
         )
 
     def test_raises_value_error_for_a_run_of_zero_cases(self, seat: Collector) -> None:
@@ -1367,6 +1379,100 @@ class TestRunConfirm:
         )
 
 
+class TestRunReplays:
+    """run replays a failing case as often as the setting replays states."""
+
+    def test_replays_a_failing_case_once_by_default(self, seat: Collector) -> None:
+        """The one replay reproduces the failure."""
+        outcome = ran(above_million, Settings(SEED))
+        check.equal(
+            seat,
+            [outcome.kind, outcome.replays, outcome.reproduced],
+            ["counterexample", 1, 1],
+            "the counterexample states one replay that reproduced the failure",
+        )
+
+    def test_runs_every_replay_before_the_shrink(self, seat: Collector) -> None:
+        """Each of the three replays reproduces the failure."""
+        seen = Seen()
+        outcome = ran(above_million, Settings(SEED, replays=3), seen)
+        first = seen.phases.index("replay")
+        check.equal(
+            seat,
+            [seen.phases[first : first + 4], outcome.replays, outcome.reproduced],
+            [["replay", "replay", "replay", "shrink"], 3, 3],
+            "the three replays run before the first shrink candidate",
+        )
+
+    def test_shrinks_a_failure_that_one_replay_of_three_reproduces(
+        self, seat: Collector
+    ) -> None:
+        """The failing call is even, so the second replay alone fails again."""
+        calls = 0
+
+        def on_even_calls(c: Case) -> None:
+            nonlocal calls
+            calls += 1
+            if c.draw(WIDE, "n") > MILLION and calls % 2 == 0:
+                c.fail("even")
+
+        outcome = ran(on_even_calls, Settings(SEED, replays=3))
+        check.equal(
+            seat,
+            [outcome.kind, outcome.replays, outcome.reproduced],
+            ["counterexample", 3, 1],
+            "the run shrinks the failure that one replay reproduced",
+        )
+
+    def test_returns_flaky_with_the_divergence_of_the_first_replay(
+        self, seat: Collector
+    ) -> None:
+        """No replay of three fails again, because the body fails once."""
+        failed = False
+
+        def once(c: Case) -> None:
+            nonlocal failed
+            if c.draw(WIDE, "n") > MILLION and not failed:
+                failed = True
+                c.fail("once")
+
+        outcome = ran(once, Settings(SEED, replays=3))
+        check.equal(
+            seat,
+            [outcome.kind, outcome.replays, outcome.reproduced, outcome.divergence],
+            ["flaky", 3, 0, Divergence("verdict", 1, "once", None)],
+            "the flaky run states three replays and no reproduction",
+        )
+
+    tests: ClassVar[list[tuple[str, dict[str, Any]]]] = [
+        ("states no replays of a run without a shrink", {"shrink": 0}),
+        ("states no replays of a replay token", {"replay": recorded(MILLION + 1)}),
+        (
+            "states no replays of a failing example of values",
+            {"examples": (Values((MILLION + 5,)),)},
+        ),
+    ]
+
+    @pytest.mark.parametrize("give", [t[1] for t in tests], ids=[t[0] for t in tests])
+    def test_reports_a_failing_case_as_found_without_a_replay(
+        self, seat: Collector, give: dict[str, Any]
+    ) -> None:
+        """The run reports the failing case as found."""
+        seen = Seen()
+        outcome = ran(above_million, Settings(SEED, replays=3, **give), seen)
+        check.equal(
+            seat,
+            [
+                outcome.kind,
+                outcome.replays,
+                outcome.reproduced,
+                "replay" in seen.phases,
+            ],
+            ["counterexample", None, None, False],
+            "the run does not replay the failing case",
+        )
+
+
 def report(outcome: Outcome) -> list[Any]:
     """Return what an outcome reports apart from the identity of its cases."""
     failing = outcome.failing
@@ -1381,6 +1487,8 @@ def report(outcome: Outcome) -> list[Any]:
         outcome.explanation,
         outcome.token,
         outcome.runs,
+        outcome.replays,
+        outcome.reproduced,
     ]
 
 
@@ -1494,6 +1602,7 @@ class TestRunOnFourWorkers:
         ),
         ("reports the counterexample of a filter that shrinks", even_above, {}),
         ("reports the replays of every fifth valid case", passes, {"confirm": 5}),
+        ("reports three replays of a failing case", above_thousand, {"replays": 3}),
     ]
 
     @pytest.mark.parametrize(

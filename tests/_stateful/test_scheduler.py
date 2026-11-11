@@ -18,15 +18,16 @@ from typing import TYPE_CHECKING, Any, ClassVar, NoReturn, cast
 
 import pytest
 
-from dokimi_assert import check
-from dokimi_assert._prop.case import FaultSignal
+from dokimi_assert import check, prop
+from dokimi_assert._prop.case import Failing, FaultSignal
 from dokimi_assert._prop.engine.case import Case as Engine
-from dokimi_assert._prop.engine.case import Generating
+from dokimi_assert._prop.engine.case import Failed, Generating
 from dokimi_assert._prop.engine.choice import UINT64_MAX, IntegerBounds
 from dokimi_assert._prop.engine.source import Source
-from dokimi_assert._stateful.scheduler import Scheduler
+from dokimi_assert._stateful.scheduler import Scheduler, SchedulerOption, max_releases
 from dokimi_assert._stateful.strategy import Strategy, pct, uniform
-from helpers import body_case, replaying
+from dokimi_assert.seat import Recorder
+from helpers import body_case, refusal, replaying
 
 if TYPE_CHECKING:
     from dokimi_assert.seat import Collector
@@ -61,6 +62,10 @@ REFUSED = sorted(
 #: The function of a task, which returns the coroutine of the task.
 Task = Callable[[], Coroutine[Any, Any, None]]
 
+#: The instant at which the clock of a scheduler starts, midnight UTC
+#: 2000-01-01, in seconds since the Unix epoch.
+EPOCH_SECONDS = 946_684_800
+
 
 def started(strategy: Strategy, *values: int) -> tuple[Scheduler, Engine, list[str]]:
     """Return a scheduler on a case that replays values, its engine case and a log."""
@@ -76,6 +81,22 @@ def task(log: list[str], name: str, parts: int) -> Task:
             log.append(f"{name}{part}")
             if part < parts:
                 await asyncio.sleep(0)
+
+    return run
+
+
+def since_epoch(scheduler: Scheduler) -> int:
+    """Return the milliseconds of the clock of a scheduler since it started."""
+    return round((scheduler.time() - EPOCH_SECONDS) * 1000)
+
+
+def ticker(scheduler: Scheduler, log: list[int], ticks: int) -> Task:
+    """Return a task that sleeps 4 ms before each of its ticks and logs its time."""
+
+    async def run() -> None:
+        for _ in range(ticks):
+            await asyncio.sleep(0.004)
+            log.append(since_epoch(scheduler))
 
     return run
 
@@ -443,24 +464,26 @@ class TestSchedulerRun:
             "a resumes after b sets the event",
         )
 
-    def test_moves_the_clock_to_the_next_timer_when_no_task_is_ready(
+    def test_leaves_a_sleeping_task_parked_without_a_move_of_the_clock(
         self, seat: Collector
     ) -> None:
-        """Task a sleeps 2 seconds and task b 1 second."""
+        """Task a sleeps 2 seconds and task b 1 second, and advance moves the clock."""
         scheduler, _, log = started(uniform())
 
         async def sleeps(name: str, seconds: float) -> None:
             await asyncio.sleep(seconds)
-            log.append(f"{name} at {scheduler.time()}")
+            log.append(f"{name} at {since_epoch(scheduler)}")
 
         scheduler.spawn(lambda: sleeps("a", 2))
         scheduler.spawn(lambda: sleeps("b", 1))
         scheduler.run()
+        parked = list(log)
+        scheduler.advance(2)
         check.equal(
             seat,
-            log,
-            ["b at 1.0", "a at 2.0"],
-            "b wakes at 1 second and a at 2 seconds",
+            [parked, log],
+            [[], ["b at 1000", "a at 2000"]],
+            "the run leaves both tasks parked, and b wakes before a",
         )
 
     def test_skips_a_timer_that_its_caller_cancelled(self, seat: Collector) -> None:
@@ -470,11 +493,11 @@ class TestSchedulerRun:
         async def cancels() -> None:
             scheduler.call_later(1, log.append, "timer").cancel()
             await asyncio.sleep(2)
-            log.append(f"awake at {scheduler.time()}")
+            log.append(f"awake at {since_epoch(scheduler)}")
 
         scheduler.spawn(cancels)
-        scheduler.run()
-        check.equal(seat, log, ["awake at 2.0"], "the cancelled timer does not run")
+        scheduler.advance(3)
+        check.equal(seat, log, ["awake at 2000"], "the cancelled timer does not run")
 
     def test_calls_the_due_callbacks_in_order_before_the_next_release(
         self, seat: Collector
@@ -562,28 +585,25 @@ class TestSchedulerRun:
         scheduler.run()
         check.equal(seat, log, ["a waits", "b resumes"], "the run goes on after a")
 
-    def test_raises_runtime_error_when_every_task_waits_and_nothing_is_left(
+    def test_returns_while_a_task_waits_on_a_future_that_nobody_resolves(
         self, seat: Collector
     ) -> None:
-        """The task awaits a future that nobody resolves."""
-        scheduler, _, _ = started(uniform())
+        """The task stays parked, and a later run does not release it."""
+        scheduler, engine, log = started(uniform())
 
         async def waits() -> None:
+            log.append("waits")
             await scheduler.create_future()
+            log.append("resumes")
 
         scheduler.spawn(waits)
-        error = raised_by(seat, scheduler)
+        scheduler.run()
+        scheduler.run()
         check.equal(
             seat,
-            [type(error), str(error)],
-            [
-                RuntimeError,
-                (
-                    "stateful: every task that has not ended waits on a future, and no "
-                    "callback or timer is left"
-                ),
-            ],
-            "the run ends at the deadlock",
+            [log, len(engine.requests)],
+            [["waits"], 1],
+            "the task waits after both runs, and the second run releases nothing",
         )
 
     def test_raises_runtime_error_for_a_future_of_another_event_loop(
@@ -638,13 +658,277 @@ class TestSchedulerRun:
         )
 
 
+class TestSchedulerAdvance:
+    """Scheduler.advance releases tasks and moves the clock deadline by deadline."""
+
+    def test_releases_the_ready_tasks_as_run_does(self, seat: Collector) -> None:
+        """An advance of 0 seconds releases both parts of the task."""
+        scheduler, _, log = started(uniform(), 0)
+        scheduler.spawn(task(log, "a", 2))
+        scheduler.advance(0)
+        check.equal(seat, log, ["a1", "a2"], "the advance releases the task")
+
+    def test_runs_each_tick_at_its_deadline(self, seat: Collector) -> None:
+        """A ticker of 4 ms ticks twice in an advance of 10 ms."""
+        scheduler, _, _ = started(uniform())
+        ticks: list[int] = []
+        scheduler.spawn(ticker(scheduler, ticks, 3))
+        scheduler.advance(0.010)
+        check.equal(
+            seat,
+            [ticks, since_epoch(scheduler)],
+            [[4, 8], 10],
+            "the ticks run at 4 and 8 ms, and the clock reads the end time",
+        )
+
+    def test_ends_a_sleep_whose_deadline_is_the_end_time(self, seat: Collector) -> None:
+        """The first tick is due at the end of an advance of 4 ms."""
+        scheduler, _, _ = started(uniform())
+        ticks: list[int] = []
+        scheduler.spawn(ticker(scheduler, ticks, 1))
+        scheduler.advance(0.004)
+        check.equal(seat, ticks, [4], "the tick runs within the advance")
+
+    def test_measures_a_later_sleep_from_the_deadline_of_its_tick(
+        self, seat: Collector
+    ) -> None:
+        """Two advances of 3 ms and 3 ms reach the first tick alone."""
+        scheduler, _, _ = started(uniform())
+        ticks: list[int] = []
+        scheduler.spawn(ticker(scheduler, ticks, 2))
+        scheduler.advance(0.003)
+        scheduler.advance(0.003)
+        scheduler.advance(0.002)
+        check.equal(seat, ticks, [4, 8], "the second tick is due 4 ms after the first")
+
+    def test_moves_the_clock_by_nothing_for_a_negative_duration(
+        self, seat: Collector
+    ) -> None:
+        """An advance of -1 second keeps the time."""
+        scheduler, _, _ = started(uniform())
+        scheduler.advance(-1)
+        check.equal(seat, since_epoch(scheduler), 0, "the clock keeps its time")
+
+    def test_raises_runtime_error_for_a_task_that_calls_advance(
+        self, seat: Collector
+    ) -> None:
+        """The task advances its own scheduler."""
+        scheduler, _, _ = started(uniform(), 0)
+
+        async def advances() -> None:
+            scheduler.advance(1)
+
+        scheduler.spawn(advances)
+        error = check.raises(seat, lambda: scheduler.advance(0), "the advance raises")
+        check.equal(
+            seat,
+            [type(error), str(error)],
+            [RuntimeError, "stateful: a task called advance of its own scheduler"],
+            "the nested advance raises a RuntimeError",
+        )
+
+
+class TestSchedulerClock:
+    """Scheduler.clock returns the clock of the scheduler, which advance moves."""
+
+    def test_reads_the_time_of_the_scheduler(self, seat: Collector) -> None:
+        """An advance of half a second moves the clock."""
+        scheduler, _, _ = started(uniform())
+        clock = scheduler.clock()
+        before = clock.now()
+        scheduler.advance(0.5)
+        check.equal(
+            seat,
+            [before, clock.now()],
+            [float(EPOCH_SECONDS), EPOCH_SECONDS + 0.5],
+            "the clock reads the time of the scheduler",
+        )
+
+    def test_returns_at_once_from_a_sleep_of_no_time(self, seat: Collector) -> None:
+        """The body sleeps for 0 seconds and for -1 second."""
+        scheduler, _, _ = started(uniform())
+        clock = scheduler.clock()
+        clock.sleep(0)
+        clock.sleep(-1)
+        check.equal(seat, since_epoch(scheduler), 0, "the sleeps do not move the clock")
+
+    def test_raises_runtime_error_for_a_sleep_outside_a_task(
+        self, seat: Collector
+    ) -> None:
+        """The body sleeps for 1 second, which only the body could end."""
+        scheduler, _, _ = started(uniform())
+        error = check.raises(
+            seat, lambda: scheduler.clock().sleep(1), "the sleep raises"
+        )
+        check.equal(
+            seat,
+            [type(error), str(error)],
+            [
+                RuntimeError,
+                (
+                    "stateful: a sleep outside a task waits for a clock that only the "
+                    "body moves"
+                ),
+            ],
+            "the sleep raises a RuntimeError",
+        )
+
+    def test_raises_runtime_error_for_a_sleep_of_the_clock_in_a_task(
+        self, seat: Collector
+    ) -> None:
+        """A task sleeps with asyncio.sleep, which the clock cannot do for it."""
+        scheduler, _, _ = started(uniform(), 0)
+
+        async def sleeps() -> None:
+            scheduler.clock().sleep(1)
+
+        scheduler.spawn(sleeps)
+        error = raised_by(seat, scheduler)
+        check.equal(
+            seat,
+            [type(error), str(error)],
+            [
+                RuntimeError,
+                (
+                    "stateful: a task sleeps on the clock of its scheduler with "
+                    "asyncio.sleep"
+                ),
+            ],
+            "the sleep raises a RuntimeError",
+        )
+
+
+class TestMaxReleases:
+    """max_releases sets the most tasks that one run or one advance releases."""
+
+    def test_returns_the_option_of_the_number(self, seat: Collector) -> None:
+        """The option has 5 releases."""
+        check.equal(
+            seat, max_releases(5), SchedulerOption(5), "the option has 5 releases"
+        )
+
+    refusals: ClassVar[list[tuple[str, Any, str]]] = [
+        ("refuses 0", 0, "stateful: max_releases(0) needs an int of 1 or more"),
+        (
+            "refuses a bool",
+            True,
+            "stateful: max_releases(True) needs an int of 1 or more",
+        ),
+    ]
+
+    @pytest.mark.parametrize(
+        ("give", "want"), [t[1:] for t in refusals], ids=[t[0] for t in refusals]
+    )
+    def test_raises_value_error_for_a_number_that_is_not_an_int_of_1_or_more(
+        self, seat: Collector, give: Any, want: str
+    ) -> None:
+        """The error has the call."""
+        check.equal(
+            seat,
+            refusal(seat, lambda: max_releases(give)),
+            want,
+            "the error has the call",
+        )
+
+    def test_fails_the_case_of_a_run_that_keeps_a_task_ready_past_the_limit(
+        self, seat: Collector
+    ) -> None:
+        """The task yields without an end, and the last option sets 3 releases."""
+        c, _ = body_case(replaying(0, 0, 0))
+        scheduler = Scheduler(c, uniform(), max_releases(9), max_releases(3))
+        log: list[str] = []
+        scheduler.spawn(task(log, "a", 10))
+        with pytest.raises(Failed) as raised:
+            scheduler.run()
+        record = cast("Failing", raised.value.record).failure
+        check.equal(
+            seat,
+            [log, record.assertion, record.contract],
+            [
+                ["a1", "a2", "a3"],
+                "",
+                (
+                    "the task scheduler released 3 tasks in one run, and a task is "
+                    "still ready"
+                ),
+            ],
+            "the case fails after three releases",
+        )
+
+    def test_counts_the_releases_of_an_advance_over_its_deadlines(
+        self, seat: Collector
+    ) -> None:
+        """A ticker of 4 ms reaches the limit of 2 releases at its second tick."""
+        c, _ = body_case(replaying())
+        scheduler = Scheduler(c, pct(1), max_releases(2))
+        ticks: list[int] = []
+        scheduler.spawn(ticker(scheduler, ticks, 3))
+        with pytest.raises(Failed):
+            scheduler.advance(0.010)
+        check.equal(seat, ticks, [4], "the advance fails before the second tick")
+
+
+class TestSchedulerEnd:
+    """A scheduler ends every task that has not returned when its case ends."""
+
+    def test_ends_a_parked_task_when_its_case_ends(self, seat: Collector) -> None:
+        """The task waits on a future that nobody resolves."""
+        log: list[str] = []
+
+        def body(c: prop.Case) -> None:
+            scheduler = Scheduler(c, uniform())
+
+            async def parks() -> None:
+                try:
+                    await scheduler.create_future()
+                    log.append("resumed")
+                finally:
+                    log.append("ended")
+
+            scheduler.spawn(parks)
+            scheduler.run()
+            c.draw(prop.boolean(), "b")
+            log.append("ran")
+
+        prop.for_all(Recorder(), "c", body, prop.cases(1), prop.hermetic())
+        check.equal(
+            seat,
+            [log[:2], "resumed" in log],
+            [["ran", "ended"], False],
+            "the task ends after the case without a return from its wait",
+        )
+
+
 class TestSchedulerMembers:
     """The members of the event loop that futures, locks, events and sleeps call."""
 
-    def test_starts_the_clock_at_0(self, seat: Collector) -> None:
-        """A new scheduler is at the time 0."""
+    def test_starts_the_clock_at_midnight_utc_on_2000_01_01(
+        self, seat: Collector
+    ) -> None:
+        """The time is in seconds since the Unix epoch."""
         scheduler, _, _ = started(uniform())
-        check.equal(seat, scheduler.time(), 0.0, "the clock starts at 0")
+        check.equal(
+            seat,
+            scheduler.time(),
+            float(EPOCH_SECONDS),
+            "the clock starts at 946684800 seconds",
+        )
+
+    def test_runs_a_callback_of_a_time_once_an_advance_reaches_the_time(
+        self, seat: Collector
+    ) -> None:
+        """The callback is due 1.5 seconds after the start of the clock."""
+        scheduler, _, log = started(uniform())
+        scheduler.call_at(EPOCH_SECONDS + 1.5, lambda: log.append("due"))
+        scheduler.advance(1)
+        early = list(log)
+        scheduler.advance(0.5)
+        check.equal(
+            seat,
+            [early, log],
+            [[], ["due"]],
+            "the callback runs at 1.5 seconds",
+        )
 
     def test_creates_a_future_of_the_scheduler(self, seat: Collector) -> None:
         """create_future returns a future whose loop is the scheduler."""

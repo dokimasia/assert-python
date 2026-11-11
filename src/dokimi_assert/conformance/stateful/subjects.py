@@ -40,9 +40,33 @@ without keys, and completes the call as ok with its output:
   count. Any other increment adds one and returns the count, and read
   returns the count. The actions are increment, enabled while the count of
   the spec is below 3, and read. The spec is a counter.
+- register-flushes-in-two-parts: a register of a buffer and a durable
+  value. write sets the buffer to its value and returns None. read returns
+  the buffer when it is set, and the durable value otherwise. A flusher
+  task of the subject awaits an asyncio.Event that write sets. It takes the
+  value and clears the buffer and the event, yields, and then sets the
+  durable value to the value that it took. The actions are write, whose
+  input the case draws under the label v from 0 to 1000, and read. The spec
+  is a register, and the clients and the flusher run as tasks of one
+  scheduler.
+- register-flushes: the same machine over a flusher that sets the durable
+  value to the buffer and then clears the buffer, without a yield between.
+- ticker-skips-its-first-tick: a ticker task that sleeps 4 ms with
+  asyncio.sleep and adds one to its count, four times, and that skips the
+  first addition. The actions are advance, which advances the scheduler by
+  a number of milliseconds that the case draws under the label ms from 0 to
+  10, and read, which returns the count. The spec counts the milliseconds
+  of the advances.
+- ticker: the same machine over a ticker that adds one at each tick.
+- spins-until-a-flag: a subject whose action spin spawns a task that yields
+  until a flag is set, and runs the scheduler. No action sets the flag, and
+  the machine does not have a spec.
 
 Each run builds its subjects anew, so a subject that counts over the cases
-of a run starts each run at 0.
+of a run starts each run at 0. A subject that spawns tasks of its own
+spawns them on a scheduler of the case with the strategy and the limit of
+releases of the setup, and the clients of its concurrent section run on the
+same scheduler.
 """
 
 from __future__ import annotations
@@ -53,6 +77,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from dokimi_assert import history, prop, stateful
+from dokimi_assert._stateful import scheduler as stateful_scheduler
 from dokimi_assert.failure import Failure
 
 __all__ = ["SUBJECTS", "Setup", "Subject"]
@@ -60,20 +85,36 @@ __all__ = ["SUBJECTS", "Setup", "Subject"]
 
 @dataclass(frozen=True, slots=True)
 class Setup:
-    """The options of the steps of a subject and the strategy of its scheduler.
+    """The options of the steps of a subject, and the options of its scheduler.
 
     Attributes:
         steps: The options that every subject takes: mean, max_steps and
             swarm.
-        section: The options of a concurrent section: clients and
-            concurrent.
+        section: The options of a concurrent section: clients, concurrent
+            and concurrent_mean.
         strategy: The strategy of the scheduler that a subject with a
-            concurrent section makes in each case.
+            concurrent section or with tasks of its own makes in each case.
+        max_releases: The most tasks that one run or one advance of that
+            scheduler releases.
     """
 
     steps: Sequence[stateful.Option]
     section: Sequence[stateful.Option]
     strategy: stateful.Strategy
+    max_releases: int = stateful_scheduler.MAX_RELEASES
+
+    def scheduler_in(self, c: prop.Case) -> stateful.Scheduler:
+        """Return a scheduler of a case with the strategy and the limit of the setup.
+
+        Args:
+            c: The case whose choices decide the releases.
+
+        Returns:
+            The scheduler.
+        """
+        return stateful.Scheduler(
+            c, self.strategy, stateful.max_releases(self.max_releases)
+        )
 
 
 #: A subject builds its machine and takes its steps in a case.
@@ -95,6 +136,17 @@ _REFUSED = "refused"
 #: The count of the spec below which counter-refuses-every-third enables its
 #: increment.
 _LIMIT = 3
+
+#: The ticker sleeps _PERIOD seconds before each of its _TICKS ticks. The
+#: spec counts the ticks of _PERIOD_MS milliseconds.
+_PERIOD = 0.004
+_PERIOD_MS = 4
+_TICKS = 4
+
+#: The generator of the milliseconds of an advance, and a millisecond in
+#: seconds.
+_MILLISECONDS = prop.integer(0, 10)
+_MILLISECOND = 0.001
 
 #: The assertion and the contract of the record of the settle of
 #: store-loses-on-crash.
@@ -194,6 +246,38 @@ class _Counter:
             return [0]
         after = state if op.name == "read" else state + 1
         return [after] if op.returned(after) else []
+
+
+class _Register:
+    """The spec of a register: write leaves its value, and read returns it."""
+
+    def initial(self) -> object:
+        """Return the initial value None."""
+        return None
+
+    def next(self, state: object, op: history.Operation) -> list[object]:
+        """Return the value after a write or a read."""
+        if op.name == "write":
+            return [op.args[0]]
+        return [state] if op.returned(state) else []
+
+
+class _Ticks:
+    """The spec of the ticker: the milliseconds that the advances add.
+
+    read returns the milliseconds divided by the period, at most the number
+    of ticks.
+    """
+
+    def initial(self) -> int:
+        """Return 0 milliseconds."""
+        return 0
+
+    def next(self, state: int, op: history.Operation) -> list[int]:
+        """Return the milliseconds after an advance or a read."""
+        if op.name == "advance":
+            return [state + op.args[0]]
+        return [state] if op.returned(min(_TICKS, state // _PERIOD_MS)) else []
 
 
 def _queue(c: prop.Case, setup: Setup, loses_on_wrap: bool) -> None:
@@ -299,7 +383,7 @@ def _shared_counter(c: prop.Case, setup: Setup, racy: bool) -> None:
 
     The increment of a racy counter awaits between its read and its write.
     """
-    scheduler = stateful.Scheduler(c, setup.strategy)
+    scheduler = setup.scheduler_in(c)
     count = [0]
 
     async def increment(c: prop.Case, client: int, _: object) -> None:
@@ -350,6 +434,96 @@ def _refusing_counter() -> Subject:
     return subject
 
 
+def _flushed_register(c: prop.Case, setup: Setup, in_two_parts: bool) -> None:
+    """Run the register machine on clients, over a buffer that a flusher moves."""
+    scheduler = setup.scheduler_in(c)
+    buffer: list[object] = [None]
+    durable: list[object] = [None]
+    filled = asyncio.Event()
+
+    async def flusher() -> None:
+        while True:
+            await filled.wait()
+            taken = buffer[0]
+            buffer[0] = None
+            filled.clear()
+            if in_two_parts:
+                await asyncio.sleep(0)
+            durable[0] = taken
+
+    def write(c: prop.Case, client: int, value: int) -> None:
+        call = c.history().invoke(client, "write", [value])
+        buffer[0] = value
+        filled.set()
+        call.ok(None)
+
+    def read(c: prop.Case, client: int, _: object) -> None:
+        call = c.history().invoke(client, "read", [])
+        call.ok(durable[0] if buffer[0] is None else buffer[0])
+
+    scheduler.spawn(flusher)
+    actions: list[stateful.Action[Any]] = [
+        stateful.Action("write", write, input=lambda c, _: c.draw(_VALUES, "v")),
+        stateful.Action("read", read),
+    ]
+    stateful.steps(
+        c,
+        _Machine(actions, _Register()),
+        *setup.steps,
+        *setup.section,
+        stateful.tasks(scheduler),
+    )
+
+
+def _ticker(c: prop.Case, setup: Setup, skips_first: bool) -> None:
+    """Run the ticker machine, whose advance moves the clock of the scheduler."""
+    scheduler = setup.scheduler_in(c)
+    count = [0]
+
+    async def ticking() -> None:
+        for tick in range(_TICKS):
+            await asyncio.sleep(_PERIOD)
+            if tick > 0 or not skips_first:
+                count[0] += 1
+
+    def advance(c: prop.Case, client: int, milliseconds: int) -> None:
+        call = c.history().invoke(client, "advance", [milliseconds])
+        scheduler.advance(milliseconds * _MILLISECOND)
+        call.ok(None)
+
+    def read(c: prop.Case, client: int, _: object) -> None:
+        c.history().invoke(client, "read", []).ok(count[0])
+
+    scheduler.spawn(ticking)
+    actions: list[stateful.Action[Any]] = [
+        stateful.Action(
+            "advance", advance, input=lambda c, _: c.draw(_MILLISECONDS, "ms")
+        ),
+        stateful.Action("read", read),
+    ]
+    stateful.steps(c, _Machine(actions, _Ticks()), *setup.steps)
+
+
+def _spinner(c: prop.Case, setup: Setup) -> None:
+    """Run the machine whose one action spawns a task that yields without an end.
+
+    The task yields until a flag that no action sets, so it yields on every
+    release and the run reaches its limit of releases.
+    """
+    scheduler = setup.scheduler_in(c)
+
+    async def spinning() -> None:
+        # The spin is the behaviour of the subject: the task stays ready.
+        while True:  # noqa: ASYNC110
+            await asyncio.sleep(0)
+
+    def spin(_c: prop.Case, _client: int, _: object) -> None:
+        scheduler.spawn(spinning)
+        scheduler.run()
+
+    stateful.steps(c, _Machine([stateful.Action("spin", spin)]), *setup.steps)
+
+
 #: The subjects of the definition, by name. Each entry returns the subject of
 #: one run.
 SUBJECTS: dict[str, Callable[[], Subject]] = {
@@ -360,4 +534,11 @@ SUBJECTS: dict[str, Callable[[], Subject]] = {
     "racy-counter": lambda: lambda c, setup: _shared_counter(c, setup, True),
     "correct-counter": lambda: lambda c, setup: _shared_counter(c, setup, False),
     "counter-refuses-every-third": _refusing_counter,
+    "register-flushes-in-two-parts": lambda: (
+        lambda c, setup: _flushed_register(c, setup, True)
+    ),
+    "register-flushes": lambda: lambda c, setup: _flushed_register(c, setup, False),
+    "ticker-skips-its-first-tick": lambda: lambda c, setup: _ticker(c, setup, True),
+    "ticker": lambda: lambda c, setup: _ticker(c, setup, False),
+    "spins-until-a-flag": lambda: _spinner,
 }

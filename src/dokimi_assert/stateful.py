@@ -52,7 +52,9 @@ then runs up to repeat times, because threads do not replay. With the option
 tasks, they run as tasks of a Scheduler. The releases of the scheduler are
 choices of the case, so a race replays and shrinks. A subject that runs as
 tasks awaits a future or asyncio.sleep(0) at each point where another task
-can run.
+can run. A task sleeps on the clock of its scheduler with asyncio.sleep, and
+the advance of the scheduler moves that clock. max_releases sets the most
+tasks that one run of a scheduler releases.
 """
 
 from __future__ import annotations
@@ -71,7 +73,7 @@ from dokimi_assert._stateful.option import (
     swarm,
     tasks,
 )
-from dokimi_assert._stateful.scheduler import Scheduler
+from dokimi_assert._stateful.scheduler import Scheduler, SchedulerOption, max_releases
 from dokimi_assert._stateful.steps import steps
 from dokimi_assert._stateful.strategy import Strategy, pct, uniform
 from dokimi_assert.failure import register_sentence
@@ -81,10 +83,12 @@ __all__ = [
     "Machine",
     "Option",
     "Scheduler",
+    "SchedulerOption",
     "Strategy",
     "clients",
     "concurrent",
     "concurrent_mean",
+    "max_releases",
     "max_steps",
     "mean",
     "pct",

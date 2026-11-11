@@ -733,8 +733,8 @@ def test_ledger(seat):
 `prop.on_result(f)` hands the `prop.Result` of each run to `f`. The call
 runs `f` after the run ends and before it reports its verdict, so `f` also
 receives the result of a run that fails the test. The result has the
-eleven fields of the detail of the run, such as the outcome, the counts of
-valid and rejected cases, the seed and the counterexample of a failing
+thirteen fields of the detail of the run, such as the outcome, the counts
+of valid and rejected cases, the seed and the counterexample of a failing
 case. A tool that runs many properties writes them into a record of its
 own:
 
@@ -758,6 +758,17 @@ def test_simulation(seat):
     prop.for_all(
         seat, "each step observes the checksum of the state", simulate, prop.confirm(16)
     )
+```
+
+`prop.replays(n)` makes a run replay a failing case `n` times before it
+shrinks the case, once by default. The run shrinks the case when one or
+more replays reproduce the failure, and ends as flaky when none does. The
+`replays` and `reproduced` of the result state how often the failure
+reproduced, such as for a subject that runs on threads of its own:
+
+```python
+def test_pool(seat):
+    prop.for_all(seat, "the pool hands out each slot once", acquire, prop.replays(10))
 ```
 
 <!-- api-reference:prop:start -->
@@ -796,6 +807,7 @@ prop.store(directory: str) -> Option
 prop.explain(enabled: bool) -> Option
 prop.workers(n: int) -> Option
 prop.confirm(every: int) -> Option
+prop.replays(n: int) -> Option
 prop.hermetic() -> Option
 prop.draws(entries: str) -> Option
 prop.around(wrapper: Wrapper) -> Option
@@ -1096,6 +1108,13 @@ def test_the_queue_keeps_its_values_in_order(seat):
   `stateful.Scheduler`. The releases of the scheduler are choices of the
   case, so a race replays and shrinks. A subject that runs as tasks awaits
   a future or `asyncio.sleep(0)` at each point where another task can run.
+- A task that awaits a future, an `asyncio.Event` or an `asyncio.sleep` is
+  parked, and `run` returns while it waits. The clock of a scheduler starts
+  at midnight UTC 2000-01-01, and only `advance` moves it, from deadline to
+  deadline. A task that sleeps 4 ms then runs at 4 ms within an advance of
+  10 ms. `Scheduler.clock()` reads that clock.
+- `stateful.max_releases(n)` fails a case whose `run` or `advance` releases
+  `n` tasks while a task is still ready, 1,000,000 by default.
 
 <!-- api-reference:stateful:start -->
 
@@ -1122,15 +1141,19 @@ stateful.swarm(on: bool) -> Option
 stateful.tasks(scheduler: Scheduler) -> Option
 ```
 
-**Schedulers.** With tasks, the clients run as tasks of a Scheduler. Its releases are choices of the case.
+**Schedulers.** With tasks, the clients run as tasks of a Scheduler. Its releases are choices of the case, and only advance moves its clock.
 
 ```python
-stateful.Scheduler(case: Case, strategy: Strategy)
+stateful.Scheduler(case: Case, strategy: Strategy, *options: SchedulerOption)
 Scheduler.spawn(task: Callable[[], Coroutine[Any, Any, object]])
 Scheduler.run()
+Scheduler.advance(duration: float)
+Scheduler.clock() -> Clock
 stateful.Strategy
 stateful.uniform() -> Strategy
 stateful.pct(depth: int) -> Strategy
+stateful.max_releases(n: int) -> SchedulerOption
+stateful.SchedulerOption
 ```
 
 <!-- api-reference:stateful:end -->

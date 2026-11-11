@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
@@ -200,8 +201,8 @@ class TestShortfall:
 class TestResult:
     """Result is the result of one run of a property."""
 
-    def test_keeps_the_eleven_fields_of_the_detail(self, seat: Collector) -> None:
-        """The result is a counterexample of one draw."""
+    def test_keeps_the_thirteen_fields_of_the_detail(self, seat: Collector) -> None:
+        """The result is a counterexample of one draw that two replays of three show."""
         result = Result(
             "counterexample",
             3,
@@ -214,6 +215,8 @@ class TestResult:
             None,
             None,
             None,
+            3,
+            2,
         )
         check.equal(
             seat,
@@ -229,6 +232,8 @@ class TestResult:
                 result.divergence,
                 result.coverage,
                 result.reason,
+                result.replays,
+                result.reproduced,
             ],
             [
                 "counterexample",
@@ -242,8 +247,10 @@ class TestResult:
                 None,
                 None,
                 None,
+                3,
+                2,
             ],
-            "Result keeps its eleven fields",
+            "Result keeps its thirteen fields",
         )
 
 
@@ -258,7 +265,9 @@ class TestResultOf:
         check.equal(
             seat,
             result_of(run, detail_of(run)),
-            Result("passed", 3, 1, 7, None, None, None, None, None, None, None),
+            Result(
+                "passed", 3, 1, 7, None, None, None, None, None, None, None, None, None
+            ),
             "the result of a pass has the counts and the seed alone",
         )
 
@@ -330,6 +339,8 @@ class TestDetailOf:
                 "divergence": None,
                 "coverage": None,
                 "reason": None,
+                "replays": None,
+                "reproduced": None,
             },
             "the detail of a pass has the counts and the seed alone",
         )
@@ -351,8 +362,20 @@ class TestDetailOf:
                 "divergence": None,
                 "coverage": None,
                 "reason": "unsupported",
+                "replays": None,
+                "reproduced": None,
             },
             "the detail of a skip has the counts, the seed and the reason",
+        )
+
+    def test_returns_the_replays_of_a_counterexample(self, seat: Collector) -> None:
+        """Two of three replays reproduced the failure."""
+        d = detail_of(replace(COUNTEREXAMPLE, replays=3, reproduced=2))
+        check.equal(
+            seat,
+            [d["replays"], d["reproduced"]],
+            [3, 2],
+            "the detail has the replays and the reproductions",
         )
 
     def test_returns_the_case_of_a_valid_case_whose_replay_differs(
@@ -573,6 +596,19 @@ class TestDetailJson:
                 }
             ],
             "both values are opaque literals",
+        )
+
+    def test_returns_the_replays_and_the_reproductions_as_numbers(
+        self, seat: Collector
+    ) -> None:
+        """Two of three replays reproduced the failure."""
+        run = replace(COUNTEREXAMPLE, replays=3, reproduced=2)
+        json = detail_json(run, detail_of(run))
+        check.equal(
+            seat,
+            [json["reason"], json["replays"], json["reproduced"]],
+            [None, 3, 2],
+            "the replays and the reproductions follow the reason",
         )
 
     def test_returns_the_failure_as_the_json_of_its_record(

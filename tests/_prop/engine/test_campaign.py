@@ -331,6 +331,29 @@ class TestCampaign:
             "the outcome is flaky with a verdict divergence",
         )
 
+    def test_states_the_replays_of_a_failure_that_no_replay_reproduces(
+        self, seat: Collector
+    ) -> None:
+        """The stored failure fails on its first call alone."""
+        calls = 0
+
+        def first(c: Case) -> None:
+            nonlocal calls
+            calls += 1
+            c.draw(WIDE, "n")
+            if calls == 1:
+                c.fail("first")
+
+        outcome, _ = explored(
+            first, 10, Settings(SEED, stored=(recorded(5),), replays=2)
+        )
+        check.equal(
+            seat,
+            [outcome.kind, outcome.replays, outcome.reproduced],
+            ["flaky", 2, 0],
+            "the flaky campaign states two replays and no reproduction",
+        )
+
     def test_returns_flaky_for_a_random_failure_whose_replay_passes(
         self, seat: Collector
     ) -> None:

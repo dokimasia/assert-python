@@ -22,7 +22,7 @@ class TestStateful:
     def test_exports_the_names_of_the_machines_and_their_steps(
         self, seat: Collector
     ) -> None:
-        """Each of the 16 names in __all__ is an attribute of the module."""
+        """Each of the 18 names in __all__ is an attribute of the module."""
         check.equal(
             seat,
             [
@@ -35,10 +35,12 @@ class TestStateful:
                     "Machine",
                     "Option",
                     "Scheduler",
+                    "SchedulerOption",
                     "Strategy",
                     "clients",
                     "concurrent",
                     "concurrent_mean",
+                    "max_releases",
                     "max_steps",
                     "mean",
                     "pct",
@@ -50,7 +52,7 @@ class TestStateful:
                 ],
                 [],
             ],
-            "the module exports the 16 names",
+            "the module exports the 18 names",
         )
 
     def test_registers_the_sentence_of_the_check_of_the_steps(

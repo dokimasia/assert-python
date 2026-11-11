@@ -40,7 +40,16 @@ _SETUP_CLIENTS = 2
 
 #: The members that the setup of a vector can have.
 _SETUP = frozenset(
-    {"mean", "max", "swarm", "clients", "concurrent", "concurrent-mean", "strategy"}
+    {
+        "mean",
+        "max",
+        "swarm",
+        "clients",
+        "concurrent",
+        "concurrent-mean",
+        "strategy",
+        "max-releases",
+    }
 )
 
 
@@ -83,7 +92,10 @@ def _setup_of(written: Mapping[str, Any]) -> Setup:
         section.append(stateful.concurrent(written["concurrent"]))
     if "concurrent-mean" in written:
         section.append(stateful.concurrent_mean(written["concurrent-mean"]))
-    return Setup(steps, section, _strategy_of(written.get("strategy", "uniform")))
+    strategy = _strategy_of(written.get("strategy", "uniform"))
+    if "max-releases" in written:
+        return Setup(steps, section, strategy, written["max-releases"])
+    return Setup(steps, section, strategy)
 
 
 def _settings_of(written: Mapping[str, Any]) -> list[prop.Option]:

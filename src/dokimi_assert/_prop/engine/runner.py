@@ -41,12 +41,15 @@ A run on more than one worker runs the cases of the last three phases on
 the workers of an executor. It takes them in the order of one worker, and it
 reports the same outcome as a run on one worker.
 
-A failing case is replayed, shrunk and explained. The run then ends as a
-counterexample, or as flaky when the replay differs. A diverging body ends
-the run as flaky. A shrink budget of 0 skips the replay, the shrink and the
-explanation. The run then reports the first failing case as found. A failing
-example of values does not record a choice. The run reports it as found and
-skips the replay and the explanation. Its outcome does not have a token.
+A failing case is replayed `replays` times, once by default, then shrunk
+and explained. The run ends as a counterexample when one or more replays
+reproduce the failure, and as flaky with the difference of the first replay
+when none does. Every replay runs, so the outcome states how many of them
+reproduced the failure. A diverging body ends the run as flaky. A shrink
+budget of 0 skips the replays, the shrink and the explanation. The run then
+reports the first failing case as found. A failing example of values does
+not record a choice. The run reports it as found and skips the replays and
+the explanation. Its outcome does not have a token.
 
 A run that did not find a failing case still fails when it rejected more
 than ten times as many cases as were valid. It also fails when no case
@@ -203,6 +206,7 @@ class Settings:
         confirm: The interval of the replays of valid cases. The run replays
             each valid case whose count is a multiple of confirm. 0 replays
             none.
+        replays: The number of replays of a failing case before its shrink.
     """
 
     seed: int
@@ -218,18 +222,24 @@ class Settings:
     workers: int = 1
     replay: tuple[Choice, ...] | None = None
     confirm: int = 0
+    replays: int = 1
 
     def __post_init__(self) -> None:
-        """Refuse a run of fewer than one case, and a run on fewer than one worker.
+        """Refuse a run of fewer than one case, worker or replay.
 
         Raises:
-            ValueError: cases or workers is below 1.
+            ValueError: cases, workers or replays is below 1.
         """
         if self.cases < 1:
             msg = f"prop: a run of {self.cases} cases does not test anything"
             raise ValueError(msg)
         if self.workers < 1:
             msg = f"prop: a run on {self.workers} workers does not run anything"
+            raise ValueError(msg)
+        if self.replays < 1:
+            msg = (
+                f"prop: a run of {self.replays} replays does not replay a failing case"
+            )
             raise ValueError(msg)
 
 
@@ -273,6 +283,10 @@ class Outcome:
         stored: The runs of the stored cases in order. They end at the
             stored case that ended the run.
         reason: The reason of the case that ended a skipped run, or None.
+        replays: The number of replays of the failing case before its
+            shrink, or None for a run that replayed no failing case.
+        reproduced: The number of the replays that reproduced the failure,
+            or None where replays is None.
     """
 
     kind: Kind
@@ -289,6 +303,8 @@ class Outcome:
     valued: bool = False
     stored: tuple[Execution, ...] = ()
     reason: str | None = None
+    replays: int | None = None
+    reproduced: int | None = None
 
 
 class Tally:
@@ -465,9 +481,12 @@ def conclude(
 
     The concluded outcome has the minimal case, the other failures that the
     shrink found and the replay token. A shrink budget of 0 adds the token
-    alone. A replay that differs makes the outcome flaky. The function
-    returns any other outcome and a counterexample of values unchanged. A
-    counterexample of values does not record a choice.
+    alone. The case replays as often as the setting replays states, and
+    every replay runs. The case shrinks when one or more replays reproduce
+    the failure. When none does, the outcome is flaky with the difference of
+    the first replay. The outcome states the replays and the reproductions.
+    The function returns any other outcome and a counterexample of values
+    unchanged. A counterexample of values does not record a choice.
 
     Args:
         body: The body.
@@ -483,9 +502,14 @@ def conclude(
     failing = cast("Execution", outcome.failing)
     if settings.shrink == 0:
         return replace(outcome, token=encode(failing.case.choices))
-    divergence = confirm(body, failing, settings.max_choices, observer)
-    if divergence is not None:
-        return replace(outcome, kind="flaky", divergence=divergence)
+    divergences = [
+        confirm(body, failing, settings.max_choices, observer)
+        for _ in range(settings.replays)
+    ]
+    reproduced = sum(divergence is None for divergence in divergences)
+    outcome = replace(outcome, replays=settings.replays, reproduced=reproduced)
+    if reproduced == 0:
+        return replace(outcome, kind="flaky", divergence=divergences[0])
     shrinker = Shrinker(
         body,
         failing,

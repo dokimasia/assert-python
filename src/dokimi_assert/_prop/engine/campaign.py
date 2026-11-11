@@ -277,7 +277,12 @@ class _Exploration:
             flaky = self._tally.outcome(
                 "flaky", failing=outcome.failing, divergence=outcome.divergence
             )
-            return replace(flaky, stored=tuple(self._stored))
+            return replace(
+                flaky,
+                stored=tuple(self._stored),
+                replays=outcome.replays,
+                reproduced=outcome.reproduced,
+            )
         self._identities.add(identity)
         others: list[Execution] = []
         for other in outcome.others:

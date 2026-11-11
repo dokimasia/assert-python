@@ -5,8 +5,10 @@
 
 The definition writes the failure of a run, and the failure of each further
 failure, as an identity. The bodies of the vectors and the machine subjects
-fail with a record whose assertion is that identity. Every other field of
-the detail of a call record has the form of the vector already.
+fail with a record whose assertion is that identity. A scheduler at its
+limit of releases fails the case with a record without an assertion, and
+the vectors name that failure max-releases. Every other field of the detail
+of a call record has the form of the vector already.
 """
 
 from __future__ import annotations
@@ -22,11 +24,20 @@ if TYPE_CHECKING:
 __all__ = ["detail_of"]
 
 
+#: The identity of the failure of a scheduler at its limit of releases.
+_MAX_RELEASES = "max-releases"
+
+
 def _assertion_of(failure: object) -> object:
-    """Return the assertion of a failure record of a call record, or None for null."""
+    """Return the identity of a failure record of a call record, or None for null.
+
+    The identity is the assertion of the record, and max-releases for a
+    record without an assertion.
+    """
     if not isinstance(failure, dict):
         return None
-    return cast("dict[str, Any]", failure).get("assertion")
+    assertion = cast("dict[str, Any]", failure).get("assertion")
+    return _MAX_RELEASES if assertion is None else assertion
 
 
 def detail_of(record: Mapping[str, Any]) -> dict[str, Any]:

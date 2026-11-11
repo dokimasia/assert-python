@@ -11,7 +11,7 @@ identity of its failure is the identity of the first entry of fails whose
 predicate is true. An ending then ends the case with that identity, or with
 None for a case that does not fail.
 
-Five named bodies do what a predicate cannot do:
+Six named bodies do what a predicate cannot do:
 
 - draws-nothing does not request an input.
 - diverges draws an integer from 0 to 9 on its first call and a bool on each
@@ -23,6 +23,9 @@ Five named bodies do what a predicate cannot do:
 - fails-then-skips draws an integer from 0 to 10^9. Its case fails with the
   identity once the first time that it draws a value above 1,000. Every
   later call draws its value and then skips with the reason after.
+- fails-on-even-calls draws an integer from 0 to 10^9. Its case fails with
+  the identity even when the value is above 1,000 and the call is even,
+  counting the calls of the body from 1.
 """
 
 from __future__ import annotations
@@ -54,6 +57,9 @@ _ONCE_ABOVE = 1_000
 
 #: The reason of the skips of fails-then-skips.
 _AFTER = "after"
+
+#: The identity of the failure of fails-on-even-calls.
+_EVEN = "even"
 
 
 def _text_of(value: object, noun: str) -> str:
@@ -184,6 +190,35 @@ def _failing_then_skipping(end: Ending) -> Body:
     return body
 
 
+def _failing_on_even_calls(end: Ending) -> Body:
+    """Return the body that fails above 1,000 on each of its even calls."""
+    wide = prop.integer(0, 1_000_000_000)
+    calls = [0]
+
+    def body(c: prop.Case) -> None:
+        value = c.draw(wide, DRAWN)
+        calls[0] += 1
+        end(c, _EVEN if value > _ONCE_ABOVE and calls[0] % 2 == 0 else None)
+
+    return body
+
+
+def _drawing_nothing(end: Ending) -> Body:
+    """Return the body that ends its case without a draw."""
+    return lambda c: end(c, None)
+
+
+#: The function that returns a new named body for an ending, by its name.
+_NAMED: dict[str, Callable[[Ending], Body]] = {
+    "draws-nothing": _drawing_nothing,
+    "diverges": _diverging,
+    "observes-its-calls": _observing_calls,
+    "fails-once": _failing_once,
+    "fails-then-skips": _failing_then_skipping,
+    "fails-on-even-calls": _failing_on_even_calls,
+}
+
+
 def body_of(spec: object, end: Ending) -> Body:
     """Return a new body of a JSON object.
 
@@ -207,15 +242,8 @@ def body_of(spec: object, end: Ending) -> Body:
     kind = stated.get("kind")
     if kind is None:
         return _drawing(stated, end)
-    if kind == "draws-nothing":
-        return lambda c: end(c, None)
-    if kind == "diverges":
-        return _diverging(end)
-    if kind == "observes-its-calls":
-        return _observing_calls(end)
-    if kind == "fails-once":
-        return _failing_once(end)
-    if kind == "fails-then-skips":
-        return _failing_then_skipping(end)
-    msg = f"prop: {json.dumps(kind)} is not a named body"
-    raise ValueError(msg)
+    named = _NAMED.get(kind) if isinstance(kind, str) else None
+    if named is None:
+        msg = f"prop: {json.dumps(kind)} is not a named body"
+        raise ValueError(msg)
+    return named(end)

@@ -52,6 +52,7 @@ __all__ = [
     "max_choices",
     "on_result",
     "replay",
+    "replays",
     "require",
     "seed",
     "shrink",
@@ -94,6 +95,7 @@ class Option:
         "explain",
         "workers",
         "confirm",
+        "replays",
         "hermetic",
         "draws",
         "around",
@@ -143,6 +145,7 @@ class Config:
         on_result: The function that receives the result of each run, or None.
         using: The generators that the run gives types.
         confirm: The interval of the replays of valid cases, and 0 for none.
+        replays: The number of replays of a failing case before its shrink.
     """
 
     cases: int = DEFAULT_CASES
@@ -161,6 +164,7 @@ class Config:
     on_result: Callable[[Result], object] | None = None
     using: Generators = field(default_factory=Generators)
     confirm: int = 0
+    replays: int = 1
 
 
 def configure(options: Iterable[Option]) -> Config:
@@ -168,7 +172,8 @@ def configure(options: Iterable[Option]) -> Config:
 
     The defaults are 100 cases, a shrink budget of 2,000 calls and 30
     seconds, a cap of 8,192 choices, an explanation, one worker, no replay
-    of a valid case and no generator of a type.
+    of a valid case, one replay of a failing case and no generator of a
+    type.
 
     Args:
         options: The options of the run.
@@ -420,6 +425,30 @@ def confirm(every: int) -> Option:
         ValueError: every is not an int of 1 or more.
     """
     return Option("confirm", _counted("confirm", every, 1))
+
+
+def replays(n: int) -> Option:
+    """Make a run replay a failing case n times before it shrinks the case.
+
+    Each replay runs on the choices of the case, and every replay runs. A
+    replay reproduces the failure when it requests the same bounds, observes
+    the same fingerprints and fails with the same identity. The run shrinks
+    the case when one or more replays reproduce the failure, and ends as
+    flaky with the difference of the first replay when none does. The result
+    states the replays and the replays that reproduced the failure. A run
+    without the option replays a failing case once. A run without a shrink, a
+    replay token and a failing example of values replay nothing.
+
+    Args:
+        n: The number of replays. It is at least 1.
+
+    Returns:
+        The option.
+
+    Raises:
+        ValueError: n is not an int of 1 or more.
+    """
+    return Option("replays", _counted("replays", n, 1))
 
 
 def hermetic() -> Option:

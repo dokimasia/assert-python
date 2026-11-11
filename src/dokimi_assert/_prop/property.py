@@ -371,6 +371,7 @@ class Property:
             explain=config.explain,
             workers=config.workers,
             confirm=config.confirm,
+            replays=config.replays,
         )
         return Property(
             call,

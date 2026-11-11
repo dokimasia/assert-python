@@ -43,6 +43,24 @@ class TestDetailOf:
             "every failure of the detail is its assertion",
         )
 
+    def test_returns_a_failure_without_an_assertion_as_max_releases(
+        self, seat: Collector
+    ) -> None:
+        """A scheduler at its limit of releases fails without an assertion."""
+        record = {
+            "detail": {
+                "outcome": "counterexample",
+                "failure": {"assertion": None, "contract": "", "detail": {}},
+                "others": [],
+            }
+        }
+        check.equal(
+            seat,
+            detail_of(record)["failure"],
+            "max-releases",
+            "the failure has the identity of the limit of releases",
+        )
+
     def test_returns_the_null_fields_of_a_passing_run_unchanged(
         self, seat: Collector
     ) -> None:

@@ -30,6 +30,7 @@ from dokimi_assert._prop.option import (
     max_choices,
     on_result,
     replay,
+    replays,
     require,
     seed,
     shrink,
@@ -104,6 +105,7 @@ class TestConfig:
                 draws=None,
                 around=None,
                 confirm=0,
+                replays=1,
             ),
             "Config has the defaults of a run",
         )
@@ -138,6 +140,7 @@ class TestConfigure:
                     around(_wrap),
                     on_result(_receive),
                     confirm(3),
+                    replays(4),
                 ]
             ),
             Config(
@@ -156,6 +159,7 @@ class TestConfigure:
                 around=_wrap,
                 on_result=_receive,
                 confirm=3,
+                replays=4,
             ),
             "each option sets its setting",
         )
@@ -490,6 +494,31 @@ class TestConfirm:
         """The error has the call."""
         check.equal(
             seat, refusal(seat, lambda: confirm(give)), want, "the error has the call"
+        )
+
+
+class TestReplays:
+    """replays sets the number of replays of a failing case before its shrink."""
+
+    def test_returns_the_option_of_the_number(self, seat: Collector) -> None:
+        """The run replays a failing case three times."""
+        check.equal(seat, replays(3), Option("replays", 3), "the option has 3")
+
+    tests: ClassVar[list[tuple[str, Any, str]]] = [
+        ("refuses 0", 0, "prop: replays(0) needs an int of 1 or more"),
+        ("refuses a float", 2.0, "prop: replays(2.0) needs an int of 1 or more"),
+        ("refuses a bool", True, "prop: replays(True) needs an int of 1 or more"),
+    ]
+
+    @pytest.mark.parametrize(
+        ("give", "want"), [t[1:] for t in tests], ids=[t[0] for t in tests]
+    )
+    def test_raises_value_error_for_a_number_that_is_not_an_int_of_1_or_more(
+        self, seat: Collector, give: Any, want: str
+    ) -> None:
+        """The error has the call."""
+        check.equal(
+            seat, refusal(seat, lambda: replays(give)), want, "the error has the call"
         )
 
 

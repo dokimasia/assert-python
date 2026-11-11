@@ -167,10 +167,10 @@ class Shortfall:
 class Result:
     """The result of one run of a property.
 
-    The result has the eleven fields of the detail of the run, and on_result
-    hands it to a function when the run ends. A field that the outcome does
-    not use is None. The record of the run has the same values, and its call
-    record has the seed as decimal text.
+    The result has the thirteen fields of the detail of the run, and
+    on_result hands it to a function when the run ends. A field that the
+    outcome does not use is None. The record of the run has the same values,
+    and its call record has the seed as decimal text.
 
     Attributes:
         outcome: How the run ended, such as passed or counterexample.
@@ -186,6 +186,10 @@ class Result:
         divergence: What differed first in a flaky run.
         coverage: The coverage requirement that the run refuted or left unmet.
         reason: The reason of a skipped run.
+        replays: The number of replays of the failing case before its
+            shrink, or None for a run that replayed no failing case.
+        reproduced: The number of the replays that reproduced the failure,
+            or None where replays is None.
     """
 
     outcome: str
@@ -199,6 +203,8 @@ class Result:
     divergence: Divergence | None
     coverage: Shortfall | None
     reason: str | None
+    replays: int | None
+    reproduced: int | None
 
 
 #: The notes of the failing case of a record, by the id of the record. Only a
@@ -333,6 +339,8 @@ def detail_of(outcome: Outcome) -> dict[str, Any]:
             shortfall.verdict,
         ),
         "reason": outcome.reason,
+        "replays": outcome.replays,
+        "reproduced": outcome.reproduced,
     }
 
 
@@ -361,6 +369,8 @@ def result_of(outcome: Outcome, detail: Mapping[str, Any]) -> Result:
         divergence=detail["divergence"],
         coverage=detail["coverage"],
         reason=detail["reason"],
+        replays=detail["replays"],
+        reproduced=detail["reproduced"],
     )
 
 
@@ -501,6 +511,8 @@ def detail_json(outcome: Outcome, detail: Mapping[str, Any]) -> dict[str, Any]:
             "verdict": coverage.verdict,
         },
         "reason": detail["reason"],
+        "replays": detail["replays"],
+        "reproduced": detail["reproduced"],
     }
 
 

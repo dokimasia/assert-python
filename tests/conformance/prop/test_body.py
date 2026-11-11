@@ -191,6 +191,23 @@ class TestBodyOf:
             "the body observes the number of its calls",
         )
 
+    def test_returns_a_body_of_fails_on_even_calls_that_fails_above_1000_on_even_calls(
+        self, seat: Collector
+    ) -> None:
+        """The second and the fourth call draw above 1,000 and fail."""
+        ends: list[str | None] = []
+        body = body_of(
+            {"kind": "fails-on-even-calls"}, lambda _, failure: ends.append(failure)
+        )
+        for value in (2000, 2000, 2000, 1000, 2000, 2000):
+            drawn_case(body, value)
+        check.equal(
+            seat,
+            ends,
+            [None, "even", None, None, None, "even"],
+            "the body fails above 1,000 on its even calls",
+        )
+
     def test_returns_a_body_of_fails_once_that_fails_once_above_1000(
         self, seat: Collector
     ) -> None:
@@ -231,6 +248,11 @@ class TestBodyOf:
             "raises for a named body that does not exist",
             {"kind": "widget"},
             'prop: "widget" is not a named body',
+        ),
+        (
+            "raises for a name of a body that is not a string",
+            {"kind": ["fails-once"]},
+            'prop: ["fails-once"] is not a named body',
         ),
         (
             "raises for a classify that is not an object",
