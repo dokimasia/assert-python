@@ -84,6 +84,7 @@ _SETTINGS = frozenset(
         "shrink",
         "replay",
         "workers",
+        "confirm",
     }
 )
 
@@ -367,6 +368,7 @@ def _options_of(settings: object, directory: str, spec: object) -> list[Any]:
         "max-choices": prop.max_choices,
         "shrink": prop.shrink,
         "workers": prop.workers,
+        "confirm": prop.confirm,
     }
     options.extend(
         option(written[name]) for name, option in plain.items() if name in written

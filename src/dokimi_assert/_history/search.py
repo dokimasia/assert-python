@@ -13,8 +13,12 @@ that the search has not linearized. An accepted call restarts the scan from
 the first entry. The search passes when it has linearized every known call.
 
 A configuration is a set of linearized calls and the distinct states that
-they leave. Two configurations are the same when their sets are equal and
-their states are the same states in any order. The search stops as
+they leave. The search skips a configuration that the memo covers: a
+configuration in the memo with the same states in any order and the same
+calls with a completion entry, whose other calls are among the
+configuration's. A call without a completion entry need not take effect,
+so every order that follows the configuration also follows the one in the
+memo. The search stops as
 undecided before a step past its budget, before it stores a configuration
 past the limit of its memo, and once its time has passed. The memo counts
 one bit per call of the partition for each configuration.
@@ -217,12 +221,19 @@ class Search(Generic[_S]):
                 self._invocation[position] = entry
             else:
                 self._completion[position] = entry
+        self._optional: int = sum(
+            1 << position
+            for position, completion in enumerate(self._completion)
+            if completion is None
+        )
         self._open: int = sum(1 for c in calls if c.span.operation.known)
         self._steps: int = 0
         self._done: int = 0
         self._states: list[_S] = []
         self._stack: list[tuple[int, list[_S]]] = []
-        self._memo: dict[tuple[int, frozenset[Hashable]], list[list[_S]]] = {}
+        self._memo: dict[
+            tuple[int, frozenset[Hashable]], list[tuple[int, list[_S]]]
+        ] = {}
         self._configurations: int = 0
         self._linearized: tuple[int, ...] = ()
         self._frontier: list[_S] = []
@@ -332,20 +343,30 @@ class Search(Generic[_S]):
         return following
 
     def _remember(self, done: int, states: list[_S]) -> bool:
-        """Store a configuration, and report whether the memo did not have it."""
+        """Store a configuration, and report whether the memo did not cover it.
+
+        A configuration in the memo covers this one when the two have the same
+        states and the same calls with a completion entry, and its calls
+        without one are among this configuration's.
+        """
         self._calling = "key"
-        name = (done, frozenset(self._key(state) for state in states))
+        optional = done & self._optional
+        name = (done & ~self._optional, frozenset(self._key(state) for state in states))
         bucket = self._memo.setdefault(name, [])
         self._calling = "equal"
-        for seen in bucket:
-            if len(seen) == len(states) and all(
-                any(self._equal(state, other) for other in seen) for state in states
+        for taken, seen in bucket:
+            if (
+                taken & ~optional == 0
+                and len(seen) == len(states)
+                and all(
+                    any(self._equal(state, other) for other in seen) for state in states
+                )
             ):
                 return False
         if (self._configurations + 1) * len(self._calls) > self._memo_limit:
             limit: Limit = "memo"
             raise _LimitError(limit)
-        bucket.append(states)
+        bucket.append((optional, states))
         self._configurations += 1
         return True
 

@@ -57,6 +57,7 @@ from dokimi_assert._prop.engine.runner import (
     Tally,
     Values,
     conclude_case,
+    confirm_valid,
     run,
     run_stored,
 )
@@ -369,6 +370,7 @@ class Property:
             shrink_time=config.shrink_time,
             explain=config.explain,
             workers=config.workers,
+            confirm=config.confirm,
         )
         return Property(
             call,
@@ -493,9 +495,11 @@ class Property:
 
         The report of a case that passes counts one valid case. The report of
         a case that the body rejects counts one rejected case. A case that
-        skips skips the input, and its report counts no case. The property
-        replays, shrinks and explains a failing case in the same way as a run.
-        It writes each failure of the counterexample to the store.
+        skips skips the input, and its report counts no case. A case that
+        passes is the first valid case of its input, so the setting confirm
+        of 1 replays it. The property replays, shrinks and explains a failing
+        case in the same way as a run. It writes each failure of the
+        counterexample to the store.
 
         Args:
             seat: The seat of the call of the input.
@@ -517,7 +521,10 @@ class Property:
                     tally = Tally(settings.seed)
                     ended = tally.take(execution)
                     if ended is None:
-                        return tally.outcome("passed")
+                        flaky = confirm_valid(
+                            cases, settings, tally, execution, observer
+                        )
+                        return flaky or tally.outcome("passed")
                     if ended.kind == "skipped":
                         return ended
                     return conclude_case(cases, settings, execution, observer)

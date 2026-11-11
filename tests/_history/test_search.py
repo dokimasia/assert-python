@@ -377,7 +377,7 @@ class TestSearchRun:
         check.equal(
             seat,
             searched(history, REGISTER),
-            ending("violated", 9, (0, 1), (2,), (2,)),
+            ending("violated", 8, (0, 1), (2,), (2,)),
             "every order of the writes fails the read of 9",
         )
 
@@ -403,6 +403,51 @@ class TestSearchRun:
             searched(writes(1), REGISTER),
             ending("violated", 5, (0, 1), (1,), (2,)),
             "the second order is skipped",
+        )
+
+    def test_skips_a_configuration_that_a_configuration_of_the_memo_covers(
+        self, seat: Collector
+    ) -> None:
+        """Each write of 1 leaves the state of the other write."""
+        history = History()
+        history.invoke(0, "write", [1], "x").unknown("crashed")
+        history.invoke(1, "write", [1], "x").unknown("crashed")
+        history.invoke(2, "read", [], "x").ok(7)
+        check.equal(
+            seat,
+            searched(history, REGISTER),
+            ending("violated", 7, (0,), (1,), (2,)),
+            "the frontier has one of the two writes",
+        )
+
+    def test_passes_unknown_writes_that_no_read_needs_within_the_budget(
+        self, seat: Collector
+    ) -> None:
+        """Twelve unknown writes and a read of the initial value pass."""
+        history = History()
+        for i in range(12):
+            history.invoke(i % 3, "write", [i % 3 + 1], "x").unknown("crashed")
+        history.invoke(0, "read", [], "x").ok(None)
+        check.equal(
+            seat,
+            searched(history, REGISTER, budget(10_000)),
+            ending("passed", 1325, (), (None,), ()),
+            "the search passes after 1,325 steps",
+        )
+
+    def test_passes_pending_writes_that_no_read_needs_within_the_budget(
+        self, seat: Collector
+    ) -> None:
+        """Twelve pending writes and a read of the initial value pass."""
+        history = History()
+        for i in range(12):
+            history.invoke(i, "write", [i % 3 + 1], "x")
+        history.invoke(12, "read", [], "x").ok(None)
+        check.equal(
+            seat,
+            searched(history, REGISTER, budget(10_000)),
+            ending("passed", 1325, (), (None,), ()),
+            "the search passes after 1,325 steps",
         )
 
     def test_does_not_merge_a_state_that_is_nan(self, seat: Collector) -> None:

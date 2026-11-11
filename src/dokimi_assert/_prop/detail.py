@@ -286,7 +286,8 @@ def detail_of(outcome: Outcome) -> dict[str, Any]:
     """Return the detail of the record of a run.
 
     The detail has each field with its value, and None for a field that the
-    outcome does not use.
+    outcome does not use. The failing case of a flaky run can be a valid
+    case that the setting confirm replayed, and its failure is None.
 
     Args:
         outcome: The outcome of the run.
@@ -305,7 +306,9 @@ def detail_of(outcome: Outcome) -> dict[str, Any]:
         "counterexample": None
         if failing is None
         else _entries_of(failing, outcome.explanation),
-        "failure": None if failing is None else _failing_of(failing).failure,
+        "failure": None
+        if failing is None or failing.failure is None
+        else _failing_of(failing).failure,
         "choices": outcome.token if counterexample else None,
         "others": [
             Other(

@@ -43,6 +43,7 @@ __all__ = [
     "around",
     "cases",
     "configure",
+    "confirm",
     "draws",
     "example",
     "examples",
@@ -92,6 +93,7 @@ class Option:
         "store",
         "explain",
         "workers",
+        "confirm",
         "hermetic",
         "draws",
         "around",
@@ -140,6 +142,7 @@ class Config:
         around: The wrapper of each run of the body, or None.
         on_result: The function that receives the result of each run, or None.
         using: The generators that the run gives types.
+        confirm: The interval of the replays of valid cases, and 0 for none.
     """
 
     cases: int = DEFAULT_CASES
@@ -157,14 +160,15 @@ class Config:
     around: Wrapper | None = None
     on_result: Callable[[Result], object] | None = None
     using: Generators = field(default_factory=Generators)
+    confirm: int = 0
 
 
 def configure(options: Iterable[Option]) -> Config:
     """Apply the options to the defaults in their order, and return the settings.
 
     The defaults are 100 cases, a shrink budget of 2,000 calls and 30
-    seconds, a cap of 8,192 choices, an explanation, one worker and no
-    generator of a type.
+    seconds, a cap of 8,192 choices, an explanation, one worker, no replay
+    of a valid case and no generator of a type.
 
     Args:
         options: The options of the run.
@@ -394,6 +398,28 @@ def workers(n: int) -> Option:
         ValueError: n is not an int of 1 or more.
     """
     return Option("workers", _counted("workers", n, 1))
+
+
+def confirm(every: int) -> Option:
+    """Make a run replay each valid case whose count is a multiple of every.
+
+    The replay runs right after the case, from its choices, as the replay of
+    a failing case runs. A replay that requests other bounds, observes
+    another fingerprint or fails ends the run as flaky. A replay that is
+    rejected or skips does not differ. The replay counts as no case, and an
+    example of values is not replayed. A run without the option replays no
+    valid case.
+
+    Args:
+        every: The interval of the replays. It is at least 1.
+
+    Returns:
+        The option.
+
+    Raises:
+        ValueError: every is not an int of 1 or more.
+    """
+    return Option("confirm", _counted("confirm", every, 1))
 
 
 def hermetic() -> Option:

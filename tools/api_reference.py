@@ -458,6 +458,7 @@ BLOCKS = {
                 "store",
                 "explain",
                 "workers",
+                "confirm",
                 "hermetic",
                 "draws",
                 "around",

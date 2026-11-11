@@ -717,6 +717,20 @@ def test_ledger(seat):
     )
 ```
 
+`prop.confirm(every)` makes a run replay each valid case whose count is a
+multiple of `every` right after the case, from its choices. A replay that
+requests other bounds, observes another fingerprint with `Case.observe` or
+fails ends the run as flaky. A simulation that iterates a set or reads the
+wall clock then fails while its cases pass. Each replay costs one more run
+of the body:
+
+```python
+def test_simulation(seat):
+    prop.for_all(
+        seat, "each step observes the checksum of the state", simulate, prop.confirm(16)
+    )
+```
+
 <!-- api-reference:prop:start -->
 
 **Running a property.** for_all runs the body against generated cases, and the body draws its inputs from its case.
@@ -752,6 +766,7 @@ prop.max_choices(n: int) -> Option
 prop.store(directory: str) -> Option
 prop.explain(enabled: bool) -> Option
 prop.workers(n: int) -> Option
+prop.confirm(every: int) -> Option
 prop.hermetic() -> Option
 prop.draws(entries: str) -> Option
 prop.around(wrapper: Wrapper) -> Option

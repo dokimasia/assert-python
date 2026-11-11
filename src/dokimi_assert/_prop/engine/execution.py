@@ -69,8 +69,10 @@ __all__ = [
 Body = Callable[[Case], object]
 
 #: The part of a run that called the body. It is the kind of the case.
-#: example is a case whose values the caller gives. fuzz is the case that the
-#: fuzz bridge decodes from the input of a fuzzer.
+#: example is a case whose values the caller gives. replay is the replay of a
+#: failing case before its shrink, and confirm the replay of a valid case
+#: under the setting confirm. fuzz is the case that the fuzz bridge decodes
+#: from the input of a fuzzer.
 Phase = Literal[
     "example",
     "stored",
@@ -80,6 +82,7 @@ Phase = Literal[
     "edge",
     "coverage",
     "replay",
+    "confirm",
     "shrink",
     "explain",
     "token",

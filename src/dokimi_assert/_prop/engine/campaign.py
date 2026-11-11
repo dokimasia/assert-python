@@ -73,6 +73,7 @@ from dokimi_assert._prop.engine.runner import (
     Settings,
     Tally,
     conclude,
+    confirm_valid,
     known_cases,
     shortfall_of,
 )
@@ -237,9 +238,10 @@ class _Exploration:
         """Count an execution, conclude a failure, and admit a valid case to the pool.
 
         The result is the outcome that ends the campaign, or None: a skip
-        before the first failure, with the runs of the stored cases, or the
-        flaky outcome of a failure whose replay differs. When valued is True,
-        the case is an example of values.
+        before the first failure, with the runs of the stored cases, the flaky
+        outcome of a failure whose replay differs, or the flaky outcome of a
+        valid case whose replay under the setting confirm differs. When valued
+        is True, the case is an example of values, which no replay confirms.
         """
         outcome = self._tally.take(execution)
         if execution.status == "failed":
@@ -247,6 +249,12 @@ class _Exploration:
         if outcome is not None and self._found is None:
             return replace(outcome, stored=tuple(self._stored))
         if execution.status == "passed":
+            if not valued:
+                flaky = confirm_valid(
+                    self._body, self._settings, self._tally, execution, self._observer
+                )
+                if flaky is not None:
+                    return replace(flaky, stored=tuple(self._stored))
             self._admit(execution)
         return None
 
@@ -349,7 +357,9 @@ def campaign(
     A failing case whose identity no earlier failure had is replayed, shrunk
     and explained in the same way as the failure of a run. concluded receives
     the outcome. The campaign then goes on. A replay that differs ends the
-    campaign as flaky.
+    campaign as flaky. Under the setting confirm, the campaign replays each
+    valid case whose count is a multiple of confirm in the same way as a run.
+    A replay of a valid case that differs ends the campaign as flaky too.
 
     When the budget has passed, the campaign returns a counterexample of the
     first failure that it concluded. Every later failure is among its others.

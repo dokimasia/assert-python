@@ -175,6 +175,22 @@ class TestBodyOf:
         ]
         check.equal(seat, highs, [9, 1, 1], "the requests change after the first call")
 
+    def test_returns_a_body_of_observes_its_calls_that_observes_the_number_of_its_calls(
+        self, seat: Collector
+    ) -> None:
+        """Each call draws a digit and observes 1, 2 and 3 in turn."""
+        ends: list[str | None] = []
+        body = body_of(
+            {"kind": "observes-its-calls"}, lambda _, failure: ends.append(failure)
+        )
+        cases = [drawn_case(body, 4) for _ in range(3)]
+        check.equal(
+            seat,
+            [[(c.draws[0].label, c.fingerprints) for c in cases], ends],
+            [[(DRAWN, [1]), (DRAWN, [2]), (DRAWN, [3])], [None, None, None]],
+            "the body observes the number of its calls",
+        )
+
     def test_returns_a_body_of_fails_once_that_fails_once_above_1000(
         self, seat: Collector
     ) -> None:

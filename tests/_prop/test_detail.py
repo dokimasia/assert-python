@@ -355,6 +355,27 @@ class TestDetailOf:
             "the detail of a skip has the counts, the seed and the reason",
         )
 
+    def test_returns_the_case_of_a_valid_case_whose_replay_differs(
+        self, seat: Collector
+    ) -> None:
+        """The replay of the valid case of x = 5 observes 2 for 1."""
+        c = Case(Replaying(integers(5)))
+        c.draw(DIGITS, "x")
+        valid = Execution(c, "passed")
+        divergence = EngineDivergence("fingerprint", 0, 1, 2)
+        d = detail_of(outcome("flaky", failing=valid, divergence=divergence))
+        check.equal(
+            seat,
+            [d["counterexample"], d["failure"], d["choices"], d["divergence"]],
+            [
+                [Drawn("x", 5, None)],
+                None,
+                None,
+                Divergence("fingerprint", 0, 1, 2, None, None),
+            ],
+            "the detail has the valid case without a failure",
+        )
+
     def test_returns_every_part_of_a_counterexample(self, seat: Collector) -> None:
         """The detail has the draw, the record, the token and the other failure."""
         d = detail_of(COUNTEREXAMPLE)

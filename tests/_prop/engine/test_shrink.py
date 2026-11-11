@@ -470,7 +470,7 @@ class TestExplainSeed:
 
 
 class TestConfirm:
-    """confirm replays a failing case before its shrink."""
+    """confirm replays a case and returns the first difference of the replay."""
 
     def test_returns_none_for_a_replay_that_fails_in_the_same_way(
         self, seat: Collector
@@ -641,6 +641,62 @@ class TestConfirm:
             lambda phase, _: phases.append(phase),
         )
         check.equal(seat, phases, ["replay"], "the observer receives one replay")
+
+    def test_passes_the_replay_to_the_observer_under_the_phase_of_the_caller(
+        self, seat: Collector
+    ) -> None:
+        """The replay of a valid case runs under the phase confirm."""
+        phases: list[Phase] = []
+        divergence = confirm(
+            above,
+            executed(above, integers(5)),
+            MAX_CHOICES,
+            lambda phase, _: phases.append(phase),
+            "confirm",
+        )
+        check.equal(
+            seat,
+            [divergence, phases],
+            [None, ["confirm"]],
+            "the observer receives one replay under the phase confirm",
+        )
+
+    def test_returns_none_for_a_replay_of_a_valid_case_that_skips(
+        self, seat: Collector
+    ) -> None:
+        """A skip does not differ from a pass."""
+        calls = 0
+
+        def skips_later(c: Case) -> None:
+            nonlocal calls
+            calls += 1
+            c.draw(WIDE, "n")
+            if calls > 1:
+                c.skip("after")
+
+        check.is_none(
+            seat,
+            confirm(skips_later, executed(skips_later, integers(5)), MAX_CHOICES),
+            "the replay that skips does not diverge",
+        )
+
+    def test_returns_none_for_a_replay_of_a_valid_case_that_is_rejected(
+        self, seat: Collector
+    ) -> None:
+        """A rejection does not differ from a pass."""
+        calls = 0
+
+        def rejects_later(c: Case) -> None:
+            nonlocal calls
+            calls += 1
+            c.draw(WIDE, "n")
+            c.assume(calls == 1)
+
+        check.is_none(
+            seat,
+            confirm(rejects_later, executed(rejects_later, integers(5)), MAX_CHOICES),
+            "the replay that is rejected does not diverge",
+        )
 
     def test_runs_the_replay_up_to_the_repeats_of_the_case(
         self, seat: Collector

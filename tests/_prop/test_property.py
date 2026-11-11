@@ -40,6 +40,7 @@ from dokimi_assert._prop.option import (
     around,
     cases,
     configure,
+    confirm,
     draws,
     hermetic,
     on_result,
@@ -641,6 +642,24 @@ class TestPropertyRun:
             [(one["run"], one["phase"]) for one in records(recorder)[1:]],
             [(1, "token"), (2, "token")],
             "each run of the case has a number of its own",
+        )
+
+    def test_records_the_calls_of_the_replay_of_a_valid_case_under_the_phase_confirm(
+        self, seat: Collector
+    ) -> None:
+        """The case of a token is the first valid case, and confirm replays it."""
+
+        def passes(c: Case) -> None:
+            c.draw(DIGITS, "x")
+            check.is_true(c, True, "the value is true")
+
+        recorder = Recorder()
+        run_on(recorder, passes, replay(encode([Choice("integer", 3)])), confirm(1))
+        check.equal(
+            seat,
+            [(one["run"], one["phase"]) for one in records(recorder)[1:]],
+            [(1, "token"), (2, "confirm")],
+            "the replay of the case makes a run of its own",
         )
 
     def test_ends_a_replay_with_a_fault_for_a_coroutine_body_inside_a_running_loop(

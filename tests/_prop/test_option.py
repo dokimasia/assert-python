@@ -21,6 +21,7 @@ from dokimi_assert._prop.option import (
     around,
     cases,
     configure,
+    confirm,
     draws,
     example,
     examples,
@@ -102,6 +103,7 @@ class TestConfig:
                 hermetic=False,
                 draws=None,
                 around=None,
+                confirm=0,
             ),
             "Config has the defaults of a run",
         )
@@ -135,6 +137,7 @@ class TestConfigure:
                     draws("[]"),
                     around(_wrap),
                     on_result(_receive),
+                    confirm(3),
                 ]
             ),
             Config(
@@ -152,6 +155,7 @@ class TestConfigure:
                 draws="[]",
                 around=_wrap,
                 on_result=_receive,
+                confirm=3,
             ),
             "each option sets its setting",
         )
@@ -460,6 +464,32 @@ class TestWorkers:
             refusal(seat, lambda: workers(0)),
             "prop: workers(0) needs an int of 1 or more",
             "the error has the call",
+        )
+
+
+class TestConfirm:
+    """confirm sets the interval of the replays of valid cases."""
+
+    def test_returns_the_option_of_the_interval(self, seat: Collector) -> None:
+        """The run replays every fifth valid case."""
+        check.equal(seat, confirm(5), Option("confirm", 5), "the option has 5")
+
+    tests: ClassVar[list[tuple[str, Any, str]]] = [
+        ("refuses 0", 0, "prop: confirm(0) needs an int of 1 or more"),
+        ("refuses -1", -1, "prop: confirm(-1) needs an int of 1 or more"),
+        ("refuses a float", 2.0, "prop: confirm(2.0) needs an int of 1 or more"),
+        ("refuses a bool", True, "prop: confirm(True) needs an int of 1 or more"),
+    ]
+
+    @pytest.mark.parametrize(
+        ("give", "want"), [t[1:] for t in tests], ids=[t[0] for t in tests]
+    )
+    def test_raises_value_error_for_an_interval_that_is_not_an_int_of_1_or_more(
+        self, seat: Collector, give: Any, want: str
+    ) -> None:
+        """The error has the call."""
+        check.equal(
+            seat, refusal(seat, lambda: confirm(give)), want, "the error has the call"
         )
 
 

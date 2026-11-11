@@ -39,6 +39,7 @@ Phase = Literal[
     "edge",
     "coverage",
     "replay",
+    "confirm",
     "shrink",
     "explain",
     "token",

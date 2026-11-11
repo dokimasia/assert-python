@@ -15,7 +15,7 @@ from dokimi_assert._prop.engine.generator import Bytes
 from dokimi_assert._prop.environment import PROFILE_VARIABLE
 from dokimi_assert._prop.forall import for_all
 from dokimi_assert._prop.fuzz import fuzz
-from dokimi_assert._prop.option import hermetic, on_result, seed, store
+from dokimi_assert._prop.option import confirm, hermetic, on_result, seed, store
 from dokimi_assert.seat import Collector, Recorder
 from helpers import records
 
@@ -126,6 +126,40 @@ class TestFuzz:
             [type(error), str(error)],
             [AssertionError, recorder.message],
             "the error has the sentence of the record",
+        )
+
+    def test_fails_the_call_at_a_seed_file_whose_replay_differs(
+        self, seat: Collector, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The replay of the seed file observes 2 for 1."""
+        monkeypatch.chdir(tmp_path)
+        recorder = seeded(tmp_path, {"a": bytes([1, 1])})
+        calls = 0
+
+        def counts(c: Case) -> None:
+            nonlocal calls
+            c.draw(SHORT, "data")
+            calls += 1
+            c.observe(calls)
+            check.is_true(c, True, "the case runs")
+
+        fuzz(
+            recorder,
+            "counts its calls",
+            counts,
+            hermetic(),
+            seed(1),
+            store(""),
+            confirm(1),
+        )
+        check.equal(
+            seat,
+            [
+                recorder.failures[0].detail["outcome"],
+                [one["phase"] for one in records(recorder) if "phase" in one],
+            ],
+            ["flaky", ["fuzz", "confirm"]],
+            "the replay of the seed file differs from the seed file",
         )
 
     def test_fails_the_call_at_a_stored_case_that_fails(

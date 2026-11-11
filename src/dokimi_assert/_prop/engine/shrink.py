@@ -259,25 +259,28 @@ def confirm(
     failing: Execution,
     max_choices: int,
     observer: Observer = unobserved,
+    phase: Phase = "replay",
 ) -> Divergence | None:
-    """Replay a failing case once, and return the first difference of the replay.
+    """Replay a case once, and return the first difference of the replay.
 
-    The comparison takes the bounds of the requests first, then the observed
-    fingerprints, then the way the replay ended. The divergence of a request
-    or a fingerprint has the label and the step of the replay at that
+    The case is a failing case, or a valid case that the setting confirm
+    replays. The comparison takes the bounds of the requests first, then the
+    observed fingerprints, then the way the replay ended. The divergence of a
+    request or a fingerprint has the label and the step of the replay at that
     position.
 
     Args:
         body: The body.
-        failing: The failing execution.
+        failing: The execution to replay.
         max_choices: The largest number of choices of a case.
         observer: The observer of the replay.
+        phase: The phase of the replay.
 
     Returns:
-        The divergence, or None when the replay fails in the same way.
+        The divergence, or None when the replay ends in the same way.
     """
     replay = execute(body, Replaying(failing.case.choices), max_choices)
-    observer("replay", replay)
+    observer(phase, replay)
     recorded = failing.case.requests
     replayed = replay.case.requests
     for i in range(max(len(recorded), len(replayed))):

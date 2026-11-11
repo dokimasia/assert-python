@@ -206,8 +206,9 @@ class TestSettings:
                 s.explain,
                 s.workers,
                 s.replay,
+                s.confirm,
             ],
-            [SEED, 100, MAX_CHOICES, (), (), (), (), 2000, 0.0, True, 1, None],
+            [SEED, 100, MAX_CHOICES, (), (), (), (), 2000, 0.0, True, 1, None, 0],
             "the settings have the defaults of the definition",
         )
 
@@ -1149,6 +1150,223 @@ class TestRun:
         )
 
 
+def failing_on_its_second_call() -> Body:
+    """Return a body that draws a wide integer and fails on its second call."""
+    calls = 0
+
+    def body(c: Case) -> None:
+        nonlocal calls
+        calls += 1
+        c.draw(WIDE, "n")
+        if calls == 2:
+            c.fail("second")
+
+    return body
+
+
+class TestRunConfirm:
+    """run replays each valid case whose count is a multiple of the setting confirm."""
+
+    def test_replays_every_fifth_valid_case_right_after_the_case(
+        self, seat: Collector
+    ) -> None:
+        """The fifth and the tenth valid case have a replay of the same choices."""
+        calls: list[tuple[Phase, Status, list[Choice]]] = []
+        outcome = run(
+            wide,
+            Settings(SEED, cases=10, confirm=5),
+            lambda phase, e: calls.append((phase, e.status, e.case.choices)),
+        )
+        confirms = [i for i, (phase, _, _) in enumerate(calls) if phase == "confirm"]
+        check.equal(
+            seat,
+            [
+                outcome.kind,
+                outcome.cases,
+                [
+                    len(
+                        [1 for p, s, _ in calls[:i] if p != "confirm" and s == "passed"]
+                    )
+                    for i in confirms
+                ],
+                [calls[i][2] for i in confirms],
+            ],
+            ["passed", 10, [5, 10], [calls[i - 1][2] for i in confirms]],
+            "the run replays the choices of the fifth and the tenth valid case",
+        )
+
+    def test_returns_flaky_for_a_valid_case_whose_replay_observes_another_fingerprint(
+        self, seat: Collector
+    ) -> None:
+        """The replay of the simplest case observes 2 for 1."""
+        calls = 0
+
+        def counts(c: Case) -> None:
+            nonlocal calls
+            c.draw(DIGIT, "n")
+            calls += 1
+            c.observe(calls)
+
+        seen = Seen()
+        outcome = ran(counts, Settings(SEED, confirm=1), seen)
+        check.equal(
+            seat,
+            [
+                outcome.kind,
+                outcome.cases,
+                outcome.divergence,
+                None if outcome.failing is None else outcome.failing.case.choices,
+                seen.calls,
+            ],
+            [
+                "flaky",
+                1,
+                Divergence("fingerprint", 0, 1, 2),
+                integers(0),
+                [("simplest", "passed"), ("confirm", "passed")],
+            ],
+            "the valid case is the failing case of the flaky run",
+        )
+
+    def test_returns_flaky_for_a_valid_case_whose_replay_fails(
+        self, seat: Collector
+    ) -> None:
+        """The replay of the simplest case fails."""
+        outcome = ran(failing_on_its_second_call(), Settings(SEED, confirm=1))
+        check.equal(
+            seat,
+            [outcome.kind, outcome.divergence, outcome.token],
+            ["flaky", Divergence("verdict", 1, None, "second"), None],
+            "the replay fails where the case passed",
+        )
+
+    def test_returns_flaky_for_a_valid_case_whose_replay_requests_other_bounds(
+        self, seat: Collector
+    ) -> None:
+        """The replay of the simplest case requests a boolean."""
+        calls = 0
+
+        def shifting(c: Case) -> None:
+            nonlocal calls
+            calls += 1
+            c.draw(DIGIT if calls == 1 else BOOLEAN, "n")
+
+        seen = Seen()
+        outcome = ran(shifting, Settings(SEED, confirm=1), seen)
+        divergence = outcome.divergence
+        check.equal(
+            seat,
+            [
+                outcome.kind,
+                None if divergence is None else divergence.what,
+                None if divergence is None else divergence.label,
+                seen.phases,
+            ],
+            ["flaky", "request", "n", ["simplest", "confirm"]],
+            "the replay requests other bounds",
+        )
+
+    def test_does_not_replay_an_example_of_values(self, seat: Collector) -> None:
+        """The simplest case is the first case with a replay."""
+        seen = Seen()
+        ran(flag, Settings(SEED, examples=(Values((True,)),), confirm=1), seen)
+        check.equal(
+            seat,
+            seen.phases[:3],
+            ["example", "simplest", "confirm"],
+            "the example of values does not have a replay",
+        )
+
+    def test_replays_an_example_of_choices_and_a_stored_case(
+        self, seat: Collector
+    ) -> None:
+        """Each known case is valid."""
+        seen = Seen()
+        ran(
+            wide,
+            Settings(
+                SEED, cases=1, examples=(recorded(5),), stored=(recorded(3),), confirm=1
+            ),
+            seen,
+        )
+        check.equal(
+            seat,
+            seen.phases[:4],
+            ["example", "confirm", "stored", "confirm"],
+            "each known case has a replay",
+        )
+
+    def test_returns_flaky_for_a_known_case_whose_replay_fails(
+        self, seat: Collector
+    ) -> None:
+        """The replay of the stored case fails."""
+        outcome = ran(
+            failing_on_its_second_call(),
+            Settings(SEED, stored=(recorded(3),), confirm=1),
+        )
+        check.equal(
+            seat,
+            [outcome.kind, len(outcome.stored), outcome.token],
+            ["flaky", 1, None],
+            "the flaky run has the stored case",
+        )
+
+    def test_replays_the_case_of_a_replay_token(self, seat: Collector) -> None:
+        """The token case is the first valid case of the run."""
+        seen = Seen()
+        outcome = ran(wide, Settings(SEED, replay=recorded(3), confirm=1), seen)
+        check.equal(
+            seat,
+            [outcome.kind, seen.calls],
+            ["passed", [("token", "passed"), ("confirm", "passed")]],
+            "the token case has a replay",
+        )
+
+    def test_returns_flaky_without_a_token_for_a_token_case_whose_replay_fails(
+        self, seat: Collector
+    ) -> None:
+        """The replay of the token case fails."""
+        outcome = ran(
+            failing_on_its_second_call(),
+            Settings(SEED, replay=recorded(3), confirm=1),
+        )
+        check.equal(
+            seat,
+            [outcome.kind, outcome.token],
+            ["flaky", None],
+            "the flaky run does not have a token",
+        )
+
+    tests: ClassVar[list[tuple[str, Status]]] = [
+        ("passes a token case whose replay skips", "skipped"),
+        ("passes a token case whose replay is rejected", "rejected"),
+    ]
+
+    @pytest.mark.parametrize("give", [t[1] for t in tests], ids=[t[0] for t in tests])
+    def test_passes_a_case_whose_replay_does_not_fail(
+        self, seat: Collector, give: Status
+    ) -> None:
+        """The replay counts as no case."""
+        calls = 0
+
+        def ends_later(c: Case) -> None:
+            nonlocal calls
+            calls += 1
+            c.draw(WIDE, "n")
+            if calls > 1 and give == "skipped":
+                c.skip("after")
+            c.assume(calls == 1 or give != "rejected")
+
+        seen = Seen()
+        outcome = ran(ends_later, Settings(SEED, replay=recorded(3), confirm=1), seen)
+        check.equal(
+            seat,
+            [outcome.kind, outcome.cases, outcome.rejected, seen.calls],
+            ["passed", 1, 0, [("token", "passed"), ("confirm", give)]],
+            "the replay does not count",
+        )
+
+
 def report(outcome: Outcome) -> list[Any]:
     """Return what an outcome reports apart from the identity of its cases."""
     failing = outcome.failing
@@ -1275,6 +1493,7 @@ class TestRunOnFourWorkers:
             {"seed": 2},
         ),
         ("reports the counterexample of a filter that shrinks", even_above, {}),
+        ("reports the replays of every fifth valid case", passes, {"confirm": 5}),
     ]
 
     @pytest.mark.parametrize(
@@ -1345,6 +1564,23 @@ class TestRunStored:
             ],
             ["skipped", 1, "the largest value", 2, None],
             "the run skips at the second stored case, without a token",
+        )
+
+    def test_returns_flaky_without_a_token_for_a_stored_case_whose_replay_fails(
+        self, seat: Collector
+    ) -> None:
+        """The replay of the first stored case fails."""
+        seen = Seen()
+        outcome = run_stored(
+            failing_on_its_second_call(),
+            Settings(SEED, stored=(recorded(1), recorded(2)), confirm=1),
+            seen.observer,
+        )
+        check.equal(
+            seat,
+            [outcome.kind, len(outcome.stored), outcome.token, seen.phases],
+            ["flaky", 1, None, ["stored", "confirm"]],
+            "the run ends at the replay of the first stored case",
         )
 
     def test_runs_neither_a_trace_nor_an_example(self, seat: Collector) -> None:

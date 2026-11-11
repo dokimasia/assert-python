@@ -22,7 +22,7 @@ from dokimi_assert._prop.engine.choice import (
     SequenceBounds,
 )
 from dokimi_assert._prop.engine.collection import Sizes
-from dokimi_assert._prop.engine.execution import Body, Execution, Phase
+from dokimi_assert._prop.engine.execution import Body, Divergence, Execution, Phase
 from dokimi_assert._prop.engine.generator import Bytes, Float, Integer, List
 from dokimi_assert._prop.engine.runner import Outcome, Requirement, Settings, Values
 from dokimi_assert._prop.engine.source import case_source
@@ -350,6 +350,63 @@ class TestCampaign:
             [outcome.kind, outcome.cases],
             ["flaky", 2],
             "two valid cases run before the failure",
+        )
+
+    def test_replays_every_third_valid_case_under_the_phase_confirm(
+        self, seat: Collector
+    ) -> None:
+        """The third and the sixth valid case have a replay."""
+        outcome, calls = explored(plain, 6, Settings(SEED, confirm=3))
+        check.equal(
+            seat,
+            [outcome.kind, outcome.cases, [phase for phase, _ in calls]],
+            ["passed", 6, [*["random"] * 3, "confirm", *["random"] * 3, "confirm"]],
+            "the replays follow the third and the sixth valid case",
+        )
+
+    def test_returns_flaky_for_a_valid_case_whose_replay_fails(
+        self, seat: Collector
+    ) -> None:
+        """The replay of the stored case fails."""
+        calls = 0
+
+        def second(c: Case) -> None:
+            nonlocal calls
+            calls += 1
+            c.draw(WIDE, "n")
+            if calls == 2:
+                c.fail("second")
+
+        outcome, phases = explored(
+            second, 10, Settings(SEED, stored=(recorded(5),), confirm=1)
+        )
+        check.equal(
+            seat,
+            [
+                outcome.kind,
+                outcome.divergence,
+                len(outcome.stored),
+                [phase for phase, _ in phases],
+            ],
+            [
+                "flaky",
+                Divergence("verdict", 1, None, "second"),
+                1,
+                ["stored", "confirm"],
+            ],
+            "the campaign ends at the replay of the stored case",
+        )
+
+    def test_does_not_replay_an_example_of_values(self, seat: Collector) -> None:
+        """The example of values passes without a replay."""
+        _, calls = explored(
+            plain, 1, Settings(SEED, examples=(Values((1, 2)),), confirm=1)
+        )
+        check.equal(
+            seat,
+            [phase for phase, _ in calls],
+            ["example", "random", "confirm"],
+            "the random case has a replay, and the example does not",
         )
 
     def test_reports_a_failing_example_of_values_as_found(

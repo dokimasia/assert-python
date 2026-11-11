@@ -30,6 +30,13 @@ failing case.
 A valid case passed and did not repeat an earlier case. The valid cases of
 every earlier phase count towards `cases`.
 
+Under the setting `confirm`, a run replays each valid case whose count is a
+multiple of `confirm` right after the case, from its choices, as it replays
+a failing case. A replay that requests other bounds, observes another
+fingerprint or fails ends the run as flaky, with the valid case as its
+failing case. A replay that is rejected or skips does not differ. The
+replay counts as no case, and an example of values is not replayed.
+
 A run on more than one worker runs the cases of the last three phases on
 the workers of an executor. It takes them in the order of one worker, and it
 reports the same outcome as a run on one worker.
@@ -104,6 +111,7 @@ __all__ = [
     "Values",
     "conclude",
     "conclude_case",
+    "confirm_valid",
     "known_cases",
     "run",
     "run_stored",
@@ -192,6 +200,9 @@ class Settings:
             that run at once on threads. A run on more than one worker
             reports the same outcome as a run on one.
         replay: The one case that the run tries, or None for a full run.
+        confirm: The interval of the replays of valid cases. The run replays
+            each valid case whose count is a multiple of confirm. 0 replays
+            none.
     """
 
     seed: int
@@ -206,6 +217,7 @@ class Settings:
     explain: bool = True
     workers: int = 1
     replay: tuple[Choice, ...] | None = None
+    confirm: int = 0
 
     def __post_init__(self) -> None:
         """Refuse a run of fewer than one case, and a run on fewer than one worker.
@@ -381,6 +393,40 @@ class Tally:
         return None
 
 
+def confirm_valid(
+    body: Body,
+    settings: Settings,
+    tally: Tally,
+    execution: Execution,
+    observer: Observer,
+) -> Outcome | None:
+    """Replay a valid case whose count is a multiple of the setting confirm.
+
+    The replay runs under the phase confirm, right after the case that tally
+    counted.
+
+    Args:
+        body: The body.
+        settings: The settings of the run.
+        tally: The counts, which include the case.
+        execution: The case.
+        observer: The observer of the replay.
+
+    Returns:
+        The flaky outcome of a replay that differs, or None.
+    """
+    if (
+        settings.confirm == 0
+        or execution.status != "passed"
+        or tally.valid % settings.confirm != 0
+    ):
+        return None
+    divergence = confirm(body, execution, settings.max_choices, observer, "confirm")
+    if divergence is None:
+        return None
+    return tally.outcome("flaky", failing=execution, divergence=divergence)
+
+
 def _prefix_cases(cases: int) -> int:
     """Return the largest number of valid cases at which a run tries a prefix case."""
     return min(cases // _PREFIX_DIVISOR, _MAX_PREFIX_CASES)
@@ -484,6 +530,7 @@ class _Phases:
         self, body: Body, settings: Settings, tally: Tally, observer: Observer
     ) -> None:
         """Return the phases of a run that has run its known cases."""
+        self._body: Body = body
         self.settings: Settings = settings
         self.tally: Tally = tally
         self._observer: Observer = observer
@@ -507,13 +554,18 @@ class _Phases:
         self._executor.close()
 
     def _seen(self, phase: Phase, execution: Execution) -> Outcome | None:
-        """Pass one case of a phase to the observer, and count it.
+        """Pass one case of a phase to the observer, count it, and confirm it.
 
-        The result is the outcome when the case ends the run, and None
-        otherwise.
+        The result is the outcome when the case or its replay ends the run,
+        and None otherwise.
         """
         self._observer(phase, execution)
-        return self.tally.take(execution)
+        outcome = self.tally.take(execution)
+        if outcome is not None:
+            return outcome
+        return confirm_valid(
+            self._body, self.settings, self.tally, execution, self._observer
+        )
 
     def simplest(self) -> Outcome | None:
         """Run the simplest case. Each of its choices is the target of its request."""
@@ -606,17 +658,22 @@ def _try_known(
 
     The result is the outcome of that case, or None. stored receives the
     run of each stored case. A known case runs outside the tree, so it
-    cannot diverge. The outcome is therefore a counterexample or a skip.
+    cannot diverge. The outcome is therefore a counterexample, a skip, or
+    the flaky outcome of a replay under the setting confirm.
     """
     for phase, provider in known_cases(settings):
         execution = execute(body, provider, settings.max_choices)
         observer(phase, execution)
         if phase == "stored":
             stored.append(execution)
+        valued = isinstance(provider, Valuing)
         outcome = tally.take(execution)
         if outcome is not None:
-            valued = isinstance(provider, Valuing)
             return replace(outcome, valued=valued, stored=tuple(stored))
+        if not valued:
+            outcome = confirm_valid(body, settings, tally, execution, observer)
+            if outcome is not None:
+                return replace(outcome, stored=tuple(stored))
     return None
 
 
@@ -675,14 +732,17 @@ def _replay_only(
     """Run the one case that choices record, and report it as found.
 
     The case runs outside a case tree, so it cannot diverge. When it ends
-    the run, the outcome is a counterexample with its token, or a skip.
+    the run, the outcome is a counterexample with its token, a skip, or the
+    flaky outcome of a replay under the setting confirm.
     """
     tally = Tally(settings.seed)
     execution = execute(body, Replaying(choices), settings.max_choices)
     observer("token", execution)
-    outcome = tally.take(execution)
+    outcome = tally.take(execution) or confirm_valid(
+        body, settings, tally, execution, observer
+    )
     if outcome is not None:
-        if outcome.failing is None:
+        if outcome.kind != "counterexample":
             return outcome
         return replace(outcome, token=encode(execution.case.choices))
     without = tally.failure_without_counterexample()
@@ -720,10 +780,11 @@ def run_stored(
     The result is a pass that counts them, or the outcome of the first
     stored case that does not pass. A failing stored case is reported as
     found with its token. The run does not shrink or explain it. A stored
-    case that skips ends the run as skipped. The outcome contains the runs
-    of the stored cases up to the case that ended the run. The traces and
-    the examples of the settings do not run. A stored case runs outside a
-    case tree, so it cannot diverge.
+    case that skips ends the run as skipped. The run replays each valid
+    case under the setting confirm as run replays it. The outcome contains
+    the runs of the stored cases up to the case that ended the run. The
+    traces and the examples of the settings do not run. A stored case runs
+    outside a case tree, so it cannot diverge.
 
     Args:
         body: The body.
@@ -739,7 +800,7 @@ def run_stored(
     outcome = _try_known(body, only, tally, observer, stored)
     if outcome is None:
         return replace(tally.outcome("passed"), stored=tuple(stored))
-    if outcome.failing is None:
+    if outcome.kind != "counterexample" or outcome.failing is None:
         return outcome
     return replace(outcome, token=encode(outcome.failing.case.choices))
 

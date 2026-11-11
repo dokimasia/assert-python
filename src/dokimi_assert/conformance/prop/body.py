@@ -11,11 +11,13 @@ identity of its failure is the identity of the first entry of fails whose
 predicate is true. An ending then ends the case with that identity, or with
 None for a case that does not fail.
 
-Four named bodies do what a predicate cannot do:
+Five named bodies do what a predicate cannot do:
 
 - draws-nothing does not request an input.
 - diverges draws an integer from 0 to 9 on its first call and a bool on each
   later call.
+- observes-its-calls draws an integer from 0 to 9 and observes the number of
+  its calls so far: 1 on its first call.
 - fails-once draws an integer from 0 to 10^9. Its case fails with the
   identity once the first time that it draws a value above 1,000.
 - fails-then-skips draws an integer from 0 to 10^9. Its case fails with the
@@ -135,6 +137,20 @@ def _diverging(end: Ending) -> Body:
     return body
 
 
+def _observing_calls(end: Ending) -> Body:
+    """Return the body that observes the number of its calls so far."""
+    digit = prop.integer(0, 9)
+    calls = [0]
+
+    def body(c: prop.Case) -> None:
+        c.draw(digit, DRAWN)
+        calls[0] += 1
+        c.observe(calls[0])
+        end(c, None)
+
+    return body
+
+
 def _failing_once(end: Ending) -> Body:
     """Return the body that fails only the first time that it draws above 1,000."""
     wide = prop.integer(0, 1_000_000_000)
@@ -195,6 +211,8 @@ def body_of(spec: object, end: Ending) -> Body:
         return lambda c: end(c, None)
     if kind == "diverges":
         return _diverging(end)
+    if kind == "observes-its-calls":
+        return _observing_calls(end)
     if kind == "fails-once":
         return _failing_once(end)
     if kind == "fails-then-skips":
