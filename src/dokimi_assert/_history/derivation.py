@@ -36,7 +36,7 @@ from dokimi_assert._history.cycle import (
     simple,
 )
 from dokimi_assert._history.history import identity_of
-from dokimi_assert._history.transaction import APPEND, READ, WRITE, Transaction
+from dokimi_assert._history.transaction import APPEND, READ, WRITE, Mop, Transaction
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
@@ -64,6 +64,7 @@ Anomaly = Literal[
     "incompatible-order",
     "aborted-read",
     "intermediate-read",
+    "lost-update",
     "G0",
     "G1c",
     "G-single",
@@ -79,6 +80,7 @@ ANOMALIES: tuple[Anomaly, ...] = (
     "incompatible-order",
     "aborted-read",
     "intermediate-read",
+    "lost-update",
     "G0",
     "G1c",
     "G-single",
@@ -139,6 +141,8 @@ class Observation:
     - incompatible-order: calls, key and reads, for two reads.
     - aborted-read: calls, key, value and appender.
     - intermediate-read: calls, key, value, appender and following.
+    - lost-update: calls and key, for two transactions, and reads, with the
+      list that both read.
 
     Attributes:
         anomaly: The anomaly that the observation shows.
@@ -386,6 +390,21 @@ def _same(a: object, b: object) -> bool:
     return _id(a) == _id(b)
 
 
+def _first_reads(txn: Transaction) -> list[Mop]:
+    """Return each read of txn that is the first micro-operation of txn on its key.
+
+    The reads are in the order of the micro-operations.
+    """
+    touched: set[str] = set()
+    found: list[Mop] = []
+    for mop in txn.mops:
+        key = _id(mop.key)
+        if mop.fn == READ and key not in touched:
+            found.append(mop)
+        touched.add(key)
+    return found
+
+
 def _external_reads(txn: Transaction) -> dict[str, Any]:
     """Return the value of each external read of an ok register transaction, by key.
 
@@ -394,14 +413,10 @@ def _external_reads(txn: Transaction) -> dict[str, Any]:
     """
     if txn.kind != "ok":
         return {}
-    touched: set[str] = set()
-    found: dict[str, Any] = {}
-    for mop in txn.mops:
-        key = _id(mop.key)
-        if mop.fn == READ and key not in touched:
-            found[key] = mop.value[0] if mop.value else _INITIAL
-        touched.add(key)
-    return found
+    return {
+        _id(mop.key): mop.value[0] if mop.value else _INITIAL
+        for mop in _first_reads(txn)
+    }
 
 
 def _external_writes(txn: Transaction) -> dict[str, Any]:
@@ -579,6 +594,7 @@ class Analysis:
             "incompatible-order": lambda: self._incompatible,
             "aborted-read": self._aborted_read,
             "intermediate-read": self._intermediate_read,
+            "lost-update": self._lost_update,
             "G-nonadjacent": self._nonadjacent,
         }
         finder = finders.get(anomaly)
@@ -683,6 +699,44 @@ class Analysis:
                         appender=appender,
                         following=self._index.later[name],
                         register=self._register,
+                    ),
+                )
+        return None
+
+    def _lost_update(self) -> Instance | None:
+        """Return the first two ok transactions that both update one read version.
+
+        Each of the two reads the key by its first micro-operation on the key,
+        both reads returned the same list or value, and each appends or writes
+        to the key after its read. The write that the database installed
+        second overwrote a version that its transaction did not read. The
+        transactions are in the order of their invocations, so the instance
+        has the first transaction whose read matches an earlier one, and that
+        earlier one.
+        """
+        readers: dict[tuple[str, tuple[str, ...]], int] = {}
+        for txn in self._txns:
+            if txn.kind != "ok":
+                continue
+            written = {_id(mop.key) for mop in txn.mops if mop.fn != READ}
+            for mop in _first_reads(txn):
+                read: list[Any] = mop.value
+                name = (_id(mop.key), tuple(_id(value) for value in read))
+                if name[0] not in written:
+                    continue
+                first = readers.setdefault(name, txn.call)
+                if first == txn.call:
+                    continue
+                return _single(
+                    "lost-update",
+                    [first, txn.call],
+                    Observation(
+                        "lost-update",
+                        calls=(first, txn.call),
+                        key=mop.key,
+                        reads=(read,),
+                        register=self._register,
+                        read=(read[0] if read else None) if self._register else None,
                     ),
                 )
         return None

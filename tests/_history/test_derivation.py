@@ -72,8 +72,8 @@ def crossed_appends() -> History:
 class TestAnomalies:
     """ANOMALIES lists the kinds of anomaly in the order of the report."""
 
-    def test_lists_the_eleven_kinds_in_report_order(self, seat: Collector) -> None:
-        """The order starts with the six kinds that do not need a graph."""
+    def test_lists_the_twelve_kinds_in_report_order(self, seat: Collector) -> None:
+        """The order starts with the seven kinds that do not need a graph."""
         check.equal(
             seat,
             ANOMALIES,
@@ -84,13 +84,14 @@ class TestAnomalies:
                 "incompatible-order",
                 "aborted-read",
                 "intermediate-read",
+                "lost-update",
                 "G0",
                 "G1c",
                 "G-single",
                 "G-nonadjacent",
                 "G2",
             ),
-            "ANOMALIES lists the eleven kinds in report order",
+            "ANOMALIES lists the twelve kinds in report order",
         )
 
 
@@ -398,6 +399,64 @@ class TestAnalysisInstance:
                 ),
             ),
             "the explanation has the value that follows 1",
+        )
+
+    def test_returns_a_lost_update_of_two_appends_after_reads_of_one_list(
+        self, seat: Collector
+    ) -> None:
+        """Calls 2 and 4 both read [1] from x, and both append to x."""
+        history = History()
+        run_txn(history, 0, append("x", 1))
+        run_txn(history, 1, read_of("x", [1]), append("x", 2))
+        run_txn(history, 2, read_of("x", [1]), append("x", 3))
+        check.equal(
+            seat,
+            instance(history, "lost-update"),
+            Instance(
+                "lost-update",
+                (2, 4),
+                None,
+                (Observation("lost-update", calls=(2, 4), key="x", reads=([1],)),),
+            ),
+            "the instance has the two calls and their read",
+        )
+
+    def test_returns_a_lost_update_of_two_writes_after_reads_of_one_value(
+        self, seat: Collector
+    ) -> None:
+        """Calls 2 and 4 both read 1 from x, and both write x."""
+        history = History()
+        run_txn(history, 0, write("x", 1))
+        run_txn(history, 1, read_of("x", 1), write("x", 2))
+        run_txn(history, 2, read_of("x", 1), write("x", 3))
+        found = Analysis(transactions(history.events()), register=True).instance(
+            "lost-update"
+        )
+        check.equal(
+            seat,
+            None if found is None else found.explanation,
+            (
+                Observation(
+                    "lost-update",
+                    calls=(2, 4),
+                    key="x",
+                    reads=([1],),
+                    register=True,
+                    read=1,
+                ),
+            ),
+            "the observation has the value of the reads",
+        )
+
+    def test_does_not_return_a_lost_update_of_a_read_after_a_write_of_the_key(
+        self, seat: Collector
+    ) -> None:
+        """Each transaction appends to x before it reads x."""
+        history = History()
+        run_txn(history, 0, append("x", 1), read_of("x", [1]))
+        run_txn(history, 1, append("x", 2), read_of("x", [1, 2]))
+        check.is_none(
+            seat, instance(history, "lost-update"), "no read of x is external"
         )
 
     def test_returns_a_g0_cycle_of_write_dependencies_with_the_evidence_of_each(

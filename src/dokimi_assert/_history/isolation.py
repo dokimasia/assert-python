@@ -3,11 +3,11 @@
 
 """The checks that the transactions of a history do not have a forbidden anomaly.
 
-A check first reads the micro-operations for the six anomalies that do not
-need a dependency graph. It then derives the write-write, write-read and
+A check first reads the micro-operations for the seven anomalies that do
+not need a dependency graph. It then derives the write-write, write-read and
 read-write dependencies between committed transactions and searches the
 graph for the five kinds of cycle. An isolation level forbids a set of the
-eleven kinds. The record reports the first forbidden kind that the history
+twelve kinds. The record reports the first forbidden kind that the history
 has.
 """
 
@@ -183,6 +183,12 @@ def _observation_json(o: Observation) -> dict[str, Any]:
             "value": literal_of(o.value),
             "appender": o.appender,
             "next": literal_of(o.following),
+        }
+    if o.anomaly == "lost-update":
+        return {
+            "calls": list(o.calls),
+            "key": key,
+            "read": _or_null(o.read) if o.register else literal_of(o.reads[0]),
         }
     return {
         "call": o.calls[0],

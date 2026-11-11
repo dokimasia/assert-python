@@ -190,6 +190,124 @@ class TestCheckIsolation:
             "the check lists the intermediate read and two cycles",
         )
 
+    def test_reports_a_lost_update_of_two_appends_at_both_levels(
+        self, seat: Collector
+    ) -> None:
+        """Calls 2 and 3 both read [1] from x, and both append to x."""
+        history = History()
+        run_txn(history, 0, append("x", 1))
+        first = invoke_txn(history, 1, read_of("x", None), append("x", 2))
+        second = invoke_txn(history, 2, read_of("x", None), append("x", 3))
+        first.ok([read_of("x", [1]), append("x", 2)])
+        second.ok([read_of("x", [1]), append("x", 3)])
+        detail = cast(
+            "IsolationDetail", check_isolation(history.events(), SERIALIZABLE)
+        )
+        check.equal(
+            seat,
+            [
+                [outcome(history, level) for level in LEVELS],
+                [txn.call for txn in detail.transactions],
+                json_of(history, SERIALIZABLE)["explanation"],
+            ],
+            [
+                [
+                    ("lost-update", ("lost-update", "G2")),
+                    ("lost-update", ("lost-update",)),
+                ],
+                [2, 3],
+                [{"calls": [2, 3], "key": literal_of("x"), "read": literal_of([1])}],
+            ],
+            "both levels report the lost update",
+        )
+
+    def test_reports_the_first_call_whose_read_matches_the_read_of_an_earlier_call(
+        self, seat: Collector
+    ) -> None:
+        """Call 4 matches call 2 on y before call 6 matches call 0 on x."""
+        history = History()
+        run_txn(history, 0, read_of("x", []), append("x", 1))
+        run_txn(history, 1, read_of("y", []), append("y", 2))
+        run_txn(history, 2, read_of("y", []), append("y", 3))
+        run_txn(history, 3, read_of("x", []), append("x", 4))
+        check.equal(
+            seat,
+            json_of(history, SNAPSHOT_ISOLATION)["explanation"],
+            [{"calls": [2, 4], "key": literal_of("y"), "read": literal_of([])}],
+            "the explanation has the reads of y",
+        )
+
+    tests: ClassVar[list[tuple[str, str]]] = [
+        ("leaves out a call that fails", "fail"),
+        ("leaves out a call whose outcome is unknown", "unknown"),
+    ]
+
+    @pytest.mark.parametrize("give", [t[1] for t in tests], ids=[t[0] for t in tests])
+    def test_leaves_a_call_that_does_not_commit_out_of_a_lost_update(
+        self, seat: Collector, give: str
+    ) -> None:
+        """Call 4 reads x before it appends 3, and it does not commit."""
+        history = History()
+        run_txn(history, 0, append("x", 1))
+        run_txn(history, 1, read_of("x", [1]), append("x", 2))
+        second = invoke_txn(history, 2, read_of("x", None), append("x", 3))
+        if give == "fail":
+            second.fail("aborted")
+        else:
+            second.unknown("timed out")
+        check.equal(
+            seat,
+            [outcome(history, level) for level in LEVELS],
+            [None, None],
+            "neither level reports an anomaly",
+        )
+
+    def test_reports_a_lost_update_of_two_register_writes_at_both_levels(
+        self, seat: Collector
+    ) -> None:
+        """Calls 2 and 3 both read 1 from x and overwrite it.
+
+        No read orders their two writes, so their only edges are two adjacent
+        read-write edges. Snapshot isolation permits such a cycle.
+        """
+        history = History()
+        run_txn(history, 0, write("x", 1))
+        first = invoke_txn(history, 1, read_of("x", None), write("x", 2))
+        second = invoke_txn(history, 2, read_of("x", None), write("x", 3))
+        first.ok([read_of("x", 1), write("x", 2)])
+        second.ok([read_of("x", 1), write("x", 3)])
+        check.equal(
+            seat,
+            [
+                [outcome(history, level) for level in LEVELS],
+                json_of(history, SERIALIZABLE)["explanation"],
+            ],
+            [
+                [
+                    ("lost-update", ("lost-update", "G2")),
+                    ("lost-update", ("lost-update",)),
+                ],
+                [{"calls": [2, 3], "key": literal_of("x"), "read": literal_of(1)}],
+            ],
+            "both levels report the lost update",
+        )
+
+    def test_reports_a_lost_update_of_the_initial_value_of_a_register(
+        self, seat: Collector
+    ) -> None:
+        """Calls 0 and 1 both read x before any write, and both write it."""
+        history = History()
+        first = invoke_txn(history, 0, read_of("x", None), write("x", 1))
+        second = invoke_txn(history, 1, read_of("x", None), write("x", 2))
+        first.ok([read_of("x", None), write("x", 1)])
+        second.ok([read_of("x", None), write("x", 2)])
+        check.equal(
+            seat,
+            json_of(history, SNAPSHOT_ISOLATION)["explanation"],
+            [{"calls": [0, 1], "key": literal_of("x"), "read": None}],
+            "the explanation reads the initial value",
+        )
+
     def test_reports_a_duplicate_append_at_snapshot_isolation(
         self, seat: Collector
     ) -> None:
@@ -513,6 +631,19 @@ class TestIsolationJson:
                 }
             ],
             "the explanation has the value that follows 1",
+        )
+
+    def test_returns_the_explanation_of_a_lost_update(self, seat: Collector) -> None:
+        """Calls 2 and 4 both read [1] from x, and both append to x."""
+        history = History()
+        run_txn(history, 0, append("x", 1))
+        run_txn(history, 1, read_of("x", [1]), append("x", 2))
+        run_txn(history, 2, read_of("x", [1]), append("x", 3))
+        check.equal(
+            seat,
+            json_of(history, SERIALIZABLE)["explanation"],
+            [{"calls": [2, 4], "key": literal_of("x"), "read": literal_of([1])}],
+            "the explanation has the two calls and their read",
         )
 
     def test_returns_the_explanation_of_a_garbage_read_of_a_register(

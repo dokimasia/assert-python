@@ -143,16 +143,34 @@ def _register_observation_text(o: Observation) -> str:
             f"call {call} read {o.value!r} from {key}, and call {o.appender} wrote "
             f"{o.value!r} and aborted"
         )
+    if o.anomaly == "lost-update":
+        return (
+            f"calls {call} and {o.calls[1]} read {_register_text(o.read)} from "
+            f"{key}, and both wrote to it"
+        )
     return (
         f"call {call} read {o.value!r} from {key}, and call {o.appender} wrote "
         f"{o.value!r} and then {o.following!r}"
     )
 
 
+def _pair_text(o: Observation) -> str:
+    """Return the text of the observation of two calls that read one key."""
+    reads = f"calls {o.calls[0]} and {o.calls[1]} read {_list_text(o.reads[0])}"
+    if o.anomaly == "incompatible-order":
+        return (
+            f"{reads} and {_list_text(o.reads[1])} from {o.key!r}, and neither is a "
+            "prefix of the other"
+        )
+    return f"{reads} from {o.key!r}, and both appended to it"
+
+
 def _observation_text(o: Observation) -> str:
     """Return the text of the observation of an anomaly that is not a cycle."""
     call = o.calls[0]
     key = repr(o.key)
+    if o.anomaly in ("incompatible-order", "lost-update"):
+        return _pair_text(o)
     if o.anomaly == "garbage-read":
         return (
             f"call {call} read {_list_text(o.reads[0])} from {key}, and no "
@@ -178,12 +196,6 @@ def _observation_text(o: Observation) -> str:
         if o.has_future:
             text += f", and {o.future!r} is a value that call {call} appends later"
         return text
-    if o.anomaly == "incompatible-order":
-        return (
-            f"calls {call} and {o.calls[1]} read {_list_text(o.reads[0])} and "
-            f"{_list_text(o.reads[1])} from {key}, and neither is a prefix of the "
-            "other"
-        )
     if o.anomaly == "aborted-read":
         return (
             f"call {call} read {o.value!r} from {key}, and call {o.appender} "

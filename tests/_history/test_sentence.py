@@ -234,6 +234,25 @@ class TestIsolationSentence:
             "call 2 read 1 from 'x', and call 0 wrote 1 and then 2",
         ),
         (
+            "a lost update of a register",
+            Observation(
+                "lost-update",
+                calls=(2, 4),
+                key="x",
+                reads=([1],),
+                register=True,
+                read=1,
+            ),
+            "calls 2 and 4 read 1 from 'x', and both wrote to it",
+        ),
+        (
+            "a lost update of the initial value of a register",
+            Observation(
+                "lost-update", calls=(0, 2), key="x", reads=([],), register=True
+            ),
+            "calls 0 and 2 read the initial value from 'x', and both wrote to it",
+        ),
+        (
             "a garbage read",
             Observation("garbage-read", calls=(0,), key="x", reads=([9],), value=9),
             "call 0 read [9] from 'x', and no transaction appended 9",
@@ -307,6 +326,11 @@ class TestIsolationSentence:
                 following=2,
             ),
             "call 2 read 'x' ending in 1, and call 0 appended 1 and then 2",
+        ),
+        (
+            "a lost update",
+            Observation("lost-update", calls=(2, 4), key="x", reads=([1],)),
+            "calls 2 and 4 read [1] from 'x', and both appended to it",
         ),
     ]
 

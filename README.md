@@ -954,6 +954,8 @@ AssertionError: the register is linearizable: violated in the partition of 'x'
   Its reads return the value of the register, or None for the initial
   value. A register history shows fewer anomalies than a list-append
   history, because blind writes do not reveal an order between them.
+- Both levels forbid a lost update: two committed transactions that read
+  one list or value of a key first and then both append or write to it.
 
 <!-- api-reference:history:start -->
 
