@@ -311,6 +311,7 @@ SUPPORT = (
         "clean_up",
         "cleanup",
         "fault",
+        "skip",
         "write_record",
     ),
     _family(

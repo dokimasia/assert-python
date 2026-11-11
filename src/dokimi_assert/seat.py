@@ -20,7 +20,9 @@ through fault.
 A property whose run skips skips the test of a Collector or a Standard
 seat. Both raise unittest.SkipTest, which unittest and pytest report as a
 skipped test. A Recorder keeps the call record of the skip alone. A call of
-rejects whose check skips before it fails skips the test in the same way.
+rejects whose check skips before it fails skips the test in the same way. A
+helper of a test skips the test through skip, which ends the call with a
+fault on a seat without the member skip, such as a Recorder.
 
 A helper registers the release of what it starts through cleanup. The
 Collector runs the releases when the test ends, the Recorder at
@@ -44,7 +46,7 @@ from typing import TYPE_CHECKING, NoReturn
 from dokimi_assert._matcher.cleanup import Cleanups
 from dokimi_assert._matcher.fault import FaultError, of_operation
 from dokimi_assert._matcher.loop import Loop
-from dokimi_assert._matcher.seat import Seat
+from dokimi_assert._matcher.seat import Seat, takes_skips
 from dokimi_assert._matcher.verdict import end, fault_text
 from dokimi_assert._record.calls import keep, lines, own
 from dokimi_assert._record.kinds import CALL_KIND, append
@@ -62,6 +64,7 @@ __all__ = [
     "clean_up",
     "cleanup",
     "fault",
+    "skip",
     "write_record",
 ]
 
@@ -120,6 +123,31 @@ def cleanup(seat: Seat, fn: Callable[[], object]) -> None:
         end(seat, of_operation("seat.cleanup", refused))
         return
     member(fn)
+
+
+def skip(seat: Seat, reason: str) -> None:
+    """Skip the test of seat with reason.
+
+    It calls the member skip of seat. The Collector of the seat fixture, a
+    Standard, a case of a property and the seat that rejects hands a body
+    have the member. A seat without it ends the call with a fault, and the
+    test does not skip.
+
+        def docker_of(seat):
+            if shutil.which("docker") is None:
+                skip(seat, "the test needs docker")
+            return Docker()
+
+    Args:
+        seat: The seat of the call of the helper.
+        reason: The reason of the skip.
+    """
+    __tracebackhide__ = True
+    if not takes_skips(seat):
+        refused = FaultError("", "the seat has no member skip")
+        end(seat, of_operation("seat.skip", refused))
+        return
+    seat.skip(reason)
 
 
 def write_record(seat: Seat, kind: str, record: str) -> None:

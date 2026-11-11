@@ -124,6 +124,22 @@ def served(seat):
     return server
 ```
 
+`seat.skip(seat, reason)` skips the test of a helper's seat through the
+member `skip` of the seat. A `Recorder` has no member `skip`, so the helper
+ends the call with a fault there:
+
+```python
+import shutil
+
+from dokimi_assert.seat import skip
+
+
+def docker_of(seat):
+    if shutil.which("docker") is None:
+        skip(seat, "the test needs docker")
+    return Docker()
+```
+
 ## Two surfaces
 
 Both modules have the same 48 assertions under the same names. `check`
@@ -356,6 +372,7 @@ Recorder.run_cleanups()
 seat.clean_up(collector: Collector)
 seat.cleanup(seat: Seat, fn: Callable[[], object])
 seat.fault(seat: Seat, error: BaseException)
+seat.skip(seat: Seat, reason: str)
 seat.write_record(seat: Seat, kind: str, record: str)
 ```
 

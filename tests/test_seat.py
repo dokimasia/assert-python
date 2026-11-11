@@ -13,7 +13,7 @@ from typing import Any, ClassVar, cast
 
 import pytest
 
-from dokimi_assert import check, expect
+from dokimi_assert import check, expect, prop
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert.clock import Controlled, System
 from dokimi_assert.failure import Failure
@@ -25,6 +25,7 @@ from dokimi_assert.seat import (
     clean_up,
     cleanup,
     fault,
+    skip,
     write_record,
 )
 from helpers import Uncleaned, records
@@ -583,6 +584,35 @@ class TestCleanup:
         with pytest.raises(Exception, match=r"^seat\.cleanup: ") as raised:
             cleanup(Standard(), lambda: None)
         assert isinstance(raised.value.__cause__, FaultError)
+
+
+class TestSkip:
+    """skip skips the test of a seat through the member skip of the seat."""
+
+    def test_skips_the_test_of_a_seat_with_the_member(self) -> None:
+        """A standard seat raises the SkipTest of unittest."""
+        with pytest.raises(unittest.SkipTest, match=r"^the test needs docker$"):
+            skip(Standard(), "the test needs docker")
+
+    def test_skips_the_run_of_a_property_on_its_case(self) -> None:
+        """The run of the property skips with the reason."""
+        recorder = Recorder()
+
+        def body(c: prop.Case) -> None:
+            c.draw(prop.boolean(), "b")
+            skip(c, "the case needs docker")
+
+        prop.for_all(recorder, "c", body, prop.hermetic())
+        assert [
+            records(recorder)[0]["verdict"],
+            records(recorder)[0]["detail"]["reason"],
+        ] == ["skip", "the case needs docker"]
+
+    def test_ends_the_call_with_a_fault_on_a_seat_without_the_member(self) -> None:
+        """The seat keeps the fault, and the test does not skip."""
+        seat = Uncleaned()
+        skip(seat, "the test needs docker")
+        assert seat.faults == [("seat.skip: the seat has no member skip", True)]
 
 
 class TestWriteRecord:
