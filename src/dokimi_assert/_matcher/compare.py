@@ -18,6 +18,8 @@ import math
 from collections.abc import Iterable, Mapping, Sized
 from typing import TYPE_CHECKING, Any, TypeGuard
 
+from dokimi_assert._matcher.option import transformed
+
 if TYPE_CHECKING:
     from dokimi_assert._matcher.option import Relaxations
 
@@ -74,6 +76,9 @@ def equal(got: Any, want: Any, relax: Relaxations) -> bool:
     - Any other object is compared with its own ==.
     - The comparison of a value that contains itself stops at the repeated
       pair.
+    - Under equate-by, a value that a transform matches compares by its
+      result. At one place at most one transform applies, and the parts of
+      the result compare under the transforms again.
 
     Args:
         got: The value that the code under test produced.
@@ -92,9 +97,10 @@ def _hashed_key(value: object, relax: Relaxations) -> tuple[type, object] | None
     A value of a hashed type equals only a value of its own type. A float
     that is not a NaN equals the floats of its value, and -0.0 and 0.0 have
     one hash. Under equate-empty, None can equal an empty collection, and a
-    lookup by hash does not find that collection.
+    lookup by hash does not find that collection. Under equate-by, a key can
+    equal a key of another type by its transform, so no key matches by hash.
     """
-    if value is None and relax.equate_empty:
+    if relax.transforms or (value is None and relax.equate_empty):
         return None
     if isinstance(value, _HASHED):
         return (type(value), value)
@@ -112,7 +118,18 @@ class _Walk:
         self._seen: set[tuple[int, int]] = set()
 
     def equal(self, a: Any, b: Any) -> bool:
-        """Report whether a and b are equal."""
+        """Report whether a and b are equal.
+
+        A value that a transform matches compares by its result. The result
+        compares at the same place without the transforms.
+        """
+        relax = self._relax
+        if relax.transforms:
+            return self._compare(transformed(a, relax), transformed(b, relax))
+        return self._compare(a, b)
+
+    def _compare(self, a: Any, b: Any) -> bool:
+        """Report whether a and b are equal at one place after its transforms."""
         relax = self._relax
         if relax.equate_empty and self._absent_against_empty(a, b):
             return True

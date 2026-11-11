@@ -26,7 +26,7 @@ from dokimi_assert._prop.option import (
     store,
     using,
 )
-from dokimi_assert.option import by_identity, equate_empty, equate_nans
+from dokimi_assert.option import by_identity, equate_by, equate_empty, equate_nans
 from dokimi_assert.seat import Collector, Recorder
 from helpers import records
 
@@ -198,8 +198,13 @@ class TestRunForm:
     def test_passes_the_relaxations_to_a_form_whose_assertion_takes_them(
         self, seat: Collector
     ) -> None:
-        """The call has three relaxations."""
-        relaxations = (equate_empty(), equate_nans(), by_identity())
+        """The call has four relaxations."""
+        relaxations = (
+            equate_empty(),
+            equate_nans(),
+            by_identity(),
+            equate_by(str, str.lower),
+        )
         passed: list[tuple[Relaxation, ...]] = []
 
         def keep(

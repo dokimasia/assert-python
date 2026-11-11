@@ -16,7 +16,7 @@ from typing import Any, ClassVar
 import pytest
 
 from dokimi_assert._matcher import value
-from dokimi_assert._matcher.option import equate_nans
+from dokimi_assert._matcher.option import equate_by, equate_nans
 from dokimi_assert._matcher.seat import Mode
 from dokimi_assert.seat import Recorder
 
@@ -153,6 +153,22 @@ class TestEqual:
         seat = failed(lambda s: value.equal(s, Mode.FATAL, 1, 1.0, "c"))
         assert dict(seat.failures[0].detail) == {"want": 1.0, "got": 1}
 
+    def test_fails_with_the_transforms_of_want_and_got(self) -> None:
+        """The failure has the lower case of each str."""
+        seat = failed(
+            lambda s: value.equal(
+                s, Mode.FATAL, "AB", "Ac", "c", equate_by(str, str.lower)
+            )
+        )
+        assert dict(seat.failures[0].detail) == {"want": "ac", "got": "ab"}
+
+    def test_fails_with_want_and_got_that_no_transform_matches(self) -> None:
+        """The transform of a str does not match the int."""
+        seat = failed(
+            lambda s: value.equal(s, Mode.FATAL, "A", 1, "c", equate_by(str, str.lower))
+        )
+        assert dict(seat.failures[0].detail) == {"want": 1, "got": "a"}
+
 
 class TestNotEqual:
     """not_equal checks that got differs from want."""
@@ -165,6 +181,15 @@ class TestNotEqual:
         """The failure has the value as got."""
         seat = failed(lambda s: value.not_equal(s, Mode.SOFT, 1, 1, "c"))
         assert dict(seat.failures[0].detail) == {"got": 1}
+
+    def test_fails_with_the_transform_of_got(self) -> None:
+        """The failure has the lower case of got."""
+        seat = failed(
+            lambda s: value.not_equal(
+                s, Mode.SOFT, "AB", "ab", "c", equate_by(str, str.lower)
+            )
+        )
+        assert dict(seat.failures[0].detail) == {"got": "ab"}
 
 
 class TestLength:

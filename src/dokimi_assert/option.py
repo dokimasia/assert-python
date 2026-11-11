@@ -11,11 +11,18 @@ assertion.
     check.equal(seat, got, want, "the reply has no items", equate_empty())
 
 Both surfaces take the same options, and every assertion that compares
-values accepts them last.
+values accepts them last. equate_by compares the values of one type by a
+transform that the caller states.
 """
 
 from __future__ import annotations
 
-from dokimi_assert._matcher.option import Option, by_identity, equate_empty, equate_nans
+from dokimi_assert._matcher.option import (
+    Option,
+    by_identity,
+    equate_by,
+    equate_empty,
+    equate_nans,
+)
 
-__all__ = ["Option", "by_identity", "equate_empty", "equate_nans"]
+__all__ = ["Option", "by_identity", "equate_by", "equate_empty", "equate_nans"]

@@ -20,9 +20,10 @@ def test_re_exports_the_options_of_the_matcher(seat: Collector) -> None:
             option.equate_empty is matcher.equate_empty,
             option.equate_nans is matcher.equate_nans,
             option.by_identity is matcher.by_identity,
+            option.equate_by is matcher.equate_by,
             option.Option is matcher.Option,
         ],
-        [True, True, True, True],
+        [True, True, True, True, True],
         "the public options",
     )
 
@@ -51,6 +52,23 @@ class TestEquateNans:
         recorder = Recorder()
         check.equal(recorder, math.nan, math.nan, "relaxed", option.equate_nans())
         check.equal(recorder, math.nan, math.nan, "strict")
+        check.equal(
+            seat,
+            [f.contract for f in recorder.failures],
+            ["strict"],
+            "only the call without the option fails",
+        )
+
+
+class TestEquateBy:
+    """equate_by."""
+
+    def test_relaxes_the_call_that_it_is_passed_to_alone(self, seat: Collector) -> None:
+        """A call without the option compares strictly."""
+        recorder = Recorder()
+        lower = option.equate_by(str, str.lower)
+        check.equal(recorder, "A", "a", "by the lower case", lower)
+        check.equal(recorder, "A", "a", "strict")
         check.equal(
             seat,
             [f.contract for f in recorder.failures],

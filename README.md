@@ -371,6 +371,7 @@ call.Call(assertion: str, contract: str)
 option.equate_empty() -> Option
 option.equate_nans() -> Option
 option.by_identity() -> Option
+option.equate_by(kind: type[_T], f: Callable[[_T], object]) -> Option
 option.Option
 ```
 
@@ -469,6 +470,34 @@ def test_no_items_came_back(seat):
 references by identity, so two equal lists that are distinct objects
 differ. An option applies to the call that it is passed to, and to no other
 call.
+
+`equate_by(kind, f)` makes each value of `kind` compare by `f(value)`, at
+the top and at every depth. A type with state of its own, such as a cache,
+then compares by the part that the test checks. The record of a failure of
+`equal` states the results of `f`:
+
+```python
+from dataclasses import dataclass
+
+from dokimi_assert import check
+from dokimi_assert.option import equate_by
+
+
+@dataclass
+class Page:
+    text: str
+    rendered: str | None = None
+
+
+def test_the_stored_page_is_the_written_page(seat):
+    check.equal(
+        seat,
+        store.read("page-1"),
+        Page("hello"),
+        "the store returns the written page",
+        equate_by(Page, lambda page: page.text),
+    )
+```
 
 ## Golden files
 

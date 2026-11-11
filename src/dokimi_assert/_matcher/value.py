@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 from dokimi_assert._matcher.compare import contains_element
 from dokimi_assert._matcher.compare import equal as _equal
-from dokimi_assert._matcher.option import Option, settings
+from dokimi_assert._matcher.option import Option, settings, transformed
 from dokimi_assert._matcher.verdict import fail, pass_
 from dokimi_assert._pattern.match import compile_pattern
 from dokimi_assert._pattern.parse import PatternError
@@ -92,6 +92,9 @@ def equal(
 ) -> None:
     """Report when got and want differ.
 
+    The record states the result of the transform of an option of equate-by
+    in place of want and of got when the transform matches them.
+
     Args:
         seat: The seat that receives the failure.
         mode: FATAL to stop the test at a failure, or SOFT to record it.
@@ -102,8 +105,10 @@ def equal(
     """
     __tracebackhide__ = True
     seat.helper()
-    if not _equal(got, want, settings(options)):
-        fail(seat, mode, "equal", msg, {"want": want, "got": got})
+    relax = settings(options)
+    if not _equal(got, want, relax):
+        detail = {"want": transformed(want, relax), "got": transformed(got, relax)}
+        fail(seat, mode, "equal", msg, detail)
         return
     pass_(seat, mode, "equal", msg)
 
@@ -112,6 +117,9 @@ def not_equal(
     seat: Seat, mode: Mode, got: Any, want: Any, msg: str, *options: Option
 ) -> None:
     """Report when got and want are equal.
+
+    The record states the result of the transform of an option of equate-by
+    in place of got when the transform matches it.
 
     Args:
         seat: The seat that receives the failure.
@@ -123,8 +131,9 @@ def not_equal(
     """
     __tracebackhide__ = True
     seat.helper()
-    if _equal(got, want, settings(options)):
-        fail(seat, mode, "not-equal", msg, {"got": got})
+    relax = settings(options)
+    if _equal(got, want, relax):
+        fail(seat, mode, "not-equal", msg, {"got": transformed(got, relax)})
         return
     pass_(seat, mode, "not-equal", msg)
 

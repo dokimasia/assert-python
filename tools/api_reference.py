@@ -327,6 +327,7 @@ SUPPORT = (
         "equate_empty",
         "equate_nans",
         "by_identity",
+        "equate_by",
         f"{TYPE}Option",
     ),
     _family(

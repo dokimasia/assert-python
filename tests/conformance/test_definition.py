@@ -126,16 +126,17 @@ class TestRelaxationNames:
     """relaxation_names returns the Python name of each relaxation."""
 
     def test_returns_the_python_name_of_each_relaxation(self, seat: Collector) -> None:
-        """The definition has three relaxations."""
+        """The definition has four relaxations."""
         check.equal(
             seat,
             relaxation_names(),
             {
                 "by-identity": "by_identity",
+                "equate-by": "equate_by",
                 "equate-empty": "equate_empty",
                 "equate-nans": "equate_nans",
             },
-            "relaxation_names returns the three names",
+            "relaxation_names returns the four names",
         )
 
 
