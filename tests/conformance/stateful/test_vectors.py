@@ -9,13 +9,16 @@ its own verdicts with the assert statement of pytest.
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
 from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert.conformance.stateful.vectors import CONTRACT, RUNNERS
 from dokimi_assert.conformance.vector import vectors
+
+if TYPE_CHECKING:
+    import pathlib
 
 #: The machines vectors of the definition, by id.
 VECTORS = {v.id: v.raw for v in vectors() if v.kind == "machines"}
@@ -32,10 +35,13 @@ def vector(vector_id: str, **changes: Any) -> dict[str, Any]:
     return {**VECTORS[vector_id], **changes}
 
 
-def fault_of(raw: dict[str, Any]) -> tuple[str, str]:
-    """Return the place and the reason of the fault of the runner, or empty strings."""
+def fault_of(raw: dict[str, Any], directory: str = "") -> tuple[str, str]:
+    """Return the place and the reason of the fault of the runner, or empty strings.
+
+    The run has its store in directory. The empty string turns the store off.
+    """
     try:
-        RUNNERS["machines"](raw, "")
+        RUNNERS["machines"](raw, directory)
     except FaultError as error:
         return error.at, error.reason
     return "", ""
@@ -78,6 +84,20 @@ class TestRunners:
             fault_of(vector(vector_id, setup={}))[0],
         ] == ["", "detail"]
 
+    def test_takes_the_stored_cases_of_the_settings(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """The stored case of a lossy queue fails by its steps."""
+        vector_id = (
+            "queue-loses-on-wrap/a-stored-case-of-other-actions-replays-its-steps"
+        )
+        replays = vector(vector_id)
+        alone = vector(vector_id, settings={"seed": "1", "cases": 1})
+        assert [
+            fault_of(replays, str(tmp_path / "replays"))[0],
+            fault_of(alone, str(tmp_path / "alone"))[0],
+        ] == ["", "detail"]
+
     def test_takes_a_strategy_of_pct(self) -> None:
         """A setup can run the clients of a scheduler under PCT of a depth."""
         raw = vector(
@@ -116,6 +136,17 @@ class TestRunners:
             "raises at a setting that the runner does not take",
             vector(FAILING, settings={"seed": "1", "shrink": 0}),
             ("settings.shrink", "the runner does not take the setting"),
+        ),
+        (
+            "raises at a stored case of choices alone",
+            vector(FAILING, settings={"seed": "1", "stored": [[1]]}),
+            (
+                "settings.stored[0]",
+                (
+                    "the stored case is not an object of its choices and its "
+                    "counterexample"
+                ),
+            ),
         ),
         (
             "raises at the error of a run that does not refuse the entry",

@@ -12,6 +12,7 @@ from dokimi_assert._prop.engine.case import Case, Replaying, Step
 from dokimi_assert._prop.engine.choice import IntegerBounds
 from dokimi_assert._prop.engine.generator import Integer, Mapped, Optional
 from dokimi_assert._prop.engine.traces import (
+    UNSTATED,
     Draw,
     TraceError,
     Tracing,
@@ -35,6 +36,14 @@ def refused(seat: Collector, call: Callable[[], object]) -> list[object]:
     check.error_as(seat, error, TraceError, "the error is a TraceError")
     traced = cast("TraceError", error)
     return [traced.entry, traced.what, traced.reason]
+
+
+class TestUnstated:
+    """UNSTATED is the value of a draw entry that does not record a value."""
+
+    def test_has_the_repr_of_its_name(self, seat: Collector) -> None:
+        """A trace shows the value by its name."""
+        check.equal(seat, repr(UNSTATED), "UNSTATED", "the repr is the name")
 
 
 class TestIsStep:
@@ -151,6 +160,16 @@ class TestTracingDrawing:
             seat, got, [1, "x", "value"], "the error is at entry 1 for the value"
         )
 
+    def test_raises_trace_error_for_an_entry_that_does_not_record_a_value(
+        self, seat: Collector
+    ) -> None:
+        """The value of the entry is UNSTATED."""
+        c = Case(Tracing([Draw("x", UNSTATED)]))
+        got = refused(seat, lambda: c.draw(DIGIT, "x"))
+        check.equal(
+            seat, got, [0, "x", "value"], "the error is at entry 0 for the value"
+        )
+
     def test_raises_an_error_of_the_generator_that_is_not_a_refusal(
         self, seat: Collector
     ) -> None:
@@ -250,6 +269,27 @@ class TestTracingTake:
                 None,
             ],
             "take serves the choices of the step before the next entry",
+        )
+
+
+class TestTracingTaken:
+    """Tracing.taken is the number of entries that the draws and the steps took."""
+
+    def test_counts_the_entries_of_the_draws_and_the_steps(
+        self, seat: Collector
+    ) -> None:
+        """A draw and a step take two of the three entries."""
+        trace = Tracing([Draw("v", 1), Step("get"), Draw("w", 2)])
+        c = Case(trace)
+        before = trace.taken
+        c.draw(DIGIT, "v")
+        drawn = trace.taken
+        trace.take()
+        check.equal(
+            seat,
+            [before, drawn, trace.taken],
+            [0, 1, 2],
+            "the draw and the step each take one entry",
         )
 
 

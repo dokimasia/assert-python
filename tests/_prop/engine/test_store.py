@@ -40,6 +40,19 @@ FAILURE = Failure(
 #: The largest line of an identity.
 LINE_MAX = 2**31 - 1
 
+#: The largest client of a step entry.
+CLIENT_MAX = 2**31 - 1
+
+#: A counterexample of a machine with a step entry of each form among its
+#: draws.
+STEPS: list[dict[str, Any]] = [
+    {"label": "capacity", "value": {"type": "int", "value": 2}},
+    {"step": "put"},
+    {"label": "v", "value": {"type": "int", "value": 0}},
+    {"step": "put", "client": 1},
+    {"step": "get", "drain": True},
+]
+
 #: The deepest value that a draw records. The root, the counterexample and the
 #: draw take the first three levels.
 DEEPEST_VALUE = MAX_DEPTH - 3
@@ -159,6 +172,19 @@ class TestEntry:
             "the entry has the fields of the format",
         )
 
+    def test_writes_format_2_for_a_counterexample_with_a_step_entry(
+        self, seat: Collector
+    ) -> None:
+        """The steps keep their places among the draws."""
+        failure = Failure(CONTRACT, CHOICES, FAILURE.identity, STEPS)
+        steps = entry(failure, "16.3.0", "2026-11-10")
+        check.equal(
+            seat,
+            [steps["store"], steps["counterexample"], verdict_of(steps)],
+            [2, STEPS, "replay"],
+            "the entry of format 2 has the steps among the draws",
+        )
+
     def test_records_a_value_at_the_deepest_level(self, seat: Collector) -> None:
         """The entry nests 64 levels and replays."""
         failure = Failure(
@@ -250,6 +276,32 @@ class TestRead:
             seat, verdict_of(written(**give)), "replay", "the verdict is replay"
         )
 
+    steps: ClassVar[list[tuple[str, list[dict[str, Any]]]]] = [
+        ("replays a sequential step", [{"step": "put"}]),
+        ("replays a step of client 0", [{"step": "put", "client": 0}]),
+        (
+            "replays a step of the largest client",
+            [{"step": "put", "client": CLIENT_MAX}],
+        ),
+        ("replays a step of the drain", [{"step": "get", "drain": True}]),
+        (
+            "replays a draw without a value among the steps",
+            [{"step": "put"}, {"label": "v"}, {"step": "get", "client": 1}],
+        ),
+        (
+            "replays a counterexample of draws alone",
+            [{"label": "v", "value": {"type": "int", "value": 0}}],
+        ),
+    ]
+
+    @pytest.mark.parametrize("give", [t[1] for t in steps], ids=[t[0] for t in steps])
+    def test_replays_an_entry_of_format_2(
+        self, seat: Collector, give: list[dict[str, Any]]
+    ) -> None:
+        """The verdict is replay."""
+        got = verdict_of(written(store=2, counterexample=give))
+        check.equal(seat, got, "replay", "the verdict is replay")
+
     def test_returns_other_for_an_entry_of_another_property(
         self, seat: Collector
     ) -> None:
@@ -260,7 +312,7 @@ class TestRead:
         )
 
     skips: ClassVar[list[tuple[str, str]]] = [
-        ("skips an entry of format 2", '{"store": 2}'),
+        ("skips an entry of format 3", '{"store": 3}'),
         (
             "skips an entry of a far later format",
             '{"store": 1000000000000000000000000000000}',
@@ -454,6 +506,55 @@ class TestRead:
         check.equal(
             seat, verdict_of(written(**give)), "damaged", "the verdict is damaged"
         )
+
+    bad_steps: ClassVar[list[tuple[str, int, list[object]]]] = [
+        ("returns damaged for a step entry in format 1", 1, [{"step": "put"}]),
+        (
+            "returns damaged for a step entry of a client and the drain",
+            2,
+            [{"step": "put", "client": 1, "drain": True}],
+        ),
+        (
+            "returns damaged for a drain mark that is not true",
+            2,
+            [{"step": "put", "drain": False}],
+        ),
+        ("returns damaged for a drain mark of 1", 2, [{"step": "put", "drain": 1}]),
+        ("returns damaged for a client below 0", 2, [{"step": "put", "client": -1}]),
+        (
+            "returns damaged for a client past the largest client",
+            2,
+            [{"step": "put", "client": CLIENT_MAX + 1}],
+        ),
+        (
+            "returns damaged for a client that is a bool",
+            2,
+            [{"step": "put", "client": True}],
+        ),
+        (
+            "returns damaged for a client that is a fraction",
+            2,
+            [{"step": "put", "client": 1.5}],
+        ),
+        ("returns damaged for a step that is not a string", 2, [{"step": 1}]),
+        (
+            "returns damaged for a step entry with a label",
+            2,
+            [{"step": "put", "label": "v"}],
+        ),
+    ]
+
+    @pytest.mark.parametrize(
+        ("give_store", "give_counterexample"),
+        [t[1:] for t in bad_steps],
+        ids=[t[0] for t in bad_steps],
+    )
+    def test_returns_damaged_for_a_step_entry_out_of_its_form(
+        self, seat: Collector, give_store: int, give_counterexample: list[object]
+    ) -> None:
+        """A step entry is out of the form of its format."""
+        got = verdict_of(written(store=give_store, counterexample=give_counterexample))
+        check.equal(seat, got, "damaged", "the verdict is damaged")
 
     def test_returns_damaged_for_an_entry_without_a_field_of_the_format(
         self, seat: Collector

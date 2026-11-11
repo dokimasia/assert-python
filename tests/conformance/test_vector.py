@@ -131,8 +131,8 @@ class TestVectors:
     counts: ClassVar[list[tuple[str, list[str], int]]] = [
         ("returns the 57 files vectors of the definition", FILE_KINDS, 57),
         ("returns the 112 history vectors of the definition", HISTORY_KINDS, 112),
-        ("returns the 445 property vectors of the definition", PROP_KINDS, 445),
-        ("returns the 22 machines vectors of the definition", STATEFUL_KINDS, 22),
+        ("returns the 452 property vectors of the definition", PROP_KINDS, 452),
+        ("returns the 25 machines vectors of the definition", STATEFUL_KINDS, 25),
     ]
 
     @pytest.mark.parametrize(

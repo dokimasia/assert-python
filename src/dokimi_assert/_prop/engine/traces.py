@@ -22,13 +22,17 @@ come from the entries.
 A trace that the body cannot follow raises TraceError. The error has the
 position of the entry, and it is not a failure of the case. It ends the run
 before any case runs.
+
+The counterexample of a stored case is a trace too. Its draw entry has the
+value UNSTATED where the entry of the store does not record a typed literal
+of the value. The body refuses such an entry.
 """
 
 from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, NoReturn, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, Final, NoReturn, TypeGuard, cast, final
 
 from dokimi_assert._override import override
 from dokimi_assert._prop.engine.case import Case, Decoder, Provider, Request, Step
@@ -40,7 +44,33 @@ if TYPE_CHECKING:
 
     from dokimi_assert._prop.engine.generator import Generator
 
-__all__ = ["Draw", "Entry", "TraceError", "Tracing", "entries", "is_step"]
+__all__ = [
+    "UNSTATED",
+    "Draw",
+    "Entry",
+    "TraceError",
+    "Tracing",
+    "entries",
+    "is_step",
+]
+
+
+@final
+class _Unstated:
+    """The value of a draw entry that does not record a value."""
+
+    @override
+    def __repr__(self) -> str:
+        """Return the name of the value.
+
+        Returns:
+            UNSTATED.
+        """
+        return "UNSTATED"
+
+
+#: The value of a draw entry that does not record a value.
+UNSTATED: Final = _Unstated()
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,14 +188,17 @@ class Tracing(Provider):
             label: The label of the draw.
 
         Raises:
-            TraceError: The next entry is not a draw entry with the label, or
-                the generator cannot produce its value.
+            TraceError: The next entry is not a draw entry with the label, it
+                does not record a value, or the generator cannot produce its
+                value.
         """
         if self._at >= len(self._entries):
             return
         entry = self._entries[self._at]
         if not isinstance(entry, Draw) or entry.label != label:
             raise TraceError(self._at, label, "label")
+        if entry.value is UNSTATED:
+            raise TraceError(self._at, label, "value")
         choices = inverse_of(cast("Generator[Any]", generator), entry.value)
         if choices is None:
             raise TraceError(self._at, label, "value")
@@ -191,6 +224,15 @@ class Tracing(Provider):
         """
         named = [entry.action for entry in self._entries[self._at :] if is_step(entry)]
         return list(dict.fromkeys(named))
+
+    @property
+    def taken(self) -> int:
+        """The number of entries that the draws and the steps took.
+
+        Returns:
+            The number. It is the position of the next entry.
+        """
+        return self._at
 
     def prepare(self, *values: int) -> None:
         """Serve integer values to the next requests, before any target.

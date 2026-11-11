@@ -295,7 +295,7 @@ class TestLoad:
         self, seat: Collector, tmp_path: pathlib.Path
     ) -> None:
         """The file is skipped."""
-        (tmp_path / "later.json").write_text('{"store": 2}', encoding="utf-8")
+        (tmp_path / "later.json").write_text('{"store": 3}', encoding="utf-8")
         check.equal(
             seat,
             load(str(tmp_path), "c"),

@@ -13,8 +13,17 @@ import json
 from typing import TYPE_CHECKING, Any
 
 from dokimi_assert._matcher.fault import FaultError
-from dokimi_assert.conformance.prop.vectors import CONTRACT, KINDS, check_prop
+from dokimi_assert._prop.engine.store import name
+from dokimi_assert._prop.engine.tokens import encode
+from dokimi_assert.conformance.definition import version
+from dokimi_assert.conformance.prop.vectors import (
+    CONTRACT,
+    KINDS,
+    check_prop,
+    write_stored,
+)
 from dokimi_assert.conformance.vector import vectors
+from helpers import integers
 
 if TYPE_CHECKING:
     import pathlib
@@ -50,6 +59,70 @@ def fault_of(
 def test_contract_is_the_contract_of_the_property_of_a_vector() -> None:
     """A stored case is an entry of this property."""
     assert CONTRACT == "the property of the vector"
+
+
+class TestWriteStored:
+    """write_stored writes each stored case of the settings of a vector into a store."""
+
+    def test_writes_the_choices_and_the_counterexample_of_each_case(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """The second case was found a day after the first."""
+        recorded = [
+            {"label": "v", "value": {"type": "int", "value": 3}},
+            {"step": "put"},
+        ]
+        write_stored(
+            [
+                {"choices": [3], "counterexample": recorded[:1]},
+                {"choices": [4], "counterexample": recorded},
+            ],
+            str(tmp_path),
+            "c",
+        )
+        first = json.loads((tmp_path / name("c", integers(3))).read_text("utf-8"))
+        second = json.loads((tmp_path / name("c", integers(4))).read_text("utf-8"))
+        assert [first, second] == [
+            {
+                "store": 1,
+                "definition": version(),
+                "property": "c",
+                "identity": {
+                    "assertion": "stored",
+                    "contract": "a stored case of the vector",
+                },
+                "choices": encode(integers(3)),
+                "counterexample": recorded[:1],
+                "found": "2026-01-01",
+            },
+            {
+                "store": 2,
+                "definition": version(),
+                "property": "c",
+                "identity": {
+                    "assertion": "stored",
+                    "contract": "a stored case of the vector",
+                },
+                "choices": encode(integers(4)),
+                "counterexample": recorded,
+                "found": "2026-01-02",
+            },
+        ]
+
+    def test_raises_for_a_stored_case_that_is_not_an_object_of_its_two_members(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """The case has its choices alone."""
+        try:
+            write_stored([[1]], str(tmp_path), "c")
+        except FaultError as error:
+            fault = (error.at, error.reason)
+        else:
+            fault = ("", "")
+        assert fault == (
+            "settings.stored[0]",
+            "the stored case is not an object of its choices and its counterexample",
+        )
 
 
 class TestKinds:
@@ -336,31 +409,14 @@ class TestCheckProp:
             "the body does not draw a value",
         )
 
-    def test_raises_for_a_stored_case_of_a_body_that_does_not_draw(
+    def test_raises_for_a_stored_case_of_choices_alone(
         self, tmp_path: pathlib.Path
     ) -> None:
-        """The entry of a stored case has the draw of its choices."""
-        raw = {
-            "body": {"kind": "diverges"},
-            "settings": {"seed": "7", "stored": [[1]]},
-        }
+        """The case does not state the counterexample of its entry."""
+        raw = {"body": {"draw": DIGIT}, "settings": {"seed": "7", "stored": [[1]]}}
         assert fault_of("behaviour", raw, tmp_path) == (
             "settings.stored[0]",
-            "the body does not draw a value",
-        )
-
-    def test_raises_for_a_stored_case_whose_choices_do_not_decode(
-        self, tmp_path: pathlib.Path
-    ) -> None:
-        """A filter that keeps no value rejects the choices of the case."""
-        never = {"gen": "filter", "of": DIGIT, "keep": {"kind": "never"}}
-        raw = {
-            "body": {"draw": never},
-            "settings": {"seed": "7", "stored": [[1], [2]]},
-        }
-        assert fault_of("behaviour", raw, tmp_path) == (
-            "settings.stored[0]",
-            "the choices do not decode to a value",
+            "the stored case is not an object of its choices and its counterexample",
         )
 
     def test_raises_for_an_example_whose_choices_do_not_decode(

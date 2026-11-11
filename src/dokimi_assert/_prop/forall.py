@@ -34,8 +34,10 @@ def for_all(
 
     A run tries the case of the draws option first. It then replays the
     stored cases of the property from the oldest, and runs the case whose
-    every choice is its target. Then it runs random cases of the seed. After
-    each random case, it runs a prefix case and an edge case. The run stops
+    every choice is its target. A stored case whose choices decode to other
+    values than its file records replays the values and the steps of the
+    file. The run then runs random cases of the seed. After each random
+    case, it runs a prefix case and an edge case. The run stops
     when it has run the number of valid cases that the cases option sets,
     when it has tested every input of the domain, or when it has generated
     ten times that number of cases. A failing case is replayed, shrunk to

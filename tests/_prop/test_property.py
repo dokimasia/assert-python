@@ -28,6 +28,8 @@ from dokimi_assert._prop.detail import FOR_ALL
 from dokimi_assert._prop.engine.choice import Choice, IntegerBounds, SequenceBounds
 from dokimi_assert._prop.engine.generator import Bytes, Integer, Mapped
 from dokimi_assert._prop.engine.runner import Values
+from dokimi_assert._prop.engine.store import Failure as Entry
+from dokimi_assert._prop.engine.store import entry, name
 from dokimi_assert._prop.engine.tokens import encode
 from dokimi_assert._prop.engine.traces import TraceError
 from dokimi_assert._prop.environment import (
@@ -183,8 +185,26 @@ def stored_by_a_failure(directory: Path) -> str:
     recorder = Recorder()
     run_on(recorder, below_five, store(str(directory)))
     recorder.run_cleanups()
-    [entry] = directory.iterdir()
-    return entry.name
+    [written] = directory.iterdir()
+    return written.name
+
+
+def stored_with(directory: Path, *counterexample: dict[str, Any]) -> Path:
+    """Write an entry of the contract c into a store, and return its path.
+
+    The choices of the entry decode to the digit 3, and the entry records the
+    counterexample.
+    """
+    choices = [Choice("integer", 3)]
+    recorded = Entry("c", choices, {"file": "test_total.py", "line": 3}, counterexample)
+    path = directory / name("c", choices)
+    path.write_text(json.dumps(entry(recorded, "16.3.0", "2026-11-10")), "utf-8")
+    return path
+
+
+def literal_of(value: int) -> dict[str, Any]:
+    """Return the typed literal of an int."""
+    return {"type": "int", "value": value}
 
 
 class TestCall:
@@ -732,8 +752,8 @@ class TestPropertyRun:
     ) -> None:
         """One entry is of a later format, and the generator of another changed."""
         monkeypatch.delenv(MUTANT, raising=False)
-        name = stored_by_a_failure(tmp_path)
-        (tmp_path / "later.json").write_text(json.dumps({"store": 2}), "utf-8")
+        written = stored_by_a_failure(tmp_path)
+        (tmp_path / "later.json").write_text(json.dumps({"store": 3}), "utf-8")
         recorder = Recorder()
         texts = notes(
             recorder,
@@ -748,11 +768,94 @@ class TestPropertyRun:
                     "format, so the run skips it"
                 ),
                 (
-                    f"prop.for_all: {tmp_path / name}: the stored case decodes to "
+                    f"prop.for_all: {tmp_path / written}: the stored case decodes to "
                     "other values than it records, and the run tested those"
                 ),
             ],
             "the run notes both entries",
+        )
+
+    def test_notes_a_stored_case_whose_run_replays_its_counterexample(
+        self, seat: Collector, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The choices decode to 3, and the entry records the failing digit 5."""
+        monkeypatch.delenv(MUTANT, raising=False)
+        path = stored_with(tmp_path, {"label": "x", "value": literal_of(5)})
+        recorder = Recorder()
+        texts = notes(
+            recorder, lambda: run_on(recorder, below_five, store(str(tmp_path)))
+        )
+        check.equal(
+            seat,
+            [texts, [(one["phase"], one["verdict"]) for one in records(recorder)[1:3]]],
+            [
+                [
+                    (
+                        f"prop.for_all: {path}: the stored case decodes to other "
+                        "values than it records, and the run replayed its "
+                        "counterexample"
+                    )
+                ],
+                [("stored", "pass"), ("stored", "fail")],
+            ],
+            "the run records both cases and notes the replay of the counterexample",
+        )
+
+    refusals: ClassVar[list[tuple[str, list[dict[str, Any]], str]]] = [
+        (
+            "notes the refusal of the label of an entry",
+            [{"label": "y", "value": literal_of(5)}],
+            (
+                'counterexample[0].label: the draw labelled "x" takes the entry '
+                'labelled "y"'
+            ),
+        ),
+        (
+            "notes an entry that the case of the counterexample leaves untaken",
+            [{"label": "x", "value": literal_of(4)}, {"label": "z"}],
+            (
+                "counterexample[1]: the case of the counterexample leaves the entry "
+                "untaken"
+            ),
+        ),
+        (
+            "notes a draw whose entry does not have a typed literal",
+            [{"label": "x"}, {"label": "z"}],
+            (
+                'counterexample[0].value: the entry of the draw labelled "x" does '
+                "not have a typed literal"
+            ),
+        ),
+    ]
+
+    @pytest.mark.parametrize(
+        ("give", "want"), [t[1:] for t in refusals], ids=[t[0] for t in refusals]
+    )
+    def test_notes_why_a_stored_case_does_not_replay_its_counterexample(
+        self,
+        seat: Collector,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        give: list[dict[str, Any]],
+        want: str,
+    ) -> None:
+        """The choices decode to 3, and the run tests them."""
+        monkeypatch.delenv(MUTANT, raising=False)
+        path = stored_with(tmp_path, *give)
+        recorder = Recorder()
+        texts = notes(
+            recorder, lambda: run_on(recorder, any_digit, store(str(tmp_path)))
+        )
+        check.equal(
+            seat,
+            texts,
+            [
+                (
+                    f"prop.for_all: {path}: the stored case decodes to other values "
+                    f"than it records, and the run tested those: {want}"
+                )
+            ],
+            "the note has the reason",
         )
 
     @pytest.mark.skipif(UNENFORCED, reason="every permission is granted here")

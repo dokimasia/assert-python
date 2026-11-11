@@ -71,10 +71,13 @@ from dokimi_assert._prop.engine.runner import (
     Kind,
     Outcome,
     Settings,
+    Stored,
+    StoredRun,
     Tally,
     conclude,
     confirm_valid,
     known_cases,
+    run_stored_case,
     shortfall_of,
 )
 from dokimi_assert._prop.engine.source import Source, case_source
@@ -208,15 +211,19 @@ class _Exploration:
         self._best: dict[str, float] = {}
         self._identities: set[str] = set()
         self._found: Outcome | None = None
-        self._stored: list[Execution] = []
+        self._stored: list[StoredRun] = []
 
     def known(self) -> Outcome | None:
         """Run the known cases, and return the outcome when one ends the campaign."""
+        max_choices = self._settings.max_choices
         for phase, provider in known_cases(self._settings):
-            execution = execute(self._body, provider, self._settings.max_choices)
-            self._observer(phase, execution)
-            if phase == "stored":
-                self._stored.append(execution)
+            if isinstance(provider, Stored):
+                ran = run_stored_case(self._body, provider, max_choices, self._observer)
+                self._stored.append(ran)
+                execution = ran.execution
+            else:
+                execution = execute(self._body, provider, max_choices)
+                self._observer(phase, execution)
             ended = self._take(execution, isinstance(provider, Valuing))
             if ended is not None:
                 return ended

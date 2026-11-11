@@ -54,7 +54,7 @@ if TYPE_CHECKING:
     from dokimi_assert._prop.engine.choice import Choice
     from dokimi_assert._prop.engine.generator import Generator
 
-__all__ = ["CONTRACT", "KINDS", "check_prop"]
+__all__ = ["CONTRACT", "KINDS", "check_prop", "write_stored"]
 
 #: The contract of the property of a behaviour vector and of a recording
 #: vector. The stored cases of a vector are entries of this property.
@@ -295,24 +295,39 @@ def _drawn(choices: list[Choice], spec: object, at: str) -> dict[str, Any]:
     return {"label": DRAWN, "value": decoded["value"]}
 
 
-def _write_stored(stored: object, directory: str, spec: object) -> None:
-    """Write each stored case of the settings of a vector into the store dir.
+def write_stored(stored: object, directory: str, contract: str) -> None:
+    """Write each stored case of the settings of a vector into a store.
 
-    The entry of a case is an entry of the property of the vector, with the
-    draw that its choices decode to under the body spec.
+    A stored case is an object of its choices and the counterexample that its
+    entry records. Its entry is an entry of the property of the contract.
+
+    Args:
+        stored: The stored cases of the settings.
+        directory: The directory of the store.
+        contract: The contract of the property.
 
     Raises:
-        FaultError: The body does not have a draw, or the choices of a case
-            do not decode to a value.
+        FaultError: A stored case is not an object of its choices and its
+            counterexample.
     """
     for i, written in enumerate(cast("list[object]", stored)):
-        choices = parse_choices(written)
-        drawn = _drawn(choices, spec, f"settings.stored[{i}]")
-        failure = store.Failure(CONTRACT, choices, _STORED, [drawn])
+        if not isinstance(written, dict) or sorted(cast("dict[str, Any]", written)) != [
+            "choices",
+            "counterexample",
+        ]:
+            at = f"settings.stored[{i}]"
+            raise FaultError(
+                at,
+                "the stored case is not an object of its choices and its "
+                "counterexample",
+            )
+        case = cast("dict[str, Any]", written)
+        choices = parse_choices(case["choices"])
+        failure = store.Failure(contract, choices, _STORED, case["counterexample"])
         found = (_FIRST_FOUND + timedelta(days=i)).isoformat()
         save(
             directory,
-            store.name(CONTRACT, choices),
+            store.name(contract, choices),
             store.entry(failure, version(), found),
         )
 
@@ -346,7 +361,8 @@ def _options_of(settings: object, directory: str, spec: object) -> list[Any]:
 
     Raises:
         FaultError: The settings have a setting that the runner does not
-            take, or an example that the runner cannot follow.
+            take, an example that the runner cannot follow, or a stored case
+            that is not an object of its choices and its counterexample.
         ValueError: The settings are not an object, or a setting is not
             valid.
     """
@@ -383,7 +399,7 @@ def _options_of(settings: object, directory: str, spec: object) -> list[Any]:
         options.append(prop.replay(written["replay"]))
     if "examples" in written:
         options.append(_example_of(written["examples"], spec))
-    _write_stored(written.get("stored", []), directory, spec)
+    write_stored(written.get("stored", []), directory, CONTRACT)
     return options
 
 

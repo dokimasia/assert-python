@@ -9,7 +9,8 @@ subject with prop.for_all on a recorder, after the trace, and compares the
 detail of the call record of the property with the detail of the vector. A
 vector whose trace the run refuses has the entry, the name of its step and
 the reason as its error. The runner compares the error with the fault that
-ends the call.
+ends the call. The stored cases of the settings are entries of the store of
+the run.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from dokimi_assert._matcher.fault import FaultError
 from dokimi_assert.conformance.literal import same_json
 from dokimi_assert.conformance.prop.choices import seed_of
 from dokimi_assert.conformance.prop.detail import detail_of
+from dokimi_assert.conformance.prop.vectors import write_stored
 from dokimi_assert.conformance.stateful.subjects import SUBJECTS, Setup
 from dokimi_assert.seat import Recorder
 
@@ -120,20 +122,25 @@ def _names_of(written: object) -> frozenset[str]:
     return frozenset(cast("list[str]", written))
 
 
-def _settings_of(written: Mapping[str, Any]) -> list[prop.Option]:
+def _settings_of(written: Mapping[str, Any], directory: str) -> list[prop.Option]:
     """Return the options of the run of the settings of a vector.
 
-    The run is hermetic and does not have a store.
+    The run is hermetic, and its store is dir. Each stored case of the
+    settings is an entry of the store.
 
     Raises:
-        FaultError: The settings have a setting other than seed and cases.
+        FaultError: The settings have a setting other than seed, cases and
+            stored, or a stored case that is not an object of its choices and
+            its counterexample.
     """
-    options = [prop.hermetic(), prop.store("")]
+    options = [prop.hermetic(), prop.store(directory)]
     for name, value in written.items():
         if name == "seed":
             options.append(prop.seed(seed_of(value)))
         elif name == "cases":
             options.append(prop.cases(value))
+        elif name == "stored":
+            write_stored(value, directory, CONTRACT)
         else:
             at = f"settings.{name}"
             raise FaultError(at, "the runner does not take the setting")
@@ -159,11 +166,12 @@ def _compare_refusal(record: Mapping[str, Any], error: Mapping[str, Any]) -> Non
         )
 
 
-def _check_machines(raw: Mapping[str, Any], _: str) -> None:
+def _check_machines(raw: Mapping[str, Any], directory: str) -> None:
     """Run the subject of a machines vector, and compare the run with the vector.
 
     The subject runs under the setup and the settings of the vector, after
-    its trace. The run has the detail or the error of the vector.
+    its trace. The store of the run is directory. The run has the detail or
+    the error of the vector.
 
     Raises:
         FaultError: The vector does not have a machine subject, has a setup
@@ -177,7 +185,8 @@ def _check_machines(raw: Mapping[str, Any], _: str) -> None:
             at, f"{json.dumps(raw.get('subject'))} is not a machine subject"
         )
     setup = _setup_of(cast("dict[str, Any]", raw.get("setup") or {}))
-    options = _settings_of(cast("dict[str, Any]", raw.get("settings") or {}))
+    settings = cast("dict[str, Any]", raw.get("settings") or {})
+    options = _settings_of(settings, directory)
     if raw.get("trace") is not None:
         options.append(prop.draws(json.dumps(raw["trace"])))
     subject = make()

@@ -15,7 +15,7 @@ as 16 lowercase hexadecimal digits. A failure that shrinks to the same
 choices has the same name in every language. A lone surrogate of a contract
 counts as U+FFFD. The UTF-8 encoder of JavaScript writes it the same way.
 
-An entry of format 1 is an object with exactly these fields.
+An entry of format 1 or 2 is an object with exactly these fields.
 
 - store is the format.
 - definition is the version of the definition that wrote the entry, in the
@@ -23,12 +23,17 @@ An entry of format 1 is an object with exactly these fields.
 - property is the contract of the property.
 - identity is the identity of the failure.
 - choices is the replay token of the minimal case.
-- counterexample has one object per draw. The object has the label of the
-  draw, and the value when the value has a typed literal.
+- counterexample has one object per entry of the counterexample in request
+  order. A draw entry has the label of the draw, and the value when the
+  value has a typed literal. An entry of format 2 also has the step entries
+  of a machine. A step entry has the action as step. A step of a concurrent
+  section also has its client from 0 to 2^31 - 1, and a step of the drain
+  has drain set to true.
 - found is the UTC date on which the runner wrote the entry.
 
-A file nests objects and arrays at most 64 levels deep. The root object is
-the first level.
+A runner writes format 2 for a counterexample with a step entry, and format
+1 for every other counterexample. A file nests objects and arrays at most 64
+levels deep. The root object is the first level.
 
 A runner gives each file one verdict.
 
@@ -53,14 +58,22 @@ from dokimi_assert._prop.engine.tokens import decode, encode
 
 __all__ = ["MAX_DEPTH", "Failure", "Read", "Verdict", "entry", "name", "read"]
 
-#: The format of the entries that this module writes and replays.
+#: The format of an entry whose counterexample has draw entries alone.
 _FORMAT = 1
+
+#: The format of an entry whose counterexample also has the step entries of
+#: a machine.
+_STEPS_FORMAT = 2
 
 #: The version of the tokens that the token module encodes.
 _TOKEN_VERSION = 1
 
 #: The largest line of an identity. It is the largest signed 32-bit integer.
 _LINE_MAX = 2**31 - 1
+
+#: The largest client of a step entry. It is the largest signed 32-bit
+#: integer.
+_CLIENT_MAX = 2**31 - 1
 
 #: The largest number of levels of objects and arrays in a file. The root is
 #: one level.
@@ -82,6 +95,10 @@ _IDENTITIES = frozenset(
 
 #: The sorted keys of a draw of the counterexample without and with a value.
 _DRAWS = frozenset({"label", "label,value"})
+
+#: The sorted keys of a step of the counterexample. The steps are a
+#: sequential step, a step of a concurrent section and a step of the drain.
+_STEPS = frozenset({"step", "client,step", "drain,step"})
 
 #: The start of a token with its version.
 _TOKEN = re.compile(r"prop([1-9][0-9]*):")
@@ -117,8 +134,10 @@ class Failure:
         choices: The choices of the minimal case.
         identity: The identity. Its keys are those of one of the four forms
             of an identity.
-        counterexample: The draws. Each draw has its label, and the typed
-            literal of its value when the value has one.
+        counterexample: The entries of the counterexample in request order.
+            Each draw has its label, and the typed literal of its value when
+            the value has one. Each step of a machine has its action as step,
+            with its client or its drain mark.
     """
 
     contract: str
@@ -159,8 +178,9 @@ def _depth(node: object) -> int:
 def entry(failure: Failure, definition: str, found: str) -> dict[str, Any]:
     """Return the entry that a runner of a definition writes on the date found.
 
-    A draw whose value would nest the entry past 64 levels is recorded by its
-    label alone.
+    The entry is of format 2 for a counterexample with a step entry, and of
+    format 1 otherwise. A draw whose value would nest the entry past 64
+    levels is recorded by its label alone.
 
     Args:
         failure: The failure.
@@ -172,19 +192,20 @@ def entry(failure: Failure, definition: str, found: str) -> dict[str, Any]:
         The entry as a JSON object.
     """
     deepest = MAX_DEPTH - _ABOVE_VALUE
-    draws = [
-        {"label": draw["label"]}
-        if "value" in draw and _depth(draw["value"]) > deepest
-        else dict(draw)
-        for draw in failure.counterexample
+    recorded = [
+        {"label": item["label"]}
+        if "value" in item and _depth(item["value"]) > deepest
+        else dict(item)
+        for item in failure.counterexample
     ]
+    steps = any("step" in item for item in recorded)
     return {
-        "store": _FORMAT,
+        "store": _STEPS_FORMAT if steps else _FORMAT,
         "definition": definition,
         "property": failure.contract,
         "identity": dict(failure.identity),
         "choices": encode(failure.choices),
-        "counterexample": draws,
+        "counterexample": recorded,
         "found": found,
     }
 
@@ -222,22 +243,45 @@ def _is_date(found: object) -> bool:
     return year >= 1 and 1 <= month <= _MONTHS and 1 <= day <= lengths[month - 1]
 
 
-def _is_draw(draw: object) -> bool:
-    """Report whether a draw of the counterexample has its form."""
-    if not isinstance(draw, dict):
+def _is_step(fields: Mapping[str, object]) -> bool:
+    """Report whether a step of the counterexample has its form.
+
+    The action is a string, the client is an integer from 0 to 2^31 - 1, and
+    the drain mark is true.
+    """
+    client = fields.get("client", 0)
+    return (
+        _keys_of(fields) in _STEPS
+        and isinstance(fields["step"], str)
+        and isinstance(client, int)
+        and not isinstance(client, bool)
+        and 0 <= client <= _CLIENT_MAX
+        and fields.get("drain", True) is True
+    )
+
+
+def _is_item(item: object, steps: bool) -> bool:
+    """Report whether an entry of the counterexample has its form.
+
+    A step entry has its form only when steps is True.
+    """
+    if not isinstance(item, dict):
         return False
-    fields: dict[str, object] = draw
-    return _keys_of(fields) in _DRAWS and isinstance(fields["label"], str)
+    fields: dict[str, object] = item
+    if _keys_of(fields) in _DRAWS:
+        return isinstance(fields["label"], str)
+    return steps and _is_step(fields)
 
 
-def _well_formed(document: Mapping[str, object]) -> bool:
-    """Report whether every field of an entry of format 1 has its form.
+def _well_formed(document: Mapping[str, object], version: int) -> bool:
+    """Report whether every field of an entry of a format has its form.
 
     The caller checks the form of the token apart.
     """
     definition = document["definition"]
     identity = document["identity"]
-    draws = document["counterexample"]
+    items = document["counterexample"]
+    steps = version == _STEPS_FORMAT
     return (
         isinstance(definition, str)
         and _VERSION.fullmatch(definition) is not None
@@ -246,8 +290,8 @@ def _well_formed(document: Mapping[str, object]) -> bool:
         and _keys_of(identity) in _IDENTITIES
         and all(_identity_value(k, v) for k, v in identity.items())
         and isinstance(document["choices"], str)
-        and isinstance(draws, list)
-        and all(map(_is_draw, draws))
+        and isinstance(items, list)
+        and all(_is_item(item, steps) for item in items)
         and _is_date(document["found"])
     )
 
@@ -260,9 +304,9 @@ def _parse_entry(text: str) -> tuple[str, list[Choice]]:
     if not isinstance(version, int) or isinstance(version, bool) or version < _FORMAT:
         msg = "prop: store is not a format"
         raise JsonError(msg)
-    if version > _FORMAT:
+    if version > _STEPS_FORMAT:
         raise _LaterError
-    if _keys_of(fields) != _FIELDS or not _well_formed(fields):
+    if _keys_of(fields) != _FIELDS or not _well_formed(fields, version):
         msg = "prop: the fields of the entry are not those of its format"
         raise JsonError(msg)
     token = str(fields["choices"])

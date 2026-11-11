@@ -24,7 +24,13 @@ from dokimi_assert._prop.engine.choice import (
 from dokimi_assert._prop.engine.collection import Sizes
 from dokimi_assert._prop.engine.execution import Body, Divergence, Execution, Phase
 from dokimi_assert._prop.engine.generator import Bytes, Float, Integer, List
-from dokimi_assert._prop.engine.runner import Outcome, Requirement, Settings, Values
+from dokimi_assert._prop.engine.runner import (
+    Outcome,
+    Requirement,
+    Settings,
+    Stored,
+    Values,
+)
 from dokimi_assert._prop.engine.source import case_source
 from dokimi_assert._prop.engine.traces import Draw
 from helpers import integers
@@ -48,6 +54,11 @@ Call = tuple[Phase, Execution]
 def recorded(*values: int) -> tuple[Choice, ...]:
     """Return the integer choices of values in the form of the settings of a run."""
     return tuple(integers(*values))
+
+
+def stored_case(*values: int) -> Stored:
+    """Return the stored case of the integer choices of values without a trace."""
+    return Stored(recorded(*values))
 
 
 def ticking() -> Callable[[], float]:
@@ -241,7 +252,7 @@ class TestCampaign:
                 SEED,
                 traces=((Draw("n", 1),),),
                 examples=(recorded(5, 6), Values((7, 8))),
-                stored=(recorded(3, 4),),
+                stored=(stored_case(3, 4),),
             ),
         )
         check.equal(
@@ -249,6 +260,23 @@ class TestCampaign:
             [[phase for phase, _ in calls], len(outcome.stored), outcome.cases],
             [["example", "example", "example", "stored", "random", "random"], 1, 6],
             "four known cases run before two random cases",
+        )
+
+    def test_replays_the_trace_of_a_stored_case_whose_choices_decode_to_other_values(
+        self, seat: Collector
+    ) -> None:
+        """The choices decode to 3, and the entry records a value above HIGH."""
+        stored = Stored(recorded(3), (Draw("n", HIGH + 1),), lambda _: False)
+        outcome, calls = explored(high, 1, Settings(SEED, stored=(stored,)))
+        check.equal(
+            seat,
+            [
+                [phase for phase, _ in calls[:2]],
+                [one.replayed for one in outcome.stored],
+                outcome.kind,
+            ],
+            [["stored", "stored"], [True], "counterexample"],
+            "the campaign counts the failing case of the trace",
         )
 
     def test_goes_on_past_a_concluded_failure_until_its_budget_has_passed(
@@ -318,7 +346,7 @@ class TestCampaign:
             if calls == 1:
                 c.fail("first")
 
-        outcome, _ = explored(first, 10, Settings(SEED, stored=(recorded(5),)))
+        outcome, _ = explored(first, 10, Settings(SEED, stored=(stored_case(5),)))
         divergence = outcome.divergence
         check.equal(
             seat,
@@ -345,7 +373,7 @@ class TestCampaign:
                 c.fail("first")
 
         outcome, _ = explored(
-            first, 10, Settings(SEED, stored=(recorded(5),), replays=2)
+            first, 10, Settings(SEED, stored=(stored_case(5),), replays=2)
         )
         check.equal(
             seat,
@@ -401,7 +429,7 @@ class TestCampaign:
                 c.fail("second")
 
         outcome, phases = explored(
-            second, 10, Settings(SEED, stored=(recorded(5),), confirm=1)
+            second, 10, Settings(SEED, stored=(stored_case(5),), confirm=1)
         )
         check.equal(
             seat,
@@ -475,7 +503,9 @@ class TestCampaign:
             if c.draw(WIDE, "n") == 5:
                 c.skip("five")
 
-        outcome, _ = explored(skips_at_five, 5, Settings(SEED, stored=(recorded(5),)))
+        outcome, _ = explored(
+            skips_at_five, 5, Settings(SEED, stored=(stored_case(5),))
+        )
         check.equal(
             seat,
             [outcome.kind, outcome.reason, len(outcome.stored)],

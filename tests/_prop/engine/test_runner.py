@@ -41,18 +41,21 @@ from dokimi_assert._prop.engine.runner import (
     Outcome,
     Requirement,
     Settings,
+    Stored,
+    StoredRun,
     Tally,
     Values,
     conclude_case,
     known_cases,
     run,
     run_stored,
+    run_stored_case,
     shortfall_of,
 )
 from dokimi_assert._prop.engine.source import case_source
 from dokimi_assert._prop.engine.tokens import decode
 from dokimi_assert._prop.engine.traces import Draw, TraceError
-from helpers import integers, refusal
+from helpers import integers, refusal, values_of
 
 if TYPE_CHECKING:
     from dokimi_assert.seat import Collector
@@ -71,6 +74,16 @@ MILLION = 1_000_000
 def recorded(*values: int) -> tuple[Choice, ...]:
     """Return the integer choices of values in the form of the settings of a run."""
     return tuple(integers(*values))
+
+
+def stored_case(*values: int) -> Stored:
+    """Return the stored case of the integer choices of values without a trace."""
+    return Stored(recorded(*values))
+
+
+def never_matches(_: Execution) -> bool:
+    """Report that a case does not decode to the counterexample of its entry."""
+    return False
 
 
 class Seen:
@@ -245,6 +258,37 @@ class TestSettings:
         )
 
 
+class TestStored:
+    """Stored is a stored case with the choices and the counterexample of its entry."""
+
+    def test_has_an_empty_trace_without_a_matcher_by_default(
+        self, seat: Collector
+    ) -> None:
+        """Every case matches the stored case."""
+        one = Stored(recorded(3))
+        check.equal(
+            seat,
+            [values_of(list(one.choices)), one.trace, one.matches],
+            [values_of(integers(3)), (), None],
+            "the stored case has its choices alone",
+        )
+
+
+class TestStoredRun:
+    """StoredRun is the run of a stored case with the case that counts for it."""
+
+    def test_counts_the_case_of_the_choices_by_default(self, seat: Collector) -> None:
+        """The run does not replay a trace."""
+        one = StoredRun(executed(above_million, integers(3)))
+        check.equal(
+            seat,
+            [values_of(one.execution.case.choices), one.replayed, one.refusal],
+            [values_of(integers(3)), False, None],
+            "the run counts the case of the choices",
+        )
+        check.is_none(seat, one.untaken, "the run does not leave an entry untaken")
+
+
 class TestKnownCases:
     """known_cases returns the cases that a run tries before it generates any."""
 
@@ -257,7 +301,7 @@ class TestKnownCases:
                 SEED,
                 traces=((Draw("n", 5),),),
                 examples=(recorded(3), Values((4,))),
-                stored=(recorded(6),),
+                stored=(stored_case(6),),
             )
         )
         check.equal(
@@ -267,9 +311,157 @@ class TestKnownCases:
                 ("example", "Tracing"),
                 ("example", "Replaying"),
                 ("example", "Valuing"),
-                ("stored", "Replaying"),
+                ("stored", "Stored"),
             ],
             "the stored case follows the three example cases",
+        )
+
+
+class TestRunStoredCase:
+    """run_stored_case runs a stored case and returns the case that counts for it."""
+
+    def test_counts_the_case_of_the_choices_of_a_case_without_a_matcher(
+        self, seat: Collector
+    ) -> None:
+        """The trace does not run."""
+        seen = Seen()
+        ran = run_stored_case(
+            above_million,
+            Stored(recorded(3), (Draw("n", MILLION + 1),)),
+            MAX_CHOICES,
+            seen.observer,
+        )
+        check.equal(
+            seat,
+            [ran.execution.case.draws[0].value, ran.replayed, seen.calls],
+            [3, False, [("stored", "passed")]],
+            "the case of the choices counts",
+        )
+
+    def test_counts_the_case_of_the_choices_that_matches_its_entry(
+        self, seat: Collector
+    ) -> None:
+        """The matcher reports a match."""
+        seen = Seen()
+        ran = run_stored_case(
+            above_million,
+            Stored(recorded(3), (Draw("n", MILLION + 1),), lambda _: True),
+            MAX_CHOICES,
+            seen.observer,
+        )
+        check.equal(
+            seat,
+            [ran.execution.case.draws[0].value, ran.replayed, seen.calls],
+            [3, False, [("stored", "passed")]],
+            "the case of the choices counts",
+        )
+
+    def test_counts_the_case_of_the_choices_that_fails(self, seat: Collector) -> None:
+        """A failing case counts whatever it decodes to."""
+        seen = Seen()
+        ran = run_stored_case(
+            above_million,
+            Stored(recorded(MILLION + 2), (Draw("n", 3),), never_matches),
+            MAX_CHOICES,
+            seen.observer,
+        )
+        check.equal(
+            seat,
+            [ran.execution.case.draws[0].value, ran.replayed, seen.calls],
+            [MILLION + 2, False, [("stored", "failed")]],
+            "the failing case of the choices counts",
+        )
+
+    def test_counts_the_case_of_the_trace_that_fails(self, seat: Collector) -> None:
+        """The choices decode to 3, and the entry records a value above a million."""
+        seen = Seen()
+        ran = run_stored_case(
+            above_million,
+            Stored(recorded(3), (Draw("n", MILLION + 1),), never_matches),
+            MAX_CHOICES,
+            seen.observer,
+        )
+        check.equal(
+            seat,
+            [ran.execution.case.draws[0].value, ran.replayed, seen.calls],
+            [MILLION + 1, True, [("stored", "passed"), ("stored", "failed")]],
+            "the failing case of the trace counts",
+        )
+
+    def test_counts_the_case_of_the_trace_that_takes_every_entry(
+        self, seat: Collector
+    ) -> None:
+        """The case of the trace passes."""
+        ran = run_stored_case(
+            above_million,
+            Stored(recorded(3), (Draw("n", 5),), never_matches),
+            MAX_CHOICES,
+            unobserved,
+        )
+        check.equal(
+            seat,
+            [ran.execution.case.draws[0].value, ran.execution.status, ran.replayed],
+            [5, "passed", True],
+            "the case of the trace counts",
+        )
+
+    def test_counts_the_case_of_the_trace_that_fails_before_its_last_entry(
+        self, seat: Collector
+    ) -> None:
+        """The body fails before the draw of the second entry."""
+        ran = run_stored_case(
+            above_million,
+            Stored(recorded(3), (Draw("n", MILLION + 1), Draw("m", 1)), never_matches),
+            MAX_CHOICES,
+            unobserved,
+        )
+        check.equal(
+            seat,
+            [ran.execution.status, ran.replayed, ran.untaken],
+            ["failed", True, None],
+            "the failing case of the trace counts",
+        )
+
+    def test_counts_the_case_of_the_choices_when_the_body_refuses_an_entry(
+        self, seat: Collector
+    ) -> None:
+        """The draw labelled n takes the entry labelled m."""
+        seen = Seen()
+        ran = run_stored_case(
+            above_million,
+            Stored(recorded(3), (Draw("m", 5),), never_matches),
+            MAX_CHOICES,
+            seen.observer,
+        )
+        refused = ran.refusal
+        check.equal(
+            seat,
+            [
+                ran.execution.case.draws[0].value,
+                ran.replayed,
+                None if refused is None else [refused.entry, refused.what],
+                seen.calls,
+            ],
+            [3, False, [0, "n"], [("stored", "passed")]],
+            "the case of the choices counts with the refusal",
+        )
+
+    def test_counts_the_case_of_the_choices_when_the_trace_leaves_an_entry_untaken(
+        self, seat: Collector
+    ) -> None:
+        """The body draws one value of two entries."""
+        seen = Seen()
+        ran = run_stored_case(
+            above_million,
+            Stored(recorded(3), (Draw("n", 5), Draw("m", 6)), never_matches),
+            MAX_CHOICES,
+            seen.observer,
+        )
+        check.equal(
+            seat,
+            [ran.execution.case.draws[0].value, ran.replayed, ran.untaken, seen.calls],
+            [3, False, 1, [("stored", "passed")]],
+            "the case of the choices counts with the first untaken entry",
         )
 
 
@@ -503,12 +695,30 @@ class TestRun:
             if c.draw(DIGIT, "n") == 7:
                 c.fail("seven")
 
-        outcome = ran(seven, Settings(SEED, stored=(recorded(7),)))
+        outcome = ran(seven, Settings(SEED, stored=(stored_case(7),)))
         check.equal(
             seat,
             [outcome.kind, outcome.cases, len(outcome.stored)],
             ["counterexample", 0, 1],
             "the stored case fails first",
+        )
+
+    def test_replays_the_trace_of_a_stored_case_whose_choices_decode_to_other_values(
+        self, seat: Collector
+    ) -> None:
+        """The choices decode to 3, and the entry records 950."""
+        stored = Stored(recorded(3), (Draw("n", 950),), never_matches)
+        outcome = ran(at_least_900, Settings(SEED, cases=1, stored=(stored,), shrink=0))
+        failing = outcome.failing
+        check.equal(
+            seat,
+            [
+                outcome.kind,
+                None if failing is None else failing.case.draws[0].value,
+                [one.replayed for one in outcome.stored],
+            ],
+            ["counterexample", 950, [True]],
+            "the run fails at the value of the entry",
         )
 
     def test_decodes_random_case_i_from_the_stream_of_the_seed_plus_i(
@@ -873,7 +1083,7 @@ class TestRun:
                 SEED,
                 cases=1,
                 examples=(recorded(5),),
-                stored=(recorded(3), recorded(4)),
+                stored=(stored_case(3), stored_case(4)),
             ),
             seen,
         )
@@ -1297,7 +1507,11 @@ class TestRunConfirm:
         ran(
             wide,
             Settings(
-                SEED, cases=1, examples=(recorded(5),), stored=(recorded(3),), confirm=1
+                SEED,
+                cases=1,
+                examples=(recorded(5),),
+                stored=(stored_case(3),),
+                confirm=1,
             ),
             seen,
         )
@@ -1314,7 +1528,7 @@ class TestRunConfirm:
         """The replay of the stored case fails."""
         outcome = ran(
             failing_on_its_second_call(),
-            Settings(SEED, stored=(recorded(3),), confirm=1),
+            Settings(SEED, stored=(stored_case(3),), confirm=1),
         )
         check.equal(
             seat,
@@ -1582,7 +1796,7 @@ class TestRunOnFourWorkers:
         (
             "reports a failure of a later stored case",
             at_least_900,
-            {"stored": (recorded(100), recorded(950))},
+            {"stored": (stored_case(100), stored_case(950))},
         ),
         (
             "reports the first failing case without a shrink",
@@ -1630,7 +1844,7 @@ class TestRunStored:
     def test_counts_the_stored_cases_that_pass(self, seat: Collector) -> None:
         """Two stored cases pass."""
         outcome = run_stored(
-            above_million, Settings(SEED, stored=(recorded(1), recorded(2)))
+            above_million, Settings(SEED, stored=(stored_case(1), stored_case(2)))
         )
         check.equal(
             seat,
@@ -1646,7 +1860,10 @@ class TestRunStored:
         seen = Seen()
         outcome = run_stored(
             above_million,
-            Settings(SEED, stored=(recorded(1), recorded(MILLION + 9), recorded(3))),
+            Settings(
+                SEED,
+                stored=(stored_case(1), stored_case(MILLION + 9), stored_case(3)),
+            ),
             seen.observer,
         )
         check.equal(
@@ -1656,11 +1873,29 @@ class TestRunStored:
             "the run does not shrink the stored case",
         )
 
+    def test_reports_the_case_of_the_trace_of_a_stored_case_as_found(
+        self, seat: Collector
+    ) -> None:
+        """The token is the token of the case of the trace."""
+        stored = Stored(recorded(3), (Draw("n", MILLION + 1),), never_matches)
+        outcome = run_stored(above_million, Settings(SEED, stored=(stored,)))
+        token = outcome.token
+        check.equal(
+            seat,
+            [
+                outcome.kind,
+                None if token is None else values_of(decode(token)),
+                [one.replayed for one in outcome.stored],
+            ],
+            ["counterexample", values_of(integers(MILLION + 1)), [True]],
+            "the run reports the case of the trace",
+        )
+
     def test_skips_at_the_first_stored_case_that_skips(self, seat: Collector) -> None:
         """The second of three stored cases skips."""
         outcome = run_stored(
             skips_at_thousand,
-            Settings(SEED, stored=(recorded(1), recorded(1000), recorded(3))),
+            Settings(SEED, stored=(stored_case(1), stored_case(1000), stored_case(3))),
         )
         check.equal(
             seat,
@@ -1682,7 +1917,7 @@ class TestRunStored:
         seen = Seen()
         outcome = run_stored(
             failing_on_its_second_call(),
-            Settings(SEED, stored=(recorded(1), recorded(2)), confirm=1),
+            Settings(SEED, stored=(stored_case(1), stored_case(2)), confirm=1),
             seen.observer,
         )
         check.equal(

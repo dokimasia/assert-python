@@ -669,7 +669,10 @@ replay: prop.replay("prop1:AAEAAAABAAEAAA") or DOKIMI_ASSERT_PROP_REPLAY=prop1:A
 ```
 
 - A failing run writes its minimal case to the store of the test under
-  `testdata/prop`, and later runs replay it first.
+  `testdata/prop`, and later runs replay it first. When a change of a
+  generator or of the actions of a machine makes the stored choices decode
+  to other values, the run replays the values and the steps that the file
+  records.
 - A property form, such as `prop.equal` or `prop.round_trip`, runs one
   assertion on every generated input. A form reads the type of its input
   from the annotation of its function, and `prop.of` derives the generator

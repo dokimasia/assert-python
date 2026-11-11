@@ -43,7 +43,7 @@ from dokimi_assert._prop.case import (
     execute,
 )
 from dokimi_assert._prop.detail import detail_json, detail_of, record_of, result_of
-from dokimi_assert._prop.directory import Loaded, claim, load, save, store_of
+from dokimi_assert._prop.directory import Loaded, Stored, claim, load, save, store_of
 from dokimi_assert._prop.engine import literal, strict_json, tokens
 from dokimi_assert._prop.engine.bridge import Bridging
 from dokimi_assert._prop.engine.campaign import campaign
@@ -62,16 +62,18 @@ from dokimi_assert._prop.engine.runner import (
     run_stored,
 )
 from dokimi_assert._prop.engine.store import MAX_DEPTH
-from dokimi_assert._prop.engine.traces import Draw, Entry, TraceError
+from dokimi_assert._prop.engine.traces import UNSTATED, Draw, Entry, TraceError
 from dokimi_assert._prop.environment import budget_of, mutated, seed_of, token_of
 from dokimi_assert._prop.registry import Generators, close, scope
-from dokimi_assert._prop.stored import differs, entry_of
+from dokimi_assert._prop.stored import differs, entry_of, stored_of, trace_of
 from dokimi_assert._record.calls import Slot, cut, own
 from dokimi_assert.failure import Where
 
 if TYPE_CHECKING:
     from dokimi_assert._prop.detail import Result
     from dokimi_assert._prop.engine.choice import Choice
+    from dokimi_assert._prop.engine.runner import Stored as EngineStored
+    from dokimi_assert._prop.engine.runner import StoredRun
     from dokimi_assert._prop.option import Config, Wrapper
 
 __all__ = ["Call", "Property", "PropertyBody"]
@@ -79,6 +81,23 @@ __all__ = ["Call", "Property", "PropertyBody"]
 #: The name of the draws option. The location of each fault in its entries
 #: starts with this name.
 _DRAWS = "draws"
+
+#: The field of the counterexample of an entry of the store. The location of
+#: the refusal of a stored case starts with this name.
+_COUNTEREXAMPLE = "counterexample"
+
+#: The reason of the note on a stored case whose run replayed the
+#: counterexample of its entry.
+_REPLAYED = (
+    "the stored case decodes to other values than it records, and the run "
+    "replayed its counterexample"
+)
+
+#: The reason of the note on a stored case whose run tested the values that
+#: its choices decode to.
+_TESTED = (
+    "the stored case decodes to other values than it records, and the run tested those"
+)
 
 #: The name of the around option. The text of each fault of its wrapper
 #: starts with this name.
@@ -211,6 +230,55 @@ def _observer_of(slot: Slot | None) -> Observer:
 def _note(seat: Seat, op: str, fault: FaultError) -> None:
     """Note a fault that does not end the call of an operation on seat."""
     note_fault(seat, of_operation(op, fault), stacklevel=4)
+
+
+def _refused(field: str, trace: Sequence[Entry], error: TraceError) -> FaultError:
+    """Return the fault at the entry of a trace that the body cannot follow.
+
+    field is the input of the trace, such as the draws option.
+    """
+    at = f"{field}[{error.entry}].{error.reason}"
+    entry = trace[error.entry]
+    label = json.dumps(error.what, ensure_ascii=False)
+    if error.reason == "step":
+        return FaultError(at, f"the machine cannot take the step {label} there")
+    if error.reason == "value" and isinstance(entry, Draw) and entry.value is UNSTATED:
+        return FaultError(
+            at, f"the entry of the draw labelled {label} does not have a typed literal"
+        )
+    if error.reason == "value":
+        return FaultError(
+            at,
+            f"the generator of the draw labelled {label} does not produce the "
+            "value of the entry",
+        )
+    if isinstance(entry, Step):
+        taken = f"the step entry of {json.dumps(entry.action, ensure_ascii=False)}"
+    else:
+        taken = f"the entry labelled {json.dumps(entry.label, ensure_ascii=False)}"
+    return FaultError(at, f"the draw labelled {label} takes {taken}")
+
+
+def _stored_cases(loaded: Loaded) -> tuple[EngineStored, ...]:
+    """Return the stored case of each entry of a store from the oldest."""
+    return tuple(stored_of(one.choices, one.counterexample) for one in loaded.entries)
+
+
+def _untraced(entry: Stored, ran: StoredRun) -> FaultError | None:
+    """Return the reason that the run of a stored case did not count its trace.
+
+    The reason is None for a case of the choices that failed. The run does not
+    follow the trace of such a case.
+    """
+    if ran.refusal is not None:
+        trace = trace_of(entry.counterexample)
+        return _refused(_COUNTEREXAMPLE, trace, ran.refusal)
+    if ran.untaken is not None:
+        return FaultError(
+            f"{_COUNTEREXAMPLE}[{ran.untaken}]",
+            "the case of the counterexample leaves the entry untaken",
+        )
+    return None
 
 
 class _Run:
@@ -419,8 +487,7 @@ class Property:
                 loaded = self._load(running)
                 if loaded is None:
                     return
-                stored = tuple(entry.choices for entry in loaded.entries)
-                settings = replace(self._settings, stored=stored)
+                settings = replace(self._settings, stored=_stored_cases(loaded))
                 saved: list[FaultError] = []
 
                 def concluded(found: Outcome) -> None:
@@ -474,8 +541,7 @@ class Property:
         loaded = self._load(running)
         if loaded is None:
             return
-        stored = tuple(entry.choices for entry in loaded.entries)
-        settings = replace(self._settings, stored=stored)
+        settings = replace(self._settings, stored=_stored_cases(loaded))
         with scope(self._using):
             with Loop(self.call.assertion) as loop:
                 cases = self._adapt(seat, running.slot, body, loop)
@@ -632,7 +698,7 @@ class Property:
         try:
             return work()
         except TraceError as error:
-            Property.fault(running, self.call, self._refusal(error))
+            Property.fault(running, self.call, _refused(_DRAWS, self._entries, error))
         except Faulted as signal:
             running.faulted(
                 Mode.FATAL, self.call.assertion, self.call.contract, signal.fault
@@ -642,28 +708,6 @@ class Property:
         except FaultError as error:
             Property.fault(running, self.call, error)
         return None
-
-    def _refusal(self, error: TraceError) -> FaultError:
-        """Return the fault at an entry of the draws option.
-
-        The body cannot follow the entry.
-        """
-        at = f"{_DRAWS}[{error.entry}].{error.reason}"
-        entry = self._entries[error.entry]
-        label = json.dumps(error.what, ensure_ascii=False)
-        if error.reason == "step":
-            return FaultError(at, f"the machine cannot take the step {label} there")
-        if error.reason == "value":
-            return FaultError(
-                at,
-                f"the generator of the draw labelled {label} does not produce the "
-                "value of the entry",
-            )
-        if isinstance(entry, Step):
-            taken = f"the step entry of {json.dumps(entry.action, ensure_ascii=False)}"
-        else:
-            taken = f"the entry labelled {json.dumps(entry.label, ensure_ascii=False)}"
-        return FaultError(at, f"the draw labelled {label} takes {taken}")
 
     def _save(self, outcome: Outcome) -> list[FaultError]:
         """Write an entry of each failure of a counterexample to the store.
@@ -700,6 +744,9 @@ class Property:
 
         The run notes each file of the store that it skipped. It also notes
         each stored case that decodes to other values than its entry records.
+        The note states that the run replayed the counterexample of the entry,
+        or that it tested the values of the choices. The cause of the second
+        note is the reason that the run did not count the trace.
         """
         faults = [
             FaultError(
@@ -708,15 +755,12 @@ class Property:
             )
             for name in loaded.skipped
         ]
-        for execution, entry in zip(outcome.stored, loaded.entries, strict=False):
-            if differs(entry.counterexample, execution):
-                faults.append(
-                    FaultError(
-                        str(pathlib.Path(self._directory, entry.name)),
-                        "the stored case decodes to other values than it records, "
-                        "and the run tested those",
-                    )
-                )
+        for ran, entry in zip(outcome.stored, loaded.entries, strict=False):
+            at = str(pathlib.Path(self._directory, entry.name))
+            if ran.replayed:
+                faults.append(FaultError(at, _REPLAYED))
+            elif differs(entry.counterexample, ran.execution):
+                faults.append(FaultError(at, _TESTED, _untraced(entry, ran)))
         return faults
 
     def _report(self, running: Running, outcome: Outcome) -> None:
