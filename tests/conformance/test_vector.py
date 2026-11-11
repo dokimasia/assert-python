@@ -132,7 +132,7 @@ class TestVectors:
         ("returns the 57 files vectors of the definition", FILE_KINDS, 57),
         ("returns the 110 history vectors of the definition", HISTORY_KINDS, 110),
         ("returns the 441 property vectors of the definition", PROP_KINDS, 441),
-        ("returns the 14 machines vectors of the definition", STATEFUL_KINDS, 14),
+        ("returns the 15 machines vectors of the definition", STATEFUL_KINDS, 15),
     ]
 
     @pytest.mark.parametrize(

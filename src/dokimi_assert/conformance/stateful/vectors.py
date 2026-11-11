@@ -39,7 +39,9 @@ CONTRACT = "the machine subject of the vector"
 _SETUP_CLIENTS = 2
 
 #: The members that the setup of a vector can have.
-_SETUP = frozenset({"mean", "max", "swarm", "clients", "concurrent", "strategy"})
+_SETUP = frozenset(
+    {"mean", "max", "swarm", "clients", "concurrent", "concurrent-mean", "strategy"}
+)
 
 
 def _strategy_of(written: object) -> stateful.Strategy:
@@ -79,6 +81,8 @@ def _setup_of(written: Mapping[str, Any]) -> Setup:
     section = [stateful.clients(written.get("clients", _SETUP_CLIENTS))]
     if "concurrent" in written:
         section.append(stateful.concurrent(written["concurrent"]))
+    if "concurrent-mean" in written:
+        section.append(stateful.concurrent_mean(written["concurrent-mean"]))
     return Setup(steps, section, _strategy_of(written.get("strategy", "uniform")))
 
 

@@ -39,6 +39,7 @@ from dokimi_assert._stateful.option import (
     Option,
     clients,
     concurrent,
+    concurrent_mean,
     max_steps,
     mean,
     repeat,
@@ -673,6 +674,23 @@ class TestSteps:
             got.append([taken.client for _, taken in engine.steps])
             want.append(listed)
         check.equal(seat, got, want, "each client is below(3) after a coin of 5 in 6")
+
+    def test_continues_a_concurrent_section_by_its_mean_up_to_the_most_steps(
+        self, seat: Collector
+    ) -> None:
+        """Each flag of a mean of 12 is a coin of 12 in 13."""
+        got: list[list[int | None]] = []
+        want: list[list[int | None]] = []
+        for seed in range(20):
+            c, engine = body_case(Generating(Source(seed)))
+            twin = Source(seed)
+            steps(c, Plain([Log().action("a")]), *section(c, concurrent_mean(12)))
+            listed: list[int | None] = []
+            while len(listed) < 16 and twin.coin(12, 13):
+                listed.append(twin.below(3))
+            got.append([taken.client for _, taken in engine.steps])
+            want.append(listed)
+        check.equal(seat, got, want, "each client is below(3) after a coin of 12 in 13")
 
     def test_checks_the_history_once_every_task_of_a_section_ends(
         self, seat: Collector

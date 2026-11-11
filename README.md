@@ -1087,6 +1087,9 @@ def test_the_queue_keeps_its_values_in_order(seat):
   failure needs, and it replays from its token.
 - The clients of a concurrent section run on threads by default. A case
   then runs up to `repeat` times, because threads do not replay.
+- A concurrent section averages 5 steps under the default maximum of 16.
+  `stateful.concurrent_mean(n)` sets another mean, and the maximum of
+  `stateful.concurrent(n)` still stops a section.
 - With the option `stateful.tasks`, the clients run as tasks of a
   `stateful.Scheduler`. The releases of the scheduler are choices of the
   case, so a race replays and shrinks. A subject that runs as tasks awaits
@@ -1109,6 +1112,7 @@ stateful.steps(case: Case, machine: Machine[_S], *options: Option)
 stateful.Option
 stateful.clients(n: int) -> Option
 stateful.concurrent(n: int) -> Option
+stateful.concurrent_mean(n: int) -> Option
 stateful.max_steps(n: int) -> Option
 stateful.mean(n: int) -> Option
 stateful.repeat(n: int) -> Option

@@ -58,7 +58,7 @@ class TestRunners:
         vector_id = "correct-counter/passes-with-two-clients"
         raw = vector(
             vector_id,
-            setup={"mean": 2, "concurrent": 2},
+            setup={"mean": 2, "concurrent": 2, "concurrent-mean": 1},
             settings={"seed": "1", "cases": 5},
             detail={**VECTORS[vector_id]["detail"], "cases": 5},
         )

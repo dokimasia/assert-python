@@ -261,7 +261,9 @@ class _Run(Generic[_S]):
             start = len(self._e.choices)
             if self._trace is not None:
                 self._follow_concurrent(self._trace, eligible, count)
-            if not eligible or not self._more(count, sizes, None):
+            if not eligible or not self._more(
+                count, sizes, self._config.concurrent_mean
+            ):
                 break
             client = self._client()
             action = eligible[self._index(eligible)]

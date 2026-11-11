@@ -670,6 +670,7 @@ BLOCKS = {
                 f"{TYPE}Option",
                 "clients",
                 "concurrent",
+                "concurrent_mean",
                 "max_steps",
                 "mean",
                 "repeat",

@@ -19,6 +19,7 @@ __all__ = [
     "Option",
     "clients",
     "concurrent",
+    "concurrent_mean",
     "configure",
     "max_steps",
     "mean",
@@ -42,6 +43,8 @@ class Config:
         concurrent: The most steps of a concurrent section.
         scheduler: The scheduler whose tasks run the clients of a concurrent
             section, or None for clients on threads.
+        concurrent_mean: The mean number of steps of a concurrent section, or
+            None for the mean of a collection of 0 to concurrent elements.
         repeat: The runs of a case whose concurrent section runs on threads.
     """
 
@@ -51,6 +54,7 @@ class Config:
     clients: int = 1
     concurrent: int = 16
     scheduler: Scheduler | None = None
+    concurrent_mean: int | None = None
     repeat: int = 4
 
 
@@ -160,6 +164,26 @@ def concurrent(n: int) -> Option:
     """
     _counted("concurrent", n, 0)
     return Option(lambda config: replace(config, concurrent=n))
+
+
+def concurrent_mean(n: int) -> Option:
+    """Set the mean number of steps of a concurrent section.
+
+    A section without the option averages 5 steps for a maximum of 10 or
+    more, and half the maximum, rounded up, below it. The maximum of
+    concurrent still stops a section.
+
+    Args:
+        n: The mean. Must be at least 0.
+
+    Returns:
+        The option.
+
+    Raises:
+        ValueError: n is not an int of 0 or more.
+    """
+    _counted("concurrent_mean", n, 0)
+    return Option(lambda config: replace(config, concurrent_mean=n))
 
 
 def tasks(scheduler: Scheduler) -> Option:

@@ -15,6 +15,7 @@ from dokimi_assert._stateful.option import (
     Option,
     clients,
     concurrent,
+    concurrent_mean,
     configure,
     max_steps,
     mean,
@@ -42,7 +43,7 @@ class TestConfig:
         check.equal(
             seat,
             Config(),
-            Config(30, 100, True, 1, 16, None, 4),
+            Config(30, 100, True, 1, 16, None, None, 4),
             "the defaults are the settings that the definition fixes",
         )
 
@@ -147,6 +148,30 @@ class TestConcurrent:
             seat,
             refusal(seat, lambda: concurrent(-1)),
             "stateful: concurrent(-1) needs an int of 0 or more",
+            "the text of the refusal contains the call",
+        )
+
+
+class TestConcurrentMean:
+    """concurrent_mean sets the mean number of steps of a concurrent section."""
+
+    def test_returns_an_option_that_sets_the_mean_of_a_section_alone(
+        self, seat: Collector
+    ) -> None:
+        """The option sets a mean of 0 steps."""
+        check.equal(
+            seat,
+            configure([concurrent_mean(0)]),
+            Config(concurrent_mean=0),
+            "the option sets the mean of a section",
+        )
+
+    def test_raises_value_error_for_a_mean_below_0(self, seat: Collector) -> None:
+        """A mean of -1 steps is refused."""
+        check.equal(
+            seat,
+            refusal(seat, lambda: concurrent_mean(-1)),
+            "stateful: concurrent_mean(-1) needs an int of 0 or more",
             "the text of the refusal contains the call",
         )
 
