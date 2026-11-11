@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import pytest
@@ -264,6 +264,79 @@ class TestSteps:
                 [1, 1, 0],
             ],
             "the choices of seeds 0 to 19 are those of the reference",
+        )
+
+    def test_makes_no_swarm_choice_for_an_action_with_keep_set(
+        self, seat: Collector
+    ) -> None:
+        """The swarm drops b and c, so the step takes the kept action a."""
+        log = Log()
+        machine = Plain(
+            [replace(log.action("a"), keep=True), log.action("b"), log.action("c")]
+        )
+        engine = replayed(machine, [0, 0, 1, 0], max_steps(1))
+        check.equal(
+            seat,
+            [
+                [where.place for where in engine.wheres[:2]],
+                [request.bounds for request in engine.requests[:2]],
+                engine.steps,
+            ],
+            [
+                [Place("swarm", 1, "b"), Place("swarm", 2, "c")],
+                [BINARY, BINARY],
+                [(0, Step("a"))],
+            ],
+            "the swarm makes choices for b and c alone",
+        )
+
+    def test_counts_an_action_with_keep_set_as_kept_before_the_first_choice(
+        self, seat: Collector
+    ) -> None:
+        """The last choice, for b, has the bounds [0, 1] beside the kept c."""
+        log = Log()
+        machine = Plain(
+            [log.action("a"), log.action("b"), replace(log.action("c"), keep=True)]
+        )
+        engine = replayed(machine, [0, 0, 1, 0], max_steps(1))
+        check.equal(
+            seat,
+            [engine.requests[1].bounds, engine.steps],
+            [BINARY, [(0, Step("c"))]],
+            "the choice of b is free, and c takes the step",
+        )
+
+    def test_makes_no_swarm_choice_for_a_machine_whose_actions_are_all_kept(
+        self, seat: Collector
+    ) -> None:
+        """The first request is the first flag."""
+        log = Log()
+        machine = Plain(
+            [replace(log.action("a"), keep=True), replace(log.action("b"), keep=True)]
+        )
+        engine = replayed(machine, [1, 1, 0])
+        check.equal(
+            seat,
+            [engine.wheres[0].place, actions_of(engine)],
+            [Place("sequential", 0), ["b"]],
+            "the flag of the first step comes first",
+        )
+
+    def test_keeps_an_action_with_keep_set_that_no_step_entry_names(
+        self, seat: Collector
+    ) -> None:
+        """The trace names b alone, so the swarm drops c and keeps a and b."""
+        log = Log()
+        c, engine = traced([Step("b")])
+        machine = Plain(
+            [replace(log.action("a"), keep=True), log.action("b"), log.action("c")]
+        )
+        steps(c, machine)
+        check.equal(
+            seat,
+            [[choice.value for choice in engine.choices], engine.steps],
+            [[1, 0, 1, 1, 0], [(0, Step("b"))]],
+            "the swarm keeps a and b",
         )
 
     def test_keeps_the_last_action_when_the_swarm_kept_no_earlier_one(

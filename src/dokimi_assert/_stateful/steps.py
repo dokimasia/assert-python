@@ -62,10 +62,11 @@ def steps(case: Case, machine: Machine[_S], *options: Option) -> None:
     Each decision of the steps is a choice of the case. The steps run in six
     parts:
 
-    1. The swarm makes one choice per action, in order. The choice decides
-       whether the case keeps the action. A random case keeps each action
-       with the odds 1 in 2, and the draw makes the case keep one action at
-       least. Under swarm(False), the case keeps every action.
+    1. The swarm makes one choice per action without keep, in order. The
+       choice decides whether the case keeps the action. A random case keeps
+       each action with the odds 1 in 2, and the draw makes the case keep one
+       action at least. The case keeps an action with keep set without a
+       choice. Under swarm(False), the case keeps every action.
     2. Setup runs the check of the history, and then the invariant.
     3. The sequential steps run on client 0. Before each step, steps lists
        the kept actions that are enabled in every state that the last check
@@ -97,13 +98,14 @@ def steps(case: Case, machine: Machine[_S], *options: Option) -> None:
     record is "the history of the steps of the machine is linearizable".
 
     The case of the draws option follows its trace. The swarm keeps the
-    actions that the step entries of the trace name, and each step entry
-    becomes the choices of one step. A step entry that steps cannot take at
-    its position ends the run with a fault at the entry, before any other
-    case runs. steps cannot take a step entry of an action that the list of
-    the step does not have, or of a step past the most steps of its part. It
-    also cannot take a client outside the clients, a concurrent step of a
-    machine with one client, or a drain step after the drain.
+    actions that the step entries of the trace name and every action with
+    keep set, and each step entry becomes the choices of one step. A step
+    entry that steps cannot take at its position ends the run with a fault at
+    the entry, before any other case runs. steps cannot take a step entry of
+    an action that the list of the step does not have, or of a step past the
+    most steps of its part. It also cannot take a client outside the clients,
+    a concurrent step of a machine with one client, or a drain step after the
+    drain.
 
     Each request that the case makes while steps runs belongs to the part
     and the step that run. Each fingerprint that the case observes belongs
@@ -208,26 +210,34 @@ class _Run(Generic[_S]):
     def _swarm(self) -> list[Action[_S]]:
         """Return the actions that the case keeps, in order.
 
-        A case that follows a trace keeps the actions that the step entries of
-        the trace name.
+        The case keeps an action with keep set without a choice. Such an
+        action counts as kept before the first choice, so the count of the
+        remaining actions counts the actions without keep alone. A case that
+        follows a trace keeps the actions that the step entries of the trace
+        name.
         """
         actions = self._actions
         if not self._config.swarm:
             return list(actions)
         named = set() if self._trace is None else set(self._trace.actions())
+        marked = any(action.keep for action in actions)
+        remaining = len([action for action in actions if not action.keep])
         kept: list[Action[_S]] = []
         for position, action in enumerate(actions):
+            if action.keep:
+                kept.append(action)
+                continue
             self._at(Place("swarm", position, action.name))
             if self._trace is not None:
                 self._trace.prepare(1 if action.name in named else 0)
-            earlier = bool(kept)
-            remaining = len(actions) - position
+            earlier = marked or bool(kept)
             bounds = _FORCED if not earlier and remaining == 1 else _FREE
             keep = functools.partial(
                 draw.keep, p=_SWARM, kept=earlier, remaining=remaining
             )
             if self._choose(Request(bounds, keep, 1)) == 1:
                 kept.append(action)
+            remaining -= 1
         return kept
 
     def _sequential(self, kept: Sequence[Action[_S]]) -> None:

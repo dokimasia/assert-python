@@ -66,14 +66,14 @@ Each run builds its subjects anew, so a subject that counts over the cases
 of a run starts each run at 0. A subject that spawns tasks of its own
 spawns them on a scheduler of the case with the strategy and the limit of
 releases of the setup, and the clients of its concurrent section run on the
-same scheduler.
+same scheduler. Each subject sets keep on the actions that the setup names.
 """
 
 from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from dokimi_assert import history, prop, stateful
@@ -96,12 +96,28 @@ class Setup:
             concurrent section or with tasks of its own makes in each case.
         max_releases: The most tasks that one run or one advance of that
             scheduler releases.
+        keep: The names of the actions of the subject that every case keeps.
     """
 
     steps: Sequence[stateful.Option]
     section: Sequence[stateful.Option]
     strategy: stateful.Strategy
     max_releases: int = stateful_scheduler.MAX_RELEASES
+    keep: frozenset[str] = frozenset()
+
+    def marked(self, actions: list[stateful.Action[Any]]) -> list[stateful.Action[Any]]:
+        """Return the actions with keep set on each action that the setup names.
+
+        Args:
+            actions: The actions of a machine.
+
+        Returns:
+            The actions in the same order.
+        """
+        return [
+            replace(action, keep=True) if action.name in self.keep else action
+            for action in actions
+        ]
 
     def scheduler_in(self, c: prop.Case) -> stateful.Scheduler:
         """Return a scheduler of a case with the strategy and the limit of the setup.
@@ -297,7 +313,9 @@ def _queue(c: prop.Case, setup: Setup, loses_on_wrap: bool) -> None:
         stateful.Action("put", put, input=lambda c, _: c.draw(_VALUES, "v")),
         stateful.Action("get", get),
     ]
-    stateful.steps(c, _Machine(actions, _BoundedQueue(capacity)), *setup.steps)
+    stateful.steps(
+        c, _Machine(setup.marked(actions), _BoundedQueue(capacity)), *setup.steps
+    )
 
 
 def _counter_overflows(c: prop.Case, setup: Setup) -> None:
@@ -318,7 +336,7 @@ def _counter_overflows(c: prop.Case, setup: Setup) -> None:
         stateful.Action("increment", increment),
         stateful.Action("reset", reset),
     ]
-    stateful.steps(c, _Machine(actions, _Counter()), *setup.steps)
+    stateful.steps(c, _Machine(setup.marked(actions), _Counter()), *setup.steps)
 
 
 @dataclass(slots=True)
@@ -375,7 +393,7 @@ def _store_loses_on_crash(c: prop.Case, setup: Setup) -> None:
         ),
         stateful.Action("crash", crash),
     ]
-    stateful.steps(c, _Machine(actions, settle=settle), *setup.steps)
+    stateful.steps(c, _Machine(setup.marked(actions), settle=settle), *setup.steps)
 
 
 def _shared_counter(c: prop.Case, setup: Setup, racy: bool) -> None:
@@ -397,7 +415,7 @@ def _shared_counter(c: prop.Case, setup: Setup, racy: bool) -> None:
     actions: list[stateful.Action[Any]] = [stateful.Action("increment", increment)]
     stateful.steps(
         c,
-        _Machine(actions, _Counter()),
+        _Machine(setup.marked(actions), _Counter()),
         *setup.steps,
         *setup.section,
         stateful.tasks(scheduler),
@@ -429,7 +447,7 @@ def _refusing_counter() -> Subject:
             ),
             stateful.Action("read", read),
         ]
-        stateful.steps(c, _Machine(actions, _Counter()), *setup.steps)
+        stateful.steps(c, _Machine(setup.marked(actions), _Counter()), *setup.steps)
 
     return subject
 
@@ -468,7 +486,7 @@ def _flushed_register(c: prop.Case, setup: Setup, in_two_parts: bool) -> None:
     ]
     stateful.steps(
         c,
-        _Machine(actions, _Register()),
+        _Machine(setup.marked(actions), _Register()),
         *setup.steps,
         *setup.section,
         stateful.tasks(scheduler),
@@ -501,7 +519,7 @@ def _ticker(c: prop.Case, setup: Setup, skips_first: bool) -> None:
         ),
         stateful.Action("read", read),
     ]
-    stateful.steps(c, _Machine(actions, _Ticks()), *setup.steps)
+    stateful.steps(c, _Machine(setup.marked(actions), _Ticks()), *setup.steps)
 
 
 def _spinner(c: prop.Case, setup: Setup) -> None:
@@ -521,7 +539,8 @@ def _spinner(c: prop.Case, setup: Setup) -> None:
         scheduler.spawn(spinning)
         scheduler.run()
 
-    stateful.steps(c, _Machine([stateful.Action("spin", spin)]), *setup.steps)
+    actions: list[stateful.Action[Any]] = [stateful.Action("spin", spin)]
+    stateful.steps(c, _Machine(setup.marked(actions)), *setup.steps)
 
 
 #: The subjects of the definition, by name. Each entry returns the subject of

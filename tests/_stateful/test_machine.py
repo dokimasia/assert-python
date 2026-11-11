@@ -37,15 +37,15 @@ class Listed:
 class TestAction:
     """Action states one named action of a machine."""
 
-    def test_has_a_weight_of_1_and_no_drain_enabled_or_input_by_default(
+    def test_has_a_weight_of_1_and_no_drain_enabled_input_or_keep_by_default(
         self, seat: Collector
     ) -> None:
         """An action of a name and a run has the defaults."""
         action: Action[Any] = Action("a", nothing)
         check.equal(
             seat,
-            [action.weight, action.drain, action.enabled, action.input],
-            [1, False, None, None],
+            [action.weight, action.drain, action.enabled, action.input, action.keep],
+            [1, False, None, None, False],
             "the action has the defaults",
         )
 

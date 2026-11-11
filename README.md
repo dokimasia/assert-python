@@ -1118,6 +1118,8 @@ def test_the_queue_keeps_its_values_in_order(seat):
   failure needs, and it replays from its token.
 - The clients of a concurrent section run on threads by default. A case
   then runs up to `repeat` times, because threads do not replay.
+- The swarm of a case drops each action with the odds 1 in 2. An action
+  with `keep=True`, such as the delivery of a message, runs in every case.
 - A concurrent section averages 5 steps under the default maximum of 16.
   `stateful.concurrent_mean(n)` sets another mean, and the maximum of
   `stateful.concurrent(n)` still stops a section.
@@ -1140,7 +1142,7 @@ def test_the_queue_keeps_its_values_in_order(seat):
 ```python
 Machine.spec: Spec[S] | None
 Machine.actions: Sequence[Action[S]]
-stateful.Action(name: str, run: Callable[[Case, int, Any], object], weight: int, drain: bool, enabled: Callable[[S], bool] | None, input: Callable[[Case, S], Any] | None)
+stateful.Action(name: str, run: Callable[[Case, int, Any], object], weight: int, drain: bool, enabled: Callable[[S], bool] | None, input: Callable[[Case, S], Any] | None, keep: bool)
 stateful.steps(case: Case, machine: Machine[_S], *options: Option)
 ```
 

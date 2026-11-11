@@ -70,6 +70,14 @@ class TestRunners:
         raw = vector(vector_id, setup={"max-releases": 20})
         assert fault_of(raw)[0] == "detail"
 
+    def test_takes_the_actions_that_every_case_keeps(self) -> None:
+        """A kept put of a lossy queue takes no swarm choice of the case."""
+        vector_id = "queue-loses-on-wrap/a-kept-put-takes-no-swarm-choice"
+        assert [
+            fault_of(vector(vector_id))[0],
+            fault_of(vector(vector_id, setup={}))[0],
+        ] == ["", "detail"]
+
     def test_takes_a_strategy_of_pct(self) -> None:
         """A setup can run the clients of a scheduler under PCT of a depth."""
         raw = vector(
@@ -93,6 +101,16 @@ class TestRunners:
             "raises at a strategy that is not a strategy",
             vector(FAILING, setup={"strategy": "random"}),
             ("setup.strategy", '"random" is not a strategy'),
+        ),
+        (
+            "raises at a keep that is not a list",
+            vector(FAILING, setup={"keep": "increment"}),
+            ("setup.keep", '"increment" is not a list of names'),
+        ),
+        (
+            "raises at a keep whose names are not strings",
+            vector(FAILING, setup={"keep": [1]}),
+            ("setup.keep", "[1] is not a list of names"),
         ),
         (
             "raises at a setting that the runner does not take",

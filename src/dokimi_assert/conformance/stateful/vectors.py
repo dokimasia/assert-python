@@ -15,6 +15,7 @@ ends the call.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, cast
 
 from dokimi_assert import prop, stateful
@@ -49,6 +50,7 @@ _SETUP = frozenset(
         "concurrent-mean",
         "strategy",
         "max-releases",
+        "keep",
     }
 )
 
@@ -73,8 +75,9 @@ def _setup_of(written: Mapping[str, Any]) -> Setup:
     A setup without clients has the clients of the setup of the definition.
 
     Raises:
-        FaultError: The setup has a member that the runner does not take, or
-            a strategy that is not a strategy.
+        FaultError: The setup has a member that the runner does not take, a
+            strategy that is not a strategy, or a keep that is not a list of
+            names.
     """
     for name in sorted(written):
         if name not in _SETUP:
@@ -92,10 +95,29 @@ def _setup_of(written: Mapping[str, Any]) -> Setup:
         section.append(stateful.concurrent(written["concurrent"]))
     if "concurrent-mean" in written:
         section.append(stateful.concurrent_mean(written["concurrent-mean"]))
-    strategy = _strategy_of(written.get("strategy", "uniform"))
+    setup = Setup(
+        steps,
+        section,
+        _strategy_of(written.get("strategy", "uniform")),
+        keep=_names_of(written.get("keep", [])),
+    )
     if "max-releases" in written:
-        return Setup(steps, section, strategy, written["max-releases"])
-    return Setup(steps, section, strategy)
+        return replace(setup, max_releases=written["max-releases"])
+    return setup
+
+
+def _names_of(written: object) -> frozenset[str]:
+    """Return the names of the actions that a setup keeps in every case.
+
+    Raises:
+        FaultError: keep is not a list of names.
+    """
+    if not isinstance(written, list) or not all(
+        isinstance(name, str) for name in cast("list[object]", written)
+    ):
+        at = "setup.keep"
+        raise FaultError(at, f"{json.dumps(written)} is not a list of names")
+    return frozenset(cast("list[str]", written))
 
 
 def _settings_of(written: Mapping[str, Any]) -> list[prop.Option]:

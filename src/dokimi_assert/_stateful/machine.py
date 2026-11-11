@@ -47,6 +47,9 @@ class Action(Generic[S]):
             takes the case and the state. A step of an action without input
             has the input None. The bounds of its requests must not depend
             on results that the subject can return differently on a replay.
+        keep: When True, every case keeps the action, and the swarm makes no
+            choice for it. An action that delivers a message or advances a
+            clock to a due timer keeps its subject moving this way.
     """
 
     name: str
@@ -55,6 +58,7 @@ class Action(Generic[S]):
     drain: bool = False
     enabled: Callable[[S], bool] | None = None
     input: Callable[[Case, S], Any] | None = None
+    keep: bool = False
 
 
 class Machine(Protocol[S]):
