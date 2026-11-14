@@ -25,6 +25,7 @@ from dokimi_assert._prop.engine.choice import (
 from dokimi_assert._prop.engine.collection import Sizes
 from dokimi_assert._prop.engine.generator import (
     Bool,
+    Bound,
     Bytes,
     Composite,
     Dict,
@@ -46,9 +47,13 @@ from dokimi_assert._prop.engine.generator import (
 from dokimi_assert._prop.engine.inverse import (
     CannotInvertError,
     NoInverseError,
+    Placeholder,
+    Step,
     emit,
     inverse_of,
     invert,
+    invert_through,
+    through_composite,
 )
 from dokimi_assert._prop.engine.pattern import piece
 from dokimi_assert._prop.engine.shape import read
@@ -73,6 +78,9 @@ UINT8 = {"shape": "int", "width": 8, "signed": False}
 
 #: A map of a digit without an inverse.
 IDENTITY = Mapped(DIGIT, lambda value: value)
+
+#: A composite of two digits drawn under a and b. Its value is their list.
+PAIR = Composite(lambda c: [c.draw(DIGIT, "a"), c.draw(DIGIT, "b")])
 
 #: A tree shape. A tree is a record of a value and a list of child trees.
 TREE_SHAPE = {
@@ -808,10 +816,35 @@ class TestInvert:
     def test_raises_no_inverse_for_a_generator_without_an_emitter(
         self, seat: Collector
     ) -> None:
-        """A composite runs only forwards."""
+        """A bind runs only forwards."""
         check.equal(
             seat,
-            refused(seat, Composite(lambda _: 1), 1),
+            refused(seat, Bound(DIGIT, lambda _: DIGIT), 1),
+            ("prop: a Bound does not run backwards", True),
+            "the error is a NoInverseError",
+        )
+
+    composites: ClassVar[list[tuple[str, Generator[Any], object]]] = [
+        ("raises no inverse error for a composite", Composite(lambda _: 1), 1),
+        (
+            "raises no inverse error for a value through a composite inside a one-of",
+            OneOf([DIGIT, PAIR]),
+            [7, 3],
+        ),
+    ]
+
+    @pytest.mark.parametrize(
+        ("generator", "value"),
+        [t[1:] for t in composites],
+        ids=[t[0] for t in composites],
+    )
+    def test_raises_no_inverse_for_a_value_through_a_composite(
+        self, seat: Collector, generator: Generator[Any], value: object
+    ) -> None:
+        """Only a trace serves the draws of a composite, and invert has none."""
+        check.equal(
+            seat,
+            refused(seat, generator, value),
             ("prop: a Composite does not run backwards", True),
             "the error is a NoInverseError",
         )
@@ -993,6 +1026,158 @@ class TestInverseOf:
         check.error_as(seat, error, TypeError, "the error is the TypeError of the map")
 
 
+class TestInvertThrough:
+    """invert_through returns the choices of a generator around its composites."""
+
+    def test_returns_the_choices_of_invert_for_a_value_without_a_composite(
+        self, seat: Collector
+    ) -> None:
+        """The digit runs backwards on its own."""
+        choices, through = invert_through(DIGIT, 7)
+        check.equal(
+            seat,
+            [choice_values(choices), through],
+            [[7], False],
+            "the choices are those of invert",
+        )
+
+    arounds: ClassVar[list[tuple[str, Generator[Any], object, list[object]]]] = [
+        (
+            "makes no choice for a composite inside a one-of",
+            OneOf([DIGIT, PAIR]),
+            [7, 3],
+            [1],
+        ),
+        (
+            "makes no choice for a composite inside an optional",
+            Optional(PAIR),
+            [7, 3],
+            [1],
+        ),
+        (
+            "does not compare the composites of a unique list",
+            List(PAIR, Sizes(0, 3), unique=True),
+            [[1, 2], [1, 2]],
+            [1, 1, 0],
+        ),
+        (
+            "makes no choice for a composite inside a map with an inverse",
+            Mapped(PAIR, tuple, list),
+            (7, 3),
+            [],
+        ),
+        (
+            "makes no choice for a composite at the base of a recursive",
+            Recursive(PAIR, 2, lambda own: List(own, Sizes(0, 2))),
+            [7, 3],
+            [0],
+        ),
+    ]
+
+    @pytest.mark.parametrize(
+        ("generator", "value", "want"),
+        [t[1:] for t in arounds],
+        ids=[t[0] for t in arounds],
+    )
+    def test_returns_the_choices_around_a_composite(
+        self,
+        seat: Collector,
+        generator: Generator[Any],
+        value: object,
+        want: list[object],
+    ) -> None:
+        """The composites make no choice, and the generator around them does."""
+        choices, through = invert_through(generator, value)
+        check.equal(
+            seat,
+            [choice_values(choices), through],
+            [want, True],
+            "the choices skip the composites",
+        )
+
+    def test_takes_a_branch_without_a_composite_first(self, seat: Collector) -> None:
+        """The pair produces any value, and the digit after it produces 7."""
+        choices, through = invert_through(OneOf([PAIR, DIGIT]), 7)
+        check.equal(
+            seat,
+            [choice_values(choices), through],
+            [[1, 7], False],
+            "the one-of takes the digit",
+        )
+
+    def test_raises_no_inverse_for_a_dict_through_a_composite(
+        self, seat: Collector
+    ) -> None:
+        """The value of a map does not state the order in which its pairs drew."""
+        pairs = Dict(DIGIT, PAIR, Sizes(0, 2))
+        error = check.raises(
+            seat,
+            lambda: invert_through(pairs, Pairs(((5, [1, 2]),))),
+            "the call raises",
+        )
+        check.error_as(seat, error, NoInverseError, "the error is a NoInverseError")
+        check.equal(
+            seat,
+            str(error),
+            "prop: a map does not state the order in which its composites drew",
+            "the error states the order",
+        )
+
+
+class TestThroughComposite:
+    """through_composite reports a composite inside a generator with an inverse."""
+
+    tests: ClassVar[list[tuple[str, Generator[Any], bool]]] = [
+        ("reports a composite inside a one-of", OneOf([DIGIT, PAIR]), True),
+        ("reports a composite inside an optional", Optional(PAIR), True),
+        ("reports a composite inside a list", List(PAIR, Sizes(0, 3)), True),
+        (
+            "reports a composite as the value of a dict",
+            Dict(DIGIT, PAIR, Sizes()),
+            True,
+        ),
+        ("reports a composite inside a filter", Filter(PAIR, bool), True),
+        (
+            "reports a composite inside a map with an inverse",
+            Mapped(PAIR, tuple, list),
+            True,
+        ),
+        (
+            "reports a composite inside the extension of a recursive",
+            Recursive(DIGIT, 2, lambda own: OneOf([own, PAIR])),
+            True,
+        ),
+        ("reports a composite that a deferred generator picks", Picked(PAIR), True),
+        ("does not report a composite on its own", PAIR, False),
+        (
+            "does not report a composite inside a map without an inverse",
+            Mapped(PAIR, tuple),
+            False,
+        ),
+        (
+            "does not report a composite inside a bind",
+            Bound(DIGIT, lambda _: PAIR),
+            False,
+        ),
+        (
+            "does not report a recursive without a composite",
+            tree(),
+            False,
+        ),
+    ]
+
+    @pytest.mark.parametrize(
+        ("give", "want"), [t[1:] for t in tests], ids=[t[0] for t in tests]
+    )
+    def test_reports_a_composite_inside_a_generator(
+        self, seat: Collector, give: Generator[Any], want: bool
+    ) -> None:
+        """The walk ends at a position of a recursive."""
+        check.equal(
+            seat, through_composite(give), want, "the generator has a composite"
+        )
+
+
 class TestEmit:
     """emit returns the steps of one generator for a value."""
 
@@ -1003,7 +1188,16 @@ class TestEmit:
         steps, normal = emit(read({"shape": "set", "of": UINT8}), [5, 2])
         check.equal(
             seat,
-            [[step.value for step in steps], normal],
+            [[cast("Step", step).value for step in steps], normal],
             [[1, 2, 1, 5, 0], [2, 5]],
             "the steps and the value are in shortlex order",
+        )
+
+    def test_returns_a_placeholder_for_a_composite(self, seat: Collector) -> None:
+        """The draws of the composite state its value, and it makes no choice."""
+        check.equal(
+            seat,
+            emit(PAIR, [7, 3]),
+            ([Placeholder()], [7, 3]),
+            "the composite has one placeholder",
         )

@@ -516,7 +516,9 @@ def composite(f: Callable[[Case], _T]) -> Generator[_T]:
     receives. One span contains all its draws. The generator does not have
     an inverse, so an example of it runs on its value. A trace replays the
     draws of f in place of the composite, which takes its own entry after
-    theirs.
+    theirs. A one-of, an optional, a list or another generator with the
+    composite inside runs backwards around it in a trace, and its draw takes
+    its own entry after the entries of the draws of f.
 
     Args:
         f: The function.

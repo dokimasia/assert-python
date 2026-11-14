@@ -475,8 +475,13 @@ def draws(entries: str) -> Option:
     concurrent section, and the drain mark in the drain. A draw of a
     composite takes no entry when it starts. Its draws take theirs, and the
     composite then takes its own entry by its label, as a store entry records
-    a composite after its draws. The call ends with a fault before any other
-    case runs in these cases.
+    a composite after its draws. A draw of a one-of, an optional, a list, a
+    dict, a filter, a map with an inverse or a recursive with a composite
+    inside takes the first entry with its label up to the next step entry.
+    When the value of the entry runs backwards through the composite, the
+    draws of the composite take the entries before it, and the draw takes it
+    once it decodes. The call ends with a fault before any other case runs in
+    these cases.
 
     - A draw meets a step entry or an entry of another label.
     - The generator of a draw does not produce the value of its entry.

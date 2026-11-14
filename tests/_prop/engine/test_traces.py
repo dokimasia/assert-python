@@ -5,14 +5,24 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import pytest
 
 from dokimi_assert import check
 from dokimi_assert._prop.engine.case import Case, Replaying, Step
 from dokimi_assert._prop.engine.choice import IntegerBounds
-from dokimi_assert._prop.engine.generator import Composite, Integer, Mapped, Optional
+from dokimi_assert._prop.engine.collection import Sizes
+from dokimi_assert._prop.engine.generator import (
+    Composite,
+    Dict,
+    Filter,
+    Integer,
+    List,
+    Mapped,
+    OneOf,
+    Optional,
+)
 from dokimi_assert._prop.engine.traces import (
     UNSTATED,
     Draw,
@@ -22,11 +32,13 @@ from dokimi_assert._prop.engine.traces import (
     entries,
     is_step,
 )
-from helpers import integers, values_of
+from dokimi_assert._prop.engine.value import Pairs
+from helpers import Picked, integers, values_of
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from dokimi_assert._prop.engine.generator import Generator
     from dokimi_assert.seat import Collector
 
 #: The generator that most draws use.
@@ -191,9 +203,66 @@ class TestTracingDrawing:
         )
         check.error_as(seat, error, TypeError, "the error is the error of the map")
 
+    def test_raises_trace_error_for_an_entry_of_a_draw_through_a_composite_after_a_step(
+        self, seat: Collector
+    ) -> None:
+        """The entry of the one-of follows a step entry, so the draw refuses entry 0."""
+        trace: list[Entry] = [
+            Draw("a", 7),
+            Draw("b", 3),
+            Step("put"),
+            Draw("pair", [7, 3]),
+        ]
+        c = Case(Tracing(trace))
+        got = refused(seat, lambda: c.draw(OneOf([DIGIT, PAIR]), "pair"))
+        check.equal(
+            seat, got, [0, "pair", "label"], "the error is at entry 0 for the label"
+        )
+
+    def test_raises_trace_error_for_a_draw_through_a_composite_without_its_entry(
+        self, seat: Collector
+    ) -> None:
+        """No entry has the label pair, so the draw refuses the next entry."""
+        c = Case(Tracing([Draw("a", 7), Draw("b", 3)]))
+        got = refused(seat, lambda: c.draw(OneOf([DIGIT, PAIR]), "pair"))
+        check.equal(
+            seat, got, [0, "pair", "label"], "the error is at entry 0 for the label"
+        )
+
+    def test_raises_trace_error_for_a_later_entry_whose_value_has_no_composite(
+        self, seat: Collector
+    ) -> None:
+        """The digit produces 5, so no draw of the one-of takes the entry of a."""
+        c = Case(Tracing([Draw("a", 7), Draw("pair", 5)]))
+        got = refused(seat, lambda: c.draw(OneOf([DIGIT, PAIR]), "pair"))
+        check.equal(
+            seat, got, [0, "pair", "label"], "the error is at entry 0 for the label"
+        )
+
+    def test_raises_trace_error_for_an_unstated_entry_of_a_draw_through_a_composite(
+        self, seat: Collector
+    ) -> None:
+        """The choices around the pair come from the value of the entry."""
+        c = Case(Tracing([Draw("a", 7), Draw("b", 3), Draw("pair", UNSTATED)]))
+        got = refused(seat, lambda: c.draw(OneOf([DIGIT, PAIR]), "pair"))
+        check.equal(
+            seat, got, [2, "pair", "value"], "the error is at entry 2 for the value"
+        )
+
+    def test_raises_trace_error_for_the_entry_of_a_dict_through_a_composite(
+        self, seat: Collector
+    ) -> None:
+        """The value of a map does not state the order in which its pairs drew."""
+        mapped = Draw("map", Pairs(((5, [1, 2]),)))
+        c = Case(Tracing([Draw("a", 1), Draw("b", 2), mapped]))
+        got = refused(seat, lambda: c.draw(Dict(DIGIT, PAIR, Sizes(0, 2)), "map"))
+        check.equal(
+            seat, got, [2, "map", "value"], "the error is at entry 2 for the value"
+        )
+
 
 class TestTracingDrawn:
-    """Tracing.drawn takes the entry of a composite once its draws have taken theirs."""
+    """Tracing.drawn takes the entry of a composite, or of a draw through one, last."""
 
     def test_takes_the_entry_of_a_composite_after_the_entries_of_its_draws(
         self, seat: Collector
@@ -266,6 +335,144 @@ class TestTracingDrawn:
         got = refused(seat, lambda: c.draw(PAIR, "pair"))
         check.equal(
             seat, got, [2, "pair", "label"], "the error is at entry 2 for the label"
+        )
+
+    def test_takes_the_entry_of_a_one_of_through_a_composite_after_its_draws(
+        self, seat: Collector
+    ) -> None:
+        """The pair decodes its draws, and the one-of takes its entry last."""
+        trace = Tracing([Draw("a", 7), Draw("b", 3), Draw("pair", [7, 3])])
+        c = Case(trace)
+        check.equal(
+            seat,
+            [c.draw(OneOf([DIGIT, PAIR]), "pair"), trace.taken, values_of(c.choices)],
+            [[7, 3], 3, [("integer", 1), ("integer", 7), ("integer", 3)]],
+            "the one-of takes the three entries",
+        )
+
+    def test_takes_the_entry_of_an_alternative_without_a_composite_at_once(
+        self, seat: Collector
+    ) -> None:
+        """The digit produces 7, so the one-of does not run 7 through the pair."""
+        c = Case(Tracing([Draw("pair", 7), Draw("x", 5)]))
+        check.equal(
+            seat,
+            [
+                c.draw(OneOf([PAIR, DIGIT]), "pair"),
+                c.draw(DIGIT, "x"),
+                values_of(c.choices),
+            ],
+            [7, 5, [("integer", 1), ("integer", 7), ("integer", 5)]],
+            "the one-of takes its entry before the draw of x",
+        )
+
+    def test_serves_the_flags_of_a_list_of_composites_around_their_draws(
+        self, seat: Collector
+    ) -> None:
+        """Each pair takes its own entries, and the list takes its entry last."""
+        trace = Tracing(
+            [
+                Draw("a", 1),
+                Draw("b", 2),
+                Draw("a", 7),
+                Draw("b", 3),
+                Draw("pairs", [[1, 2], [7, 3]]),
+            ]
+        )
+        c = Case(trace)
+        check.equal(
+            seat,
+            [
+                c.draw(List(PAIR, Sizes(0, 3)), "pairs"),
+                trace.taken,
+                [value for _, value in values_of(c.choices)],
+            ],
+            [[[1, 2], [7, 3]], 5, [1, 1, 2, 1, 7, 3, 0]],
+            "the list takes the five entries",
+        )
+
+    optionals: ClassVar[list[tuple[str, list[Entry], object]]] = [
+        (
+            "takes the entry of a present composite after its draws",
+            [Draw("a", 7), Draw("b", 3), Draw("maybe", [7, 3])],
+            [7, 3],
+        ),
+        ("takes the entry of an absent composite at once", [Draw("maybe", None)], None),
+    ]
+
+    @pytest.mark.parametrize(
+        ("give", "want"),
+        [t[1:] for t in optionals],
+        ids=[t[0] for t in optionals],
+    )
+    def test_takes_the_entry_of_an_optional_composite(
+        self, seat: Collector, give: list[Entry], want: object
+    ) -> None:
+        """The optional takes every entry of the trace."""
+        trace = Tracing(give)
+        check.equal(
+            seat,
+            [Case(trace).draw(Optional(PAIR), "maybe"), trace.taken],
+            [want, len(give)],
+            "the optional takes every entry",
+        )
+
+    throughs: ClassVar[list[tuple[str, Generator[Any], object]]] = [
+        (
+            "does not test the recorded value of a filter of a composite",
+            Filter(PAIR, lambda value: len(value) >= 2),
+            [7],
+        ),
+        (
+            "takes the entry of a map with an inverse after the draws of its composite",
+            Mapped(PAIR, tuple, list),
+            (7, 3),
+        ),
+        (
+            "takes the entry of a deferred composite after its draws",
+            Picked(PAIR),
+            [7, 3],
+        ),
+    ]
+
+    @pytest.mark.parametrize(
+        ("give", "recorded"),
+        [t[1:] for t in throughs],
+        ids=[t[0] for t in throughs],
+    )
+    def test_takes_the_entry_of_a_draw_through_a_composite_after_its_draws(
+        self, seat: Collector, give: Generator[Any], recorded: object
+    ) -> None:
+        """The pair decodes 7 and 3, and the draw takes the recorded entry last."""
+        trace = Tracing([Draw("a", 7), Draw("b", 3), Draw("pair", recorded)])
+        drawn = Case(trace).draw(give, "pair")
+        check.equal(
+            seat,
+            [list(drawn), trace.taken],
+            [[7, 3], 3],
+            "the draw takes the three entries",
+        )
+
+    def test_raises_trace_error_for_an_entry_that_a_draw_through_a_composite_leaves(
+        self, seat: Collector
+    ) -> None:
+        """The pair takes a and b, and leaves the second b before the one-of."""
+        trace = [Draw("a", 7), Draw("b", 3), Draw("b", 4), Draw("pair", [7, 3])]
+        c = Case(Tracing(trace))
+        got = refused(seat, lambda: c.draw(OneOf([DIGIT, PAIR]), "pair"))
+        check.equal(
+            seat, got, [2, "pair", "label"], "the error is at entry 2 for the label"
+        )
+
+    def test_raises_trace_error_at_the_entry_of_a_draw_that_a_draw_inside_takes(
+        self, seat: Collector
+    ) -> None:
+        """The draw inside the composite has the label pair, and takes entry 0."""
+        inner = Composite(lambda c: [c.draw(DIGIT, "pair")])
+        c = Case(Tracing([Draw("pair", 5), Draw("pair", [5])]))
+        got = refused(seat, lambda: c.draw(OneOf([inner]), "pair"))
+        check.equal(
+            seat, got, [0, "pair", "label"], "the error is at entry 0 for the label"
         )
 
 

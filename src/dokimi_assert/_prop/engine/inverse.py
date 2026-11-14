@@ -16,18 +16,35 @@ A value that the generator cannot produce raises CannotInvertError.
 - The collection has another size.
 - A set or a map repeats an element.
 
-Every generator runs backwards except a map without an inverse, a bind and
-a composite. A filter runs backwards through the generator that it filters,
-and a deferred generator through the generator that it picks.
+Every generator runs backwards except a map without an inverse and a bind.
+A filter runs backwards through the generator that it filters, and a
+deferred generator through the generator that it picks.
 A function that the engine cannot run backwards raises NoInverseError. The
 caller can tell that error apart from a value outside a domain. A one-of and
 a recursive raise NoInverseError when no branch produces the value and one
 of the branches does not have an inverse.
 
+A composite runs backwards to a Placeholder, which makes no choice. In a
+trace the draws of the composite take their own entries, so invert_through
+returns the choices of the generator around its composites. invert refuses a
+value through a composite with NoInverseError, because no trace serves the
+draws of the composite there.
+
+- A filter does not test the value of a composite, because the record of a
+  composite may not state the parts that the predicate reads.
+- A unique list does not compare the values of its composites, for the same
+  reason.
+- A map with an inverse does not apply its function to the value of a
+  composite.
+- A dict through a composite does not run backwards. The value of a map does
+  not state the order in which the case drew its entries, and the draws of
+  the composites follow that order.
+
 When more than one sequence of choices decodes to a value, the inverse takes
 the first sequence in a fixed order.
 
-- A one-of takes its first alternative whose inverse succeeds.
+- A one-of takes its first alternative whose inverse succeeds without a
+  composite, and else its first alternative through a composite.
 - A sampled-from takes the first index of an equal value.
 - A permutation takes the smallest index at each swap.
 - A string-matching takes the match that a backtracking engine finds first.
@@ -36,7 +53,7 @@ the first sequence in a fixed order.
   own, so the length of a string does not count against the recursion
   limit.
 - An optional takes absent before present.
-- A recursive takes the base before the extension.
+- A recursive takes the base before the extension, by the rule of a one-of.
 - The elements of a set and the entries of a map come in the shortlex order
   of their own choices.
 
@@ -46,6 +63,7 @@ takes the whole range.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
@@ -64,6 +82,7 @@ from dokimi_assert._prop.engine.draw import flag_bounds
 from dokimi_assert._prop.engine.generator import (
     Bool,
     Bytes,
+    Composite,
     Deferred,
     Dict,
     Filter,
@@ -105,7 +124,7 @@ from dokimi_assert._prop.engine.value import Fields, Pairs, Variant, canonical
 from dokimi_assert._prop.engine.zone import ZONES
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable
 
     from dokimi_assert._prop.engine.collection import Sizes
     from dokimi_assert._prop.engine.float import Key
@@ -114,10 +133,13 @@ __all__ = [
     "CannotInvertError",
     "Emitted",
     "NoInverseError",
+    "Placeholder",
     "Step",
     "emit",
     "inverse_of",
     "invert",
+    "invert_through",
+    "through_composite",
 ]
 
 
@@ -146,10 +168,20 @@ class Step:
     value: Value
 
 
+@dataclass(frozen=True, slots=True)
+class Placeholder:
+    """The place of a composite among the steps of a value.
+
+    The composite makes no choice of its own. In a trace its draws take
+    their own entries, and the steps after the placeholder serve the
+    generator around the composite.
+    """
+
+
 #: The steps that a generator emits for a value, and the value that they
 #: decode to. That value differs from the given value only in the order of
 #: the elements of a set and the entries of a map.
-Emitted: TypeAlias = tuple[list[Step], object]
+Emitted: TypeAlias = tuple[Sequence[Step | Placeholder], object]
 
 #: The bounds of a choice of 0 or 1, and of the index of a zone of the list.
 _BIT = IntegerBounds(0, 1)
@@ -172,10 +204,124 @@ def invert(generator: Generator[Any], value: object) -> list[Choice]:
 
     Raises:
         NoInverseError: A generator on the way applies a function that the engine
+            cannot run backwards, or the value runs backwards through a
+            composite, whose draws no trace serves here.
+        CannotInvertError: The generator cannot produce the value.
+    """
+    steps, normal = emit(generator, value)
+    return _verified(generator, value, _chosen(steps), normal)
+
+
+def invert_through(
+    generator: Generator[Any], value: object
+) -> tuple[list[Choice], bool]:
+    """Return the choices of a generator around its composites for a value.
+
+    A composite inside the generator makes no choice, and its draws take
+    their own entries in a trace. A value without a composite has the choices
+    of invert. A value through a composite does not replay here, because the
+    draws of the composite need the entries of the trace.
+
+    Args:
+        generator: The generator.
+        value: The value.
+
+    Returns:
+        The choices, and True when the value runs backwards through a
+        composite.
+
+    Raises:
+        NoInverseError: A generator on the way applies a function that the engine
             cannot run backwards.
         CannotInvertError: The generator cannot produce the value.
     """
     steps, normal = emit(generator, value)
+    if _has_placeholder(steps):
+        chosen = [step for step in steps if isinstance(step, Step)]
+        return [choice_of(step.bounds, step.value) for step in chosen], True
+    return _verified(generator, value, _chosen(steps), normal), False
+
+
+def through_composite(generator: Generator[Any]) -> bool:
+    """Report whether a generator has a composite inside a generator with an inverse.
+
+    A one-of, an optional, a list, a dict, a filter, a map with an inverse, a
+    deferred generator and a recursive count, at any depth. A composite on its
+    own does not. A map without an inverse and a bind do not either, because
+    they do not run backwards.
+
+    Args:
+        generator: The generator.
+
+    Returns:
+        True for a generator that has a composite inside.
+    """
+    return not isinstance(generator, Composite) and _holds_composite(generator, set())
+
+
+def _holds_composite(generator: Generator[Any], seen: set[int]) -> bool:
+    """Report whether a generator is a composite or has one inside, at any depth.
+
+    seen has the recursive generators on the way, so a position inside the
+    extension of a recursive ends the walk. A deferred generator walks the
+    generator that it picks inside the context of the pick.
+    """
+    if isinstance(generator, Composite):
+        return True
+    if isinstance(generator, Deferred):
+        deferred: Deferred[Any] = generator
+        with deferred.picked() as picked:
+            return _holds_composite(picked, seen)
+    return any(_holds_composite(inner, seen) for inner in _inner(generator, seen))
+
+
+def _inner(generator: Generator[Any], seen: set[int]) -> tuple[Generator[Any], ...]:
+    """Return the generators inside a generator that run backwards with it.
+
+    A recursive that seen has returns none, and joins seen otherwise.
+    """
+    if isinstance(generator, OneOf):
+        return tuple(generator.of)
+    if isinstance(generator, Optional | List | Filter) or (
+        isinstance(generator, Mapped) and generator.back is not None
+    ):
+        return (generator.of,)
+    if isinstance(generator, Dict):
+        return (generator.keys, generator.values)
+    if isinstance(generator, Position):
+        return (generator.owner,)
+    if isinstance(generator, Recursive) and id(generator) not in seen:
+        seen.add(id(generator))
+        return (generator.base, generator.extend)
+    return ()
+
+
+def _has_placeholder(steps: Sequence[Step | Placeholder]) -> bool:
+    """Report whether steps run backwards through a composite."""
+    return any(isinstance(step, Placeholder) for step in steps)
+
+
+def _chosen(steps: Sequence[Step | Placeholder]) -> list[Step]:
+    """Return steps that make a choice each.
+
+    Raises:
+        NoInverseError: A step is the placeholder of a composite.
+    """
+    chosen = [step for step in steps if isinstance(step, Step)]
+    if len(chosen) != len(steps):
+        msg = "prop: a Composite does not run backwards"
+        raise NoInverseError(msg)
+    return chosen
+
+
+def _verified(
+    generator: Generator[Any], value: object, steps: Sequence[Step], normal: object
+) -> list[Choice]:
+    """Return the choices of steps once they decode to normal and record unchanged.
+
+    Raises:
+        CannotInvertError: The choices decode to another value, or to no value.
+    """
     choices = [choice_of(step.bounds, step.value) for step in steps]
     c = Case(Replaying(choices))
     try:
@@ -237,9 +383,12 @@ def _first_branch(
 ) -> Emitted:
     """Return the index of the first branch that produces value, then its steps.
 
-    refusal is the reason of the refusal when no branch produces the value.
+    A branch through a composite produces every value, so it counts only when
+    no branch produces the value without one. refusal is the reason of the
+    refusal when no branch produces the value.
     """
     unknown = False
+    through: Emitted | None = None
     for index, branch in branches:
         try:
             steps, normal = emit(branch, value)
@@ -248,7 +397,13 @@ def _first_branch(
             continue
         except CannotInvertError:
             continue
-        return [Step(bounds, index), *steps], normal
+        emitted: Emitted = ([Step(bounds, index), *steps], normal)
+        if not _has_placeholder(steps):
+            return emitted
+        if through is None:
+            through = emitted
+    if through is not None:
+        return through
     if unknown:
         msg = f"prop: {refusal}, and one of them does not have an inverse"
         raise NoInverseError(msg)
@@ -261,7 +416,9 @@ def _shortlex(steps: list[Step]) -> tuple[int, tuple[Key, ...]]:
     return shortlex([choice_key(step.bounds, step.value) for step in steps])
 
 
-def _collection(sizes: Sizes, items: list[list[Step]]) -> list[Step]:
+def _collection(
+    sizes: Sizes, items: Sequence[Sequence[Step | Placeholder]]
+) -> list[Step | Placeholder]:
     """Return the flags, the item steps and the stop of a collection."""
     count = len(items)
     if count < sizes.min_size or (
@@ -269,7 +426,7 @@ def _collection(sizes: Sizes, items: list[list[Step]]) -> list[Step]:
     ):
         msg = f"prop: {count} items are outside the sizes of the collection"
         raise CannotInvertError(msg)
-    steps: list[Step] = []
+    steps: list[Step | Placeholder] = []
     for index, item in enumerate(items):
         steps.append(Step(flag_bounds(index, sizes.min_size, sizes.max_size), 1))
         steps.extend(item)
@@ -285,18 +442,28 @@ def _distinct(values: list[object]) -> None:
 
 
 def _elements(of: Generator[Any], value: object, unique: bool) -> list[Emitted]:
-    """Return the steps of each element, and the value that they decode to."""
+    """Return the steps of each element, and the value that they decode to.
+
+    A unique list compares the elements without a composite alone, because the
+    record of a composite may not state its value.
+    """
     if not isinstance(value, list):
         msg = f"prop: {canonical(value)} is not a list"
         raise CannotInvertError(msg)
     items: list[object] = value
-    if unique:
-        _distinct(items)
     # A comprehension adds a frame to each level of a recursive value before
     # Python 3.12, and a value at its budget then runs out of frames.
     emitted: list[Emitted] = []
     for element in items:
         emitted.append(emit(of, element))  # noqa: PERF401
+    if unique:
+        _distinct(
+            [
+                item
+                for item, (steps, _) in zip(items, emitted, strict=True)
+                if not _has_placeholder(steps)
+            ]
+        )
     return emitted
 
 
@@ -306,6 +473,11 @@ def _entries(
     """Return the flags and the entries of a map in shortlex order.
 
     Each entry has the steps of its key, then the steps of its value.
+
+    Raises:
+        NoInverseError: A key or a value runs backwards through a composite.
+            The value of a map does not state the order in which the case drew
+            its entries, and the draws of the composites follow that order.
     """
     if not isinstance(value, Pairs):
         msg = f"prop: {canonical(value)} is not a map"
@@ -315,7 +487,11 @@ def _entries(
     for k, v in value.items:
         key_steps, key_normal = emit(key, k)
         value_steps, value_normal = emit(of, v)
-        emitted.append(([*key_steps, *value_steps], (key_normal, value_normal)))
+        steps = [*key_steps, *value_steps]
+        if _has_placeholder(steps):
+            msg = "prop: a map does not state the order in which its composites drew"
+            raise NoInverseError(msg)
+        emitted.append((_chosen(steps), (key_normal, value_normal)))
     emitted.sort(key=lambda entry: _shortlex(entry[0]))
     steps = _collection(sizes, [entry for entry, _ in emitted])
     return steps, Pairs(tuple(normal for _, normal in emitted))
@@ -536,7 +712,7 @@ def _emit_list_shape(g: ListShape, value: object) -> Emitted:
     """
     emitted = _elements(g.of, value, g.unique)
     if g.unique:
-        emitted.sort(key=lambda element: _shortlex(element[0]))
+        emitted.sort(key=lambda element: _shortlex(_chosen(element[0])))
     return _collection(g.sizes, [s for s, _ in emitted]), [n for _, n in emitted]
 
 
@@ -608,15 +784,33 @@ def _emit_permutation(g: Permutation[Any], value: object) -> Emitted:
 
 
 def _emit_filter(g: Filter[Any], value: object) -> Emitted:
-    """Return the steps of the source for a value that the predicate keeps."""
+    """Return the steps of the source for a value that the predicate keeps.
+
+    A value through a composite is not tested, because the record of a
+    composite may not state the parts that the predicate reads. The decode
+    still filters the value that the composite returns.
+    """
+    steps, normal = emit(g.of, value)
+    if _has_placeholder(steps):
+        return steps, normal
     if not g.keep(value):
         msg = f"prop: the filter rejects {canonical(value)}"
         raise CannotInvertError(msg)
-    return emit(g.of, value)
+    return steps, normal
+
+
+def _emit_composite(g: Composite[Any], value: object) -> Emitted:
+    """Return the placeholder of a composite, whose own draws state its value."""
+    del g
+    return [Placeholder()], value
 
 
 def _emit_mapped(g: Mapped[Any, Any], value: object) -> Emitted:
-    """Return the steps of the source value that the inverse of the map returns."""
+    """Return the steps of the source value that the inverse of the map returns.
+
+    A value through a composite keeps the given value, because the function
+    does not run on the value of a composite.
+    """
     if g.back is None:
         msg = "prop: a map does not run backwards"
         raise NoInverseError(msg)
@@ -628,6 +822,8 @@ def _emit_mapped(g: Mapped[Any, Any], value: object) -> Emitted:
         msg = f"prop: {canonical(value)} is not a value of the map: {error}"
         raise CannotInvertError(msg) from error
     steps, normal = emit(g.of, inner)
+    if _has_placeholder(steps):
+        return steps, value
     return steps, g.f(normal)
 
 
@@ -659,7 +855,7 @@ def _emit_record(g: RecordShape, value: object) -> Emitted:
     if [name for name, _ in fields] != names:
         msg = f"prop: {canonical(value)} is not a record of {', '.join(names)}"
         raise CannotInvertError(msg)
-    steps: list[Step] = []
+    steps: list[Step | Placeholder] = []
     normal: list[tuple[str, object]] = []
     for (name, of), (_, field) in zip(g.fields, fields, strict=True):
         field_steps, field_normal = emit(of, field)
@@ -762,6 +958,7 @@ _EMITTERS: dict[type[Any], Callable[[Any, object], Emitted]] = {
     Matching: _emit_matching,
     Permutation: _emit_permutation,
     Filter: _emit_filter,
+    Composite: _emit_composite,
     Mapped: _emit_mapped,
     Recursive: _emit_recursive,
     Position: _emit_position,

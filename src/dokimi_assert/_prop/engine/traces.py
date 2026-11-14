@@ -18,6 +18,14 @@ come from the entries.
 - A draw of a composite takes no entry when it starts, and its own draws
   take theirs. Once it decodes, it takes the next entry by its label and
   does not read the value. A case records a composite after its draws.
+- A draw through a composite, whose generator has a composite inside a
+  one-of, an optional, a list, a dict, a filter, a map with an inverse or a
+  recursive, takes the first draw entry with its label up to the next step
+  entry. When the value runs backwards through a composite, the draws of the
+  composite take the entries before it, and the draw takes it once it
+  decodes.
+- The choices of a draw serve the requests of its own generator. A draw
+  inside it serves its own, and the outer requests continue after it.
 - A machine turns each step entry into the choices of one step. Tracing
   serves those choices as the machine requests them.
 - Every other request takes its target.
@@ -34,14 +42,18 @@ of the value. The body refuses such an entry.
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final, NoReturn, TypeGuard, cast, final
 
 from dokimi_assert._override import override
 from dokimi_assert._prop.engine.case import Case, Decoder, Provider, Request, Step
 from dokimi_assert._prop.engine.choice import Choice, Value
 from dokimi_assert._prop.engine.generator import Composite
-from dokimi_assert._prop.engine.inverse import inverse_of
+from dokimi_assert._prop.engine.inverse import (
+    CannotInvertError,
+    invert_through,
+    through_composite,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -154,22 +166,42 @@ def entries(c: Case) -> list[Entry]:
     return trace
 
 
+@dataclass(slots=True)
+class _Open:
+    """A draw in progress: the choices of its requests, and how it ends.
+
+    Attributes:
+        queue: The choices of the draw that no request has taken.
+        end: The position of the entry that a draw through a composite takes
+            once it decodes. It is None for every other draw.
+        by_label: True for a composite, which takes the next entry by its
+            label alone once it decodes.
+    """
+
+    queue: deque[Choice] = field(default_factory=deque)
+    end: int | None = None
+    by_label: bool = False
+
+
 class Tracing(Provider):
     """A provider that serves the values of the entries of a trace."""
 
     def __init__(self, trace: Sequence[Entry]) -> None:
         """Return the provider of the entries of a trace from the first entry.
 
+        The first open draw stands for the requests outside every draw, such
+        as the steps of a machine.
+
         Args:
             trace: The entries.
         """
         self._entries: tuple[Entry, ...] = tuple(trace)
         self._at: int = 0
-        self._queue: deque[Choice] = deque()
+        self._open: list[_Open] = [_Open()]
 
     @override
     def value(self, request: Request, index: int) -> Value:
-        """Return the next prepared value fitted to the request, or its target.
+        """Return the next value of the innermost open draw, or the target.
 
         Args:
             request: The request.
@@ -179,51 +211,93 @@ class Tracing(Provider):
             The value.
         """
         del index
-        if not self._queue:
+        queue = self._open[-1].queue
+        if not queue:
             return request.bounds.target
-        return request.bounds.coerce(self._queue.popleft())
+        return request.bounds.coerce(queue.popleft())
 
     @override
     def drawing(self, generator: Decoder[Any], label: str) -> None:
-        """Prepare the choices of the next entry for a draw under a label.
+        """Prepare the choices of the entry of a draw under a label.
 
         A composite takes no entry here. Its draws take theirs, and it takes
-        its own entry once it decodes.
+        its own entry once it decodes. A draw through a composite takes the
+        first entry with its label up to the next step entry. Every other draw
+        takes the next entry.
 
         Args:
             generator: The generator of the draw.
             label: The label of the draw.
 
         Raises:
-            TraceError: The next entry is not a draw entry with the label, it
-                does not record a value, or the generator cannot produce its
-                value.
+            TraceError: The entry is not a draw entry with the label, it does
+                not record a value, or the generator cannot produce its value.
         """
-        if isinstance(generator, Composite) or self._at >= len(self._entries):
+        if isinstance(generator, Composite):
+            self._open.append(_Open(by_label=True))
             return
-        entry = self._take(label)
+        if self._at >= len(self._entries):
+            self._open.append(_Open())
+            return
+        drawn = cast("Generator[Any]", generator)
+        at = self._find(label) if through_composite(drawn) else self._at
+        entry = self._entries[at]
+        if not isinstance(entry, Draw) or entry.label != label:
+            raise TraceError(self._at, label, "label")
         if entry.value is UNSTATED:
-            raise TraceError(self._at - 1, label, "value")
-        choices = inverse_of(cast("Generator[Any]", generator), entry.value)
-        if choices is None:
-            raise TraceError(self._at - 1, label, "value")
-        self._queue.extend(choices)
+            raise TraceError(at, label, "value")
+        try:
+            choices, composite = invert_through(drawn, entry.value)
+        except CannotInvertError as bad:
+            raise TraceError(at, label, "value") from bad
+        if composite:
+            self._open.append(_Open(deque(choices), end=at))
+            return
+        if at != self._at:
+            raise TraceError(self._at, label, "label")
+        self._at += 1
+        self._open.append(_Open(deque(choices)))
 
     @override
     def drawn(self, generator: Decoder[Any], label: str) -> None:
-        """Take the next entry for a composite under a label, by its label alone.
+        """End the draw under a label, and take its entry once it decodes.
 
-        Every other draw takes its entry before it decodes.
+        A composite takes the next entry by its label alone. A draw through a
+        composite takes its entry, which must be the next one, once the draws
+        of its composites have taken the entries before it. Every other draw
+        took its entry before it decoded.
 
         Args:
             generator: The generator of the draw.
             label: The label of the draw.
 
         Raises:
-            TraceError: The next entry is not a draw entry with the label.
+            TraceError: The next entry is not a draw entry with the label, or it
+                is not the entry of the draw. When a draw inside took the entry
+                of the draw, the error is at that entry.
         """
-        if isinstance(generator, Composite) and self._at < len(self._entries):
+        del generator
+        ended = self._open.pop()
+        if ended.by_label and self._at < len(self._entries):
             self._take(label)
+        if ended.end is not None:
+            if self._at != ended.end:
+                raise TraceError(min(self._at, ended.end), label, "label")
+            self._take(label)
+
+    def _find(self, label: str) -> int:
+        """Return the position of the first draw entry with the label before a step.
+
+        The position of the next entry is returned when there is no such entry,
+        so the draw refuses that entry.
+        """
+        for at in range(self._at, len(self._entries)):
+            entry = self._entries[at]
+            if not isinstance(entry, Draw):
+                break
+            if entry.label == label:
+                return at
+        return self._at
 
     def _take(self, label: str) -> Draw:
         """Take the next entry, a draw entry with the label.
@@ -272,7 +346,7 @@ class Tracing(Provider):
         Args:
             *values: The values.
         """
-        self._queue.extend(Choice("integer", value) for value in values)
+        self._open[-1].queue.extend(Choice("integer", value) for value in values)
 
     def take(self, *values: int) -> None:
         """Take the next step entry, and serve the values of its choices.

@@ -55,7 +55,9 @@ class TestSubjects:
                 "correct-queue",
                 "counter-overflows",
                 "counter-refuses-every-third",
+                "one-of-pair-fails-at-7-and-3",
                 "pair-fails-at-7-and-3",
+                "pairs-fail-at-7-and-3",
                 "queue-loses-on-wrap",
                 "racy-counter",
                 "register-flushes",
@@ -179,6 +181,62 @@ class TestSubjects:
             run_of("pair-fails-at-7-and-3", setup, prop.draws(json.dumps(trace))),
             {"verdict": "fail", "failure": "pair"},
             "the put of the pair fails",
+        )
+
+    puts: ClassVar[list[tuple[str, str, list[dict[str, Any]]]]] = [
+        (
+            "builds a machine whose put fails for the integer 7 of the one-of",
+            "one-of-pair-fails-at-7-and-3",
+            [{"label": "pair", "value": {"type": "int", "value": 7}}],
+        ),
+        (
+            "builds a machine whose put fails for the pair of the one-of",
+            "one-of-pair-fails-at-7-and-3",
+            [
+                {"label": "a", "value": {"type": "int", "value": 7}},
+                {"label": "b", "value": {"type": "int", "value": 3}},
+                {
+                    "label": "pair",
+                    "value": {"type": "list", "of": "int", "value": [7, 3]},
+                },
+            ],
+        ),
+        (
+            "builds a machine whose put fails for a list that has the pair",
+            "pairs-fail-at-7-and-3",
+            [
+                {"label": "a", "value": {"type": "int", "value": 1}},
+                {"label": "b", "value": {"type": "int", "value": 2}},
+                {"label": "a", "value": {"type": "int", "value": 7}},
+                {"label": "b", "value": {"type": "int", "value": 3}},
+                {
+                    "label": "pairs",
+                    "value": {
+                        "type": "list",
+                        "items": [
+                            {"type": "list", "of": "int", "value": [1, 2]},
+                            {"type": "list", "of": "int", "value": [7, 3]},
+                        ],
+                    },
+                },
+            ],
+        ),
+    ]
+
+    @pytest.mark.parametrize(
+        ("give", "draws"), [t[1:] for t in puts], ids=[t[0] for t in puts]
+    )
+    def test_builds_a_machine_whose_put_fails_through_a_composite(
+        self, seat: Collector, give: str, draws: list[dict[str, Any]]
+    ) -> None:
+        """The trace puts the value through the one-of or the list of the subject."""
+        trace = [{"step": "put"}, *draws]
+        setup = Setup([stateful.swarm(False)], [], stateful.uniform())
+        check.equal(
+            seat,
+            run_of(give, setup, prop.draws(json.dumps(trace))),
+            {"verdict": "fail", "failure": "pair"},
+            "the put fails",
         )
 
     def test_builds_a_queue_whose_steps_take_the_setup(self, seat: Collector) -> None:

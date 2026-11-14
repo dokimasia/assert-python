@@ -66,6 +66,12 @@ without keys, and completes the call as ok with its output:
   draws under the label pair. The composite draws a digit under the label a
   and then one under the label b, and returns the list of the two. put fails
   with a record of pair for the list [7, 3]. Neither action records a call.
+- one-of-pair-fails-at-7-and-3: the same machine, whose put draws its input
+  under the label pair through a one-of of a digit and the composite. put
+  fails with a record of pair for the integer 7 and for the list [7, 3].
+- pairs-fail-at-7-and-3: the same machine, whose put draws its input under
+  the label pairs through a list of 0 to 3 of the composite. put fails with a
+  record of pair when the list has the pair [7, 3].
 
 Each run builds its subjects anew, so a subject that counts over the cases
 of a run starts each run at 0. A subject that spawns tasks of its own
@@ -179,10 +185,17 @@ _DURABLE = "the store keeps every acknowledged put"
 _DIGITS = prop.integer(0, 9)
 _PAIRS = prop.composite(lambda c: [c.draw(_DIGITS, "a"), c.draw(_DIGITS, "b")])
 
-#: The assertion of the record of the failure of pair-fails-at-7-and-3, and
-#: the pair that its put fails for.
+#: The input of the put of one-of-pair-fails-at-7-and-3, a one-of of a digit
+#: and the pair, and of pairs-fail-at-7-and-3, a list of 0 to 3 pairs.
+_DIGIT_OR_PAIR = prop.one_of(_DIGITS, _PAIRS)
+_PAIR_LISTS = prop.list(_PAIRS, max_size=3)
+
+#: The assertion of the record of the failure of the subjects of the pair, the
+#: pair that their put fails for, and the integer that the put of the one-of
+#: fails for.
 _PAIR = "pair"
 _FAILING_PAIR = [7, 3]
+_FAILING_DIGIT = 7
 
 
 @dataclass(slots=True)
@@ -558,19 +571,29 @@ def _spinner(c: prop.Case, setup: Setup) -> None:
     stateful.steps(c, _Machine(setup.marked(actions)), *setup.steps)
 
 
-def _pair_fails(c: prop.Case, setup: Setup) -> None:
-    """Run the machine whose put fails for the composite pair 7 and 3."""
+def _pair_fails(
+    c: prop.Case, setup: Setup, generator: prop.Generator[Any], label: str
+) -> None:
+    """Run the machine whose put draws its input from a generator under a label.
+
+    put fails for the pair 7 and 3, for the integer 7, and for a list that has
+    the pair, so each subject of the pair fails for the values that it states.
+    """
 
     def noop(_c: prop.Case, _client: int, _: object) -> None:
         """Do nothing."""
 
-    def put(c: prop.Case, _client: int, pair: list[int]) -> None:
-        if pair == _FAILING_PAIR:
+    def put(c: prop.Case, _client: int, value: object) -> None:
+        if value == _FAILING_DIGIT:
+            c.report(Failure(_PAIR, f"put of the integer {_FAILING_DIGIT}"), True)
+        elif value == _FAILING_PAIR or (
+            isinstance(value, list) and _FAILING_PAIR in value
+        ):
             c.report(Failure(_PAIR, f"put of the pair {_FAILING_PAIR}"), True)
 
     actions: list[stateful.Action[Any]] = [
         stateful.Action("noop", noop),
-        stateful.Action("put", put, input=lambda c, _: c.draw(_PAIRS, "pair")),
+        stateful.Action("put", put, input=lambda c, _: c.draw(generator, label)),
     ]
     stateful.steps(c, _Machine(setup.marked(actions)), *setup.steps)
 
@@ -592,5 +615,13 @@ SUBJECTS: dict[str, Callable[[], Subject]] = {
     "ticker-skips-its-first-tick": lambda: lambda c, setup: _ticker(c, setup, True),
     "ticker": lambda: lambda c, setup: _ticker(c, setup, False),
     "spins-until-a-flag": lambda: _spinner,
-    "pair-fails-at-7-and-3": lambda: _pair_fails,
+    "pair-fails-at-7-and-3": lambda: (
+        lambda c, setup: _pair_fails(c, setup, _PAIRS, "pair")
+    ),
+    "one-of-pair-fails-at-7-and-3": lambda: (
+        lambda c, setup: _pair_fails(c, setup, _DIGIT_OR_PAIR, "pair")
+    ),
+    "pairs-fail-at-7-and-3": lambda: (
+        lambda c, setup: _pair_fails(c, setup, _PAIR_LISTS, "pairs")
+    ),
 }
