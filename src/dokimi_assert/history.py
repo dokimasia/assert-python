@@ -42,10 +42,15 @@ spec_from builds a spec from a factory of the subject. A check against that
 spec finds a call that was not atomic. is_serializable and
 has_snapshot_isolation read each call of the operation txn as a transaction
 of list appends and list reads.
+
+A test that checks a growing history after each step passes one Checkpoint
+to every check through resume. Each check then continues the searches of
+the check before it, and steps each new call once.
 """
 
 from __future__ import annotations
 
+from dokimi_assert._history.checkpoint import Checkpoint
 from dokimi_assert._history.concurrently import Outcome, concurrently
 from dokimi_assert._history.derivation import Edge, Evidence, Link, Observation
 from dokimi_assert._history.event import Completion, Event, Invocation, Kind
@@ -62,6 +67,7 @@ from dokimi_assert._history.option import (
     Option,
     budget,
     memo_limit,
+    resume,
     time_limit,
     workers,
 )
@@ -73,6 +79,7 @@ from dokimi_assert.failure import register_sentence
 
 __all__ = [
     "Call",
+    "Checkpoint",
     "Completion",
     "Edge",
     "Event",
@@ -97,6 +104,7 @@ __all__ = [
     "is_linearizable",
     "is_serializable",
     "memo_limit",
+    "resume",
     "spec_from",
     "time_limit",
     "workers",

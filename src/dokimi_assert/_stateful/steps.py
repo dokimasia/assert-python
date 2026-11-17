@@ -11,6 +11,7 @@ import threading
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
 
+from dokimi_assert._history.checkpoint import Checkpoint
 from dokimi_assert._history.concurrently import concurrently
 from dokimi_assert._history.linearizable import LINEARIZABLE, fields_of, whole
 from dokimi_assert._matcher.fault import FaultError
@@ -175,6 +176,7 @@ class _Run(Generic[_S]):
             provider if isinstance(provider, Tracing) else None
         )
         self._states: tuple[_S, ...] = (cast("_S", None),)
+        self._checkpoint: Checkpoint[_S] = Checkpoint()
 
     def run(self) -> None:
         """Run the six parts in order, and restore the place of the case at the end."""
@@ -429,14 +431,15 @@ class _Run(Generic[_S]):
     def _check(self) -> None:
         """Check the history of the case against the spec, and keep the states after it.
 
-        Every call of the history is in one partition. A check that does not
-        pass ends the case with its record. A machine without a spec does not
-        check anything.
+        Every call of the history is in one partition. Each check continues
+        the search of the check before it through the checkpoint of the run.
+        A check that does not pass ends the case with its record. A machine
+        without a spec does not check anything.
         """
         spec = self._spec
         if spec is None:
             return
-        detail, states = whole(self._c.history(), spec)
+        detail, states = whole(self._c.history(), spec, self._checkpoint)
         if detail.outcome != "passed":
             failure = Failure(LINEARIZABLE, _CONTRACT, fields_of(detail), call_site())
             self._c.report(failure, True)

@@ -24,6 +24,7 @@ from dokimi_assert.seat import (
     Standard,
     clean_up,
     cleanup,
+    failed,
     fault,
     skip,
     write_record,
@@ -442,6 +443,35 @@ class TestCollectorCleanup:
         assert ran == [True]
 
 
+class TestCollectorFailed:
+    """Collector.failed reports whether the test of the collector has failed."""
+
+    def test_reports_false_before_a_failure(self) -> None:
+        """The collector has received nothing."""
+        assert Collector().failed is False
+
+    def test_reports_true_after_a_failure_of_expect(self) -> None:
+        """The recording surface records a failure."""
+        seat = Collector()
+        seat.record("the stated contract")
+        assert seat.failed is True
+
+    def test_reports_true_after_a_failure_of_check_that_the_test_caught(self) -> None:
+        """The aborting surface raises its failure, and the test catches it."""
+        seat = Collector()
+        with pytest.raises(AssertionError):
+            check.is_true(seat, False, "the flag is set")
+        assert seat.failed is True
+
+    def test_reports_true_after_a_flush(self) -> None:
+        """The flush raises the failure, and the test stays failed."""
+        seat = Collector()
+        seat.record("the stated contract")
+        with pytest.raises(AssertionError):
+            seat.flush()
+        assert seat.failed is True
+
+
 class TestCollectorCollected:
     """Collector.collected returns the messages that wait for the end of the test."""
 
@@ -556,6 +586,42 @@ class TestCleanUp:
         seat.cleanup(close)
         clean_up(seat)
         assert ran == [True]
+
+    @pytest.mark.parametrize(("give", "want"), [(True, True), (False, False)])
+    def test_fails_the_collector_of_a_test_that_failed_before_the_functions_run(
+        self, give: bool, want: bool
+    ) -> None:
+        """A function reads failed of the collector."""
+        seat = Collector()
+        read: list[bool] = []
+        seat.cleanup(lambda: read.append(seat.failed))
+        clean_up(seat, failed=give)
+        assert read == [want]
+
+
+class TestFailed:
+    """failed returns whether the test, the case or the body of a seat has failed."""
+
+    def test_returns_the_property_failed_of_the_seat(self) -> None:
+        """A recorder fails after a failure of check."""
+        seat = Recorder()
+        before = failed(seat)
+        check.is_true(seat, False, "the flag is set")
+        assert (before, failed(seat)) == (False, True)
+
+    def test_ends_the_call_with_a_fault_on_a_seat_without_the_property(self) -> None:
+        """The seat keeps the fault, and the helper returns False."""
+        seat = Uncleaned()
+        assert (failed(seat), seat.faults) == (
+            False,
+            [("seat.failed: the seat has no property failed", True)],
+        )
+
+    def test_raises_the_fault_on_a_standard_seat(self) -> None:
+        """A standard seat has no property failed, so the call raises the fault."""
+        with pytest.raises(Exception, match=r"^seat\.failed: ") as raised:
+            failed(Standard())
+        assert isinstance(raised.value.__cause__, FaultError)
 
 
 class TestCleanup:

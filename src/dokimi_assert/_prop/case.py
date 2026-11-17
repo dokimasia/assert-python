@@ -563,6 +563,25 @@ class Case:
         """
         self._state.cleanups.append(fn)
 
+    @property
+    def failed(self) -> bool:
+        """Whether the case has failed.
+
+        It is True once the case kept a failure record, and once a fault
+        ended a call of the body. In a cleanup of the case, it is also True
+        when the body ended with an error. A skip, a rejection and a noted
+        fault do not fail the case.
+
+        Returns:
+            True after a failure of the case.
+        """
+        state = self._state
+        return (
+            bool(state.records)
+            or isinstance(state.stopped, (Faulted, FaultSignal))
+            or state.raised is not None
+        )
+
     def history(self) -> History:
         """Return the history of the case.
 

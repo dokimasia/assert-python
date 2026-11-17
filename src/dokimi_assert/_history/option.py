@@ -1,14 +1,16 @@
 # Copyright Dokimasia B.V. 2026
 # SPDX-License-Identifier: MIT
 
-"""The options that set the limits and the workers of a check of linearizability."""
+"""The options that set the limits, the workers and the checkpoint of a check."""
 
 from __future__ import annotations
 
 import math
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, TypeVar
+
+from dokimi_assert._history.checkpoint import Checkpoint
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -21,9 +23,12 @@ __all__ = [
     "budget",
     "configure",
     "memo_limit",
+    "resume",
     "time_limit",
     "workers",
 ]
+
+_S = TypeVar("_S")
 
 #: The default number of steps that the search of one partition can spend.
 BUDGET = 10_000_000
@@ -43,12 +48,15 @@ class Config:
         time_limit: The seconds that the check can take. A value of 0 does
             not set a limit.
         workers: The number of partitions that the check searches at once.
+        checkpoint: The checkpoint whose searches the check continues, or
+            None for a check that searches every call.
     """
 
     budget: int = BUDGET
     memo_limit: int = MEMO_LIMIT
     time_limit: float = 0.0
     workers: int = 1
+    checkpoint: Checkpoint[Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,6 +168,33 @@ def workers(n: int) -> Option:
     """
     _counted("workers", n, 1)
     return Option(lambda config: replace(config, workers=n))
+
+
+def resume(checkpoint: Checkpoint[_S]) -> Option:
+    """Continue the searches that checkpoint keeps, and keep the searches of a pass.
+
+    The check reads the calls that the history recorded since the last check
+    that passed with checkpoint. It continues the search of each partition
+    over its new calls, and searches a partition from its first call where
+    the kept search cannot continue. A check that does not pass leaves the
+    checkpoint without a search. The check reports what a check of every
+    call reports, so a check after each step of a test steps each call
+    once instead of once for each check.
+
+    Args:
+        checkpoint: The checkpoint. Every check that passes it has the same
+            spec.
+
+    Returns:
+        The option.
+
+    Raises:
+        TypeError: checkpoint is not a Checkpoint.
+    """
+    if not isinstance(checkpoint, Checkpoint):  # pyright: ignore[reportUnnecessaryIsInstance]
+        msg = f"history: resume({checkpoint!r}) needs a Checkpoint"  # type: ignore[unreachable]
+        raise TypeError(msg)  # pyright: ignore[reportUnreachable]
+    return Option(lambda config: replace(config, checkpoint=checkpoint))
 
 
 def configure(options: Iterable[Option]) -> Config:

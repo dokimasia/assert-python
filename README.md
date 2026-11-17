@@ -140,6 +140,27 @@ def docker_of(seat):
     return Docker()
 ```
 
+`seat.failed(seat)` returns whether the test, the case or the body of a
+helper's seat has failed. It reads the property `failed` of the seat, which
+the `Collector`, the `Recorder`, a `prop.Case` and the seats of the bodies of
+`rejects` and `eventually` have. In a cleanup, the property also counts the
+error that ended the body. A skip and an expected failure do not fail the
+seat. A `Standard` has no property `failed`, so the helper ends the call
+with a fault there. A helper keeps the data of a failed test this way:
+
+```python
+import shutil
+import tempfile
+
+from dokimi_assert.seat import cleanup, failed
+
+
+def scratch(seat):
+    path = tempfile.mkdtemp()
+    cleanup(seat, lambda: failed(seat) or shutil.rmtree(path))
+    return path
+```
+
 ## Two surfaces
 
 Both modules have the same 48 assertions under the same names. `check`
@@ -356,6 +377,7 @@ Seat.fail(message: str)
 Seat.record(message: str)
 seat.Collector()
 Collector.cleanup(fn: Callable[[], object])
+Collector.failed: bool
 Collector.with_clock(clock: Clock) -> Collector
 seat.Standard()
 seat.Recorder()
@@ -369,8 +391,9 @@ Recorder.records: list[str]
 Recorder.helper_calls: int
 Recorder.cleanup(fn: Callable[[], object])
 Recorder.run_cleanups()
-seat.clean_up(collector: Collector)
+seat.clean_up(collector: Collector, failed: bool)
 seat.cleanup(seat: Seat, fn: Callable[[], object])
+seat.failed(seat: Seat) -> bool
 seat.fault(seat: Seat, error: BaseException)
 seat.skip(seat: Seat, reason: str)
 seat.write_record(seat: Seat, kind: str, record: str)
@@ -980,6 +1003,11 @@ AssertionError: the register is linearizable: violated in the partition of 'x'
   partition on its own.
 - `history.spec_from` builds a specification from a factory of the
   subject.
+- A test that checks a growing history after each step passes one
+  `history.Checkpoint` to every check through `history.resume`. Each check
+  then continues the searches of the check before it, and reports what a
+  check of every call reports. The steps of a machine check their history
+  this way.
 - `history.is_serializable` and `history.has_snapshot_isolation` check a
   history of list-append transactions or of register transactions. A
   history that writes with `["write", key, value]` is a register history.
@@ -1037,7 +1065,7 @@ history.is_serializable(seat: Seat, history: History, msg: str)
 history.has_snapshot_isolation(seat: Seat, history: History, msg: str)
 ```
 
-**Options of a check.** Each bounds the search of is_linearizable.
+**Options of a check.** Each bounds the search of is_linearizable, and resume continues the searches that a Checkpoint keeps.
 
 ```python
 history.Option
@@ -1045,6 +1073,8 @@ history.budget(steps: int) -> Option
 history.memo_limit(bits: int) -> Option
 history.time_limit(seconds: float) -> Option
 history.workers(n: int) -> Option
+history.resume(checkpoint: Checkpoint[_S]) -> Option
+history.Checkpoint()
 ```
 
 **Calls and evidence.** These are the types of the calls, the transactions and the evidence that the checks and their records use.
@@ -1246,12 +1276,12 @@ library against it:
 
 - The 195 cases of the corpus run on `check` and `expect`. Python skips none
   of them.
-- The vectors run too: 57 for files, 108 for histories, 432 for properties
-  and 14 for machines.
-- `tests/test_definition.py` checks each of the definition's 110
+- The vectors run too: 57 for files, 119 for histories, 452 for properties
+  and 36 for machines.
+- `tests/test_definition.py` checks each of the definition's 111
   assertions. An assertion is present, or the overlay declines it and it is
   absent.
-- The library implements 105 of the 110. `pairwise`, `completes_within`,
+- The library implements 106 of the 111. `pairwise`, `completes_within`,
   `no_task_leaks`, `rejects` and the five error assertions have no corpus
   case.
 

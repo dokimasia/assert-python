@@ -13,10 +13,10 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
+from dokimi_assert._history.checkpoint import Checkpoint, forget, resumed
 from dokimi_assert._history.history import History, recorded
-from dokimi_assert._history.option import Option, configure
+from dokimi_assert._history.option import Config, Option, configure
 from dokimi_assert._history.partition import (
-    Checked,
     Partition,
     Span,
     calls_of,
@@ -131,21 +131,19 @@ _PARALLEL_PARTITIONS = 2
 
 
 def _endings(
-    partitions: Sequence[Partition],
-    workers: int,
-    run: Callable[[Sequence[Checked]], Ending[_S]],
+    searches: Sequence[Search[_S]], workers: int
 ) -> tuple[Callable[[int], Ending[_S]], Callable[[], None]]:
-    """Return the ending of each partition by position, and the stop of the searches.
+    """Return the ending of each search by position, and the stop of the searches.
 
     With one worker, the ending of a partition runs its search. With more
     workers, the searches run on that many threads in partition order. The
     ending of a partition then waits for its search. The stop cancels the
     searches that have not started and waits for the others.
     """
-    if workers == 1 or len(partitions) < _PARALLEL_PARTITIONS:
-        return (lambda i: run(partitions[i].calls)), lambda: None
-    pool = ThreadPoolExecutor(min(workers, len(partitions)))
-    futures: list[Future[Ending[_S]]] = [pool.submit(run, p.calls) for p in partitions]
+    if workers == 1 or len(searches) < _PARALLEL_PARTITIONS:
+        return (lambda i: searches[i].run()), lambda: None
+    pool = ThreadPoolExecutor(min(workers, len(searches)))
+    futures: list[Future[Ending[_S]]] = [pool.submit(s.run) for s in searches]
 
     def stop() -> None:
         pool.shutdown(wait=True, cancel_futures=True)
@@ -153,17 +151,48 @@ def _endings(
     return (lambda i: futures[i].result()), stop
 
 
+def _searched(
+    history: History,
+    spec: Spec[_S],
+    config: Config,
+    deadline: Deadline,
+    *,
+    whole: bool,
+) -> list[tuple[Partition, Search[_S]]]:
+    """Return the partitions of a check and their searches.
+
+    A check with a checkpoint continues the searches that the checkpoint
+    keeps. Every other check searches each partition from its first call. A
+    check of whole has one partition of every call.
+    """
+    checkpoint = config.checkpoint
+    if checkpoint is not None:
+        return resumed(checkpoint, history, spec, config, deadline, whole=whole)
+    events, ids = recorded(history)
+    calls = calls_of(events, ids)
+    partitions = [Partition((), tuple(calls))] if whole else partitions_of(calls)
+    return [(p, Search(p.calls, spec, config, deadline)) for p in partitions]
+
+
+def _kept(checkpoint: Checkpoint[Any] | None, outcome: Verdict) -> None:
+    """Leave checkpoint without a search after a check that did not pass."""
+    if checkpoint is not None and outcome != "passed":
+        forget(checkpoint)
+
+
 def check(history: History, spec: Spec[_S], options: Sequence[Option]) -> Detail[_S]:
     """Check history against spec under options.
 
     The detail reports the first violated partition. When the check does not
     find a violated partition, the detail reports the first undecided
-    partition, or else a pass.
+    partition, or else a pass. A check with a checkpoint continues the
+    searches that the checkpoint keeps, and keeps its own searches there
+    when it passes.
 
     Args:
         history: The history.
         spec: The spec.
-        options: The limits and the workers of the check.
+        options: The limits, the workers and the checkpoint of the check.
 
     Returns:
         The detail.
@@ -173,43 +202,49 @@ def check(history: History, spec: Spec[_S], options: Sequence[Option]) -> Detail
     """
     config = configure(options)
     deadline = Deadline(config.time_limit)
-    events, ids = recorded(history)
-    partitions = partitions_of(calls_of(events, ids))
-
-    def run(calls: Sequence[Checked]) -> Ending[_S]:
-        return Search(calls, spec, config, deadline).run()
-
-    ending_of, stop = _endings(partitions, config.workers, run)
+    searched = _searched(history, spec, config, deadline, whole=False)
+    ending_of, stop = _endings([s for _, s in searched], config.workers)
+    outcome: Verdict = "violated"
     try:
         steps = 0
         undecided: Detail[_S] | None = None
-        for i, p in enumerate(partitions):
+        for i, (p, _) in enumerate(searched):
             ending = ending_of(i)
             steps += ending.steps
             if ending.outcome == "passed":
                 continue
-            detail = _reported(p, ending, len(partitions), steps)
+            detail = _reported(p, ending, len(searched), steps)
             if ending.outcome == "violated":
                 return detail
             if undecided is None:
                 undecided = detail
-        return undecided if undecided is not None else _passed(len(partitions), steps)
+        if undecided is not None:
+            outcome = "undecided"
+            return undecided
+        outcome = "passed"
+        return _passed(len(searched), steps)
     finally:
         deadline.stopped.set()
         stop()
+        _kept(config.checkpoint, outcome)
 
 
-def whole(history: History, spec: Spec[_S]) -> tuple[Detail[_S], tuple[_S, ...]]:
+def whole(
+    history: History, spec: Spec[_S], checkpoint: Checkpoint[_S] | None = None
+) -> tuple[Detail[_S], tuple[_S, ...]]:
     """Check every call of history as one partition.
 
     The calls form one partition whatever keys they have. The check has the
     default limits. A machine of stateful checks the history of its steps
     this way, because its spec has one state for the whole subject. A history
-    without calls passes without a partition.
+    without calls passes without a partition. A check with a checkpoint
+    continues the search that the checkpoint keeps, and keeps its own search
+    there when it passes.
 
     Args:
         history: The history.
         spec: The spec.
+        checkpoint: The checkpoint of the check, or None.
 
     Returns:
         The detail, and the states after the order that the search found. A
@@ -219,13 +254,17 @@ def whole(history: History, spec: Spec[_S]) -> tuple[Detail[_S], tuple[_S, ...]]
     Raises:
         SpecError: A function of the spec raises.
     """
-    events, ids = recorded(history)
-    calls = calls_of(events, ids)
-    ending = Search(calls, spec, configure([]), Deadline(0)).run()
+    config = Config(checkpoint=checkpoint)
+    [(partition, search)] = _searched(history, spec, config, Deadline(0), whole=True)
+    outcome: Verdict = "violated"
+    try:
+        ending = search.run()
+        outcome = ending.outcome
+    finally:
+        _kept(checkpoint, outcome)
     if ending.outcome == "passed":
-        return _passed(1 if calls else 0, ending.steps), ending.states
-    reported = _reported(Partition((), tuple(calls)), ending, 1, ending.steps)
-    return reported, ()
+        return _passed(1 if partition.calls else 0, ending.steps), ending.states
+    return _reported(partition, ending, 1, ending.steps), ()
 
 
 def fields_of(detail: Detail[Any]) -> dict[str, Any]:

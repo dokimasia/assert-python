@@ -8,12 +8,14 @@ The calls of a body are a run of the call that ran the body, so the record
 of that call contains them. A failure that stops ends the body, as it ends a
 test. A fault that ends its call fails the body with the text of the fault,
 and a fault that a call notes passes to the seat of the assertion. The seat
-runs the functions that its member cleanup registers when the body ends.
+runs the functions that its member cleanup registers when the body ends. A
+body that ended with an error fails the seat before those functions run.
 """
 
 from __future__ import annotations
 
 import contextlib
+import unittest
 from typing import TYPE_CHECKING, TypeVar
 
 from dokimi_assert._matcher.cleanup import Cleanups
@@ -41,7 +43,8 @@ class Body:
     """The seat of one run of a body. It records whether the run failed.
 
     Attributes:
-        failed: When True, the run reported a failure.
+        failed: When True, the run reported a failure. In a cleanup of the
+            body, it is also True when the body ended with an error.
         message: The text of the first failure of the run, or the empty
             string.
     """
@@ -159,7 +162,8 @@ def run_on(seat: _B, body: Callable[[Seat], object], loop: Loop) -> _B:
     A body that returns an awaitable runs on loop to its end. A failure that
     stops ends the run. Any other exception is not a failure of the body,
     and run_on raises it. The seat runs its cleanups when the body ends,
-    however it ended.
+    however it ended. An error of the body, other than a SkipTest of
+    unittest, fails the seat before the cleanups run.
 
     Args:
         seat: The seat of the run.
@@ -172,6 +176,11 @@ def run_on(seat: _B, body: Callable[[Seat], object], loop: Loop) -> _B:
     try:
         with contextlib.suppress(Ended):
             loop.resolve(body(seat))
+    except unittest.SkipTest:
+        raise
+    except Exception:
+        seat.failed = True
+        raise
     finally:
         seat.finish(loop)
     return seat

@@ -28,7 +28,8 @@ A helper registers the release of what it starts through cleanup. The
 Collector runs the releases when the test ends, the Recorder at
 run_cleanups, and the seat that rejects or eventually hands a body when the
 body ends. A Standard has no end of a test, so cleanup ends the call with a
-fault there.
+fault there. A release that keeps the data of a failed test reads failed,
+which also counts the error that ended the test.
 
 A tool of dokimasia writes its own records into the report of a test through
 write_record. Only the Collector of the fixture seat has a test, so the
@@ -63,6 +64,7 @@ __all__ = [
     "Standard",
     "clean_up",
     "cleanup",
+    "failed",
     "fault",
     "skip",
     "write_record",
@@ -123,6 +125,36 @@ def cleanup(seat: Seat, fn: Callable[[], object]) -> None:
         end(seat, of_operation("seat.cleanup", refused))
         return
     member(fn)
+
+
+def failed(seat: Seat) -> bool:
+    """Return whether the test, the case or the body of seat has failed.
+
+    It reads the property failed of seat. The Collector of the seat
+    fixture, a Recorder, a case of a property and the seat that rejects or
+    eventually hands a body have the property. In a cleanup, the property
+    also counts the error that ended the test, the case or the body. A seat
+    without the property ends the call with a fault, and failed returns
+    False.
+
+        def scratch(seat):
+            path = tempfile.mkdtemp()
+            cleanup(seat, lambda: failed(seat) or shutil.rmtree(path))
+            return path
+
+    Args:
+        seat: The seat of the call of the helper.
+
+    Returns:
+        The property failed of seat, or False on a seat without it.
+    """
+    __tracebackhide__ = True
+    member = getattr(seat, "failed", None)
+    if not isinstance(member, bool):
+        refused = FaultError("", "the seat has no property failed")
+        end(seat, of_operation("seat.failed", refused))
+        return False
+    return member
 
 
 def skip(seat: Seat, reason: str) -> None:
@@ -512,6 +544,7 @@ class Collector:
         self._records: list[Failure] = []
         self._cleanups: Cleanups = Cleanups()
         self._clock: Clock | None = None
+        self._failed: bool = False
         self._guard: threading.Lock = threading.Lock()
 
     def helper(self) -> None:
@@ -570,6 +603,8 @@ class Collector:
     def fail(self, message: str) -> None:
         """Raise AssertionError with message, which stops the test.
 
+        The collector fails, also when the test catches the error.
+
         Args:
             message: The text of the failure.
 
@@ -577,6 +612,8 @@ class Collector:
             AssertionError: Always.
         """
         __tracebackhide__ = True
+        with self._guard:
+            self._failed = True
         raise AssertionError(message)
 
     def record(self, message: str) -> None:
@@ -587,6 +624,23 @@ class Collector:
         """
         with self._guard:
             self._collected.append(message)
+            self._failed = True
+
+    @property
+    def failed(self) -> bool:
+        """Whether the test of the collector has failed.
+
+        It is True once the collector received a failure through either
+        surface, and it stays True after flush. In a cleanup of the seat
+        fixture, it is also True when the test body ended with an error. A
+        fault raises in its call, so it fails the collector when the test
+        ends with it.
+
+        Returns:
+            True after a failure of the test.
+        """
+        with self._guard:
+            return self._failed
 
     def skip(self, reason: str) -> None:
         """Skip the test with reason.
@@ -607,7 +661,8 @@ class Collector:
         registered first, and reports each function that raises as a
         failure of the test. A function that a function registers runs in
         the same pass. An awaitable that a function returns runs on an event
-        loop of its own.
+        loop of its own. A function reads failed, which counts the error
+        that ended the test body.
 
         Args:
             fn: The function, such as the removal of a directory that the
@@ -646,13 +701,19 @@ class Collector:
         msg = f"{len(collected)} failures:\n{listed}"
         raise AssertionError(msg)
 
-    def _run_cleanups(self) -> None:
-        """Run the registered functions, the last first, and forget them."""
+    def _run_cleanups(self, failed: bool) -> None:
+        """Run the registered functions, the last first, and forget them.
+
+        A test that failed fails the collector before the first function runs.
+        """
+        if failed:
+            with self._guard:
+                self._failed = True
         with Loop("cleanup") as loop:
             self._cleanups.run(lambda fn: _released(fn, loop, self.record))
 
 
-def clean_up(collector: Collector) -> None:
+def clean_up(collector: Collector, failed: bool = False) -> None:
     """Run the functions that collector registered through cleanup.
 
     It runs the last registered first, and forgets them. A function that a
@@ -662,5 +723,8 @@ def clean_up(collector: Collector) -> None:
 
     Args:
         collector: The seat of the test that ended.
+        failed: True when the test body ended with an error. The collector
+            then fails before the first function runs, so a function reads
+            failed of the collector.
     """
-    collector._run_cleanups()  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+    collector._run_cleanups(failed)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]

@@ -291,14 +291,16 @@ def _offered(owner: Any, member: str) -> bool:
 
     A field of a dataclass without a default is not an attribute of its
     class. A protocol documents an optional member in its docstring, because
-    a protocol cannot declare one, as Spec documents equal(a, b).
+    a protocol cannot declare one, as Spec documents equal(a, b) and Seat
+    documents its property failed.
     """
     if hasattr(owner, member):
         return True
     if dataclasses.is_dataclass(owner):
         return member in {f.name for f in dataclasses.fields(owner)}
     if Protocol in getattr(owner, "__mro__", ()):
-        return f"{member}(" in (inspect.getdoc(owner) or "")
+        documented = inspect.getdoc(owner) or ""
+        return f"{member}(" in documented or f"property {member}" in documented
     return False
 
 

@@ -27,7 +27,7 @@ from dokimi_assert.option import equate_nans
 from helpers import REGISTER, Register
 
 if TYPE_CHECKING:
-    from collections.abc import Hashable, Sequence
+    from collections.abc import Callable, Hashable, Sequence
 
     from dokimi_assert.seat import Collector
 
@@ -39,6 +39,35 @@ def searched(history: History, spec: Spec[Any], *options: Option) -> Ending[Any]
     return Search(
         calls_of(events, ids), spec, config, Deadline(config.time_limit)
     ).run()
+
+
+def grown(
+    first: Callable[[History], object],
+    more: Callable[[History], object],
+    spec: Spec[Any],
+) -> tuple[Ending[Any], Ending[Any]]:
+    """Return the ending of a grown search, and the ending of a search of every call.
+
+    The search runs over the calls that first records. It grows by the calls
+    that more records after them, and runs again.
+    """
+    history = History()
+    first(history)
+    events, ids = recorded(history)
+    config = configure([])
+    search = Search(calls_of(events, ids), spec, config, Deadline(0))
+    search.run()
+    read = len(events)
+    more(history)
+    events, ids = recorded(history)
+    every = calls_of(events, ids)
+    search.grow([c for c in every if c.span.call >= read], spec, Deadline(0))
+    return search.run(), Search(every, spec, config, Deadline(0)).run()
+
+
+def write_one(history: History) -> None:
+    """Record a write of 1 that returns."""
+    history.invoke(0, "write", [1], "x").ok(None)
 
 
 def write_then_read() -> History:
@@ -592,4 +621,196 @@ class TestSearchRun:
             (raised.value.fn, raised.value.call),
             want,
             "the error has the function and the call",
+        )
+
+
+class TestSearchCalls:
+    """Search.calls returns the calls of the search in event order."""
+
+    def test_returns_the_calls_of_the_partition(self, seat: Collector) -> None:
+        """The search has the write and the read."""
+        events, ids = recorded(write_then_read())
+        calls = calls_of(events, ids)
+        search = Search(calls, REGISTER, configure([]), Deadline(0))
+        check.equal(seat, search.calls, tuple(calls), "the search has both calls")
+
+
+class TestSearchFits:
+    """Search.fits reports whether a grown search continues as a new search."""
+
+    tests: ClassVar[list[tuple[str, int, list[Option], bool]]] = [
+        ("fits under the limits of the search", 3, [budget(100), memo_limit(64)], True),
+        ("does not fit under another budget", 3, [budget(99), memo_limit(64)], False),
+        (
+            "does not fit under another memo limit",
+            3,
+            [budget(100), memo_limit(63)],
+            False,
+        ),
+        (
+            "fits a memo that fills the grown capacity",
+            32,
+            [budget(100), memo_limit(64)],
+            True,
+        ),
+        (
+            "does not fit a memo past the grown capacity",
+            33,
+            [budget(100), memo_limit(64)],
+            False,
+        ),
+    ]
+
+    @pytest.mark.parametrize(
+        ("give_calls", "give_options", "want"),
+        [t[1:] for t in tests],
+        ids=[t[0] for t in tests],
+    )
+    def test_reports_whether_the_search_fits(
+        self,
+        seat: Collector,
+        give_calls: int,
+        give_options: list[Option],
+        want: bool,
+    ) -> None:
+        """The search passed with two configurations in its memo."""
+        events, ids = recorded(write_then_read())
+        config = configure([budget(100), memo_limit(64)])
+        search = Search(calls_of(events, ids), REGISTER, config, Deadline(0))
+        search.run()
+        check.equal(
+            seat,
+            search.fits(give_calls, configure(give_options)),
+            want,
+            "the search fits as the limits and the memo state",
+        )
+
+
+class TestSearchGrow:
+    """Search.grow adds calls that follow every entry of a search that passed."""
+
+    def test_continues_the_search_over_the_new_calls(self, seat: Collector) -> None:
+        """A read of 1 and a write and a read of 2 follow the write of 1."""
+
+        def more(history: History) -> None:
+            history.invoke(1, "read", [], "x").ok(1)
+            history.invoke(0, "write", [2], "x").ok(None)
+            history.invoke(1, "read", [], "x").ok(2)
+
+        want = ending("passed", 4, (), (2,), ())
+        check.equal(
+            seat,
+            list(grown(write_one, more, REGISTER)),
+            [want, want],
+            "the grown search passes as a search of every call",
+        )
+
+    def test_returns_the_frontier_of_a_violation_of_a_new_call(
+        self, seat: Collector
+    ) -> None:
+        """A read of 2 follows the write of 1."""
+
+        def more(history: History) -> None:
+            history.invoke(1, "read", [], "x").ok(2)
+
+        want = ending("violated", 2, (0,), (1,), (1,))
+        check.equal(
+            seat,
+            list(grown(write_one, more, REGISTER)),
+            [want, want],
+            "the grown search fails as a search of every call",
+        )
+
+    def test_backtracks_into_the_calls_of_the_kept_search(
+        self, seat: Collector
+    ) -> None:
+        """A read of 1 follows two concurrent writes, so the write of 2 goes first."""
+
+        def first(history: History) -> None:
+            one = history.invoke(0, "write", [1], "x")
+            two = history.invoke(1, "write", [2], "x")
+            one.ok(None)
+            two.ok(None)
+
+        def more(history: History) -> None:
+            history.invoke(0, "read", [], "x").ok(1)
+
+        want = ending("passed", 6, (), (1,), ())
+        check.equal(
+            seat,
+            list(grown(first, more, REGISTER)),
+            [want, want],
+            "the grown search finds the order of a search of every call",
+        )
+
+    def test_takes_no_step_without_a_new_call(self, seat: Collector) -> None:
+        """The history ends with the read of 1."""
+
+        def first(history: History) -> None:
+            history.invoke(0, "write", [1], "x").ok(None)
+            history.invoke(1, "read", [], "x").ok(1)
+
+        want = ending("passed", 2, (), (1,), ())
+        check.equal(
+            seat,
+            list(grown(first, lambda _: None, REGISTER)),
+            [want, want],
+            "the grown search keeps its steps",
+        )
+
+    def test_grows_by_a_call_whose_outcome_is_unknown(self, seat: Collector) -> None:
+        """A lost write of 2 and a read of 2 follow the write of 1."""
+
+        def more(history: History) -> None:
+            history.invoke(1, "write", [2], "x").unknown("timed out")
+            history.invoke(2, "read", [], "x").ok(2)
+
+        want = ending("passed", 3, (), (2,), ())
+        check.equal(
+            seat,
+            list(grown(write_one, more, REGISTER)),
+            [want, want],
+            "the lost write takes effect in both searches",
+        )
+
+    def test_reads_the_deadline_of_the_check_that_grows_it(
+        self, seat: Collector
+    ) -> None:
+        """The deadline of the second check has passed before its first step."""
+        history = History()
+        write_one(history)
+        events, ids = recorded(history)
+        search = Search(calls_of(events, ids), REGISTER, configure([]), Deadline(0))
+        search.run()
+        history.invoke(1, "read", [], "x").ok(1)
+        events, ids = recorded(history, len(events))
+        stopped = Deadline(0)
+        stopped.stopped.set()
+        search.grow(calls_of(events, ids), REGISTER, stopped)
+        check.equal(
+            seat,
+            search.run(),
+            Ending("undecided", 1, (0,), (1,), (), "time"),
+            "the grown search stops at the deadline of its check",
+        )
+
+    def test_steps_through_the_spec_of_the_check_that_grows_it(
+        self, seat: Collector
+    ) -> None:
+        """The spec of the second check raises in next."""
+        history = History()
+        write_one(history)
+        events, ids = recorded(history)
+        search = Search(calls_of(events, ids), REGISTER, configure([]), Deadline(0))
+        search.run()
+        history.invoke(1, "read", [], "x").ok(1)
+        events, ids = recorded(history, len(events))
+        search.grow(calls_of(events, ids), BrokenNext(), Deadline(0))
+        with pytest.raises(SpecError) as raised:
+            search.run()
+        check.equal(
+            seat,
+            (raised.value.fn, raised.value.call),
+            ("next", 2),
+            "the next of the second spec raises at the read",
         )

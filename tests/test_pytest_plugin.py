@@ -13,14 +13,13 @@ because the other specs assert on the seat that the plugin supplies.
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import ClassVar
 from xml.etree import ElementTree as ET
+
+import pytest
 
 from dokimi_assert.pytest_plugin import RECORDS
 from dokimi_assert.seat import Collector, Recorder
-
-if TYPE_CHECKING:
-    import pytest
 
 pytest_plugins = ["pytester"]
 
@@ -387,6 +386,77 @@ class TestPytestRuntestCall:
             """
         )
         pytester.runpytest().assert_outcomes(failed=1, passed=1)
+
+    def test_fails_the_seat_of_a_test_that_raised_before_the_cleanups(
+        self, pytester: pytest.Pytester
+    ) -> None:
+        """A cleanup reads failed after the body raised an error."""
+        pytester.makepyfile(
+            """
+            read = []
+
+            def test_raises(seat):
+                seat.cleanup(lambda: read.append(seat.failed))
+                assert not seat.failed
+                raise ValueError("the body ends with an error")
+
+            def test_read():
+                assert read == [True]
+            """
+        )
+        pytester.runpytest().assert_outcomes(failed=1, passed=1)
+
+    def test_leaves_the_seat_of_a_passing_test_unfailed(
+        self, pytester: pytest.Pytester
+    ) -> None:
+        """A cleanup reads failed after the body returned."""
+        pytester.makepyfile(
+            """
+            read = []
+
+            def test_passes(seat):
+                seat.cleanup(lambda: read.append(seat.failed))
+
+            def test_read():
+                assert read == [False]
+            """
+        )
+        pytester.runpytest().assert_outcomes(passed=2)
+
+    skips: ClassVar[list[tuple[str, str, dict[str, int]]]] = [
+        ("pytest.skip", 'pytest.skip("no docker")', {"skipped": 1, "passed": 1}),
+        (
+            "unittest.SkipTest",
+            'raise unittest.SkipTest("no docker")',
+            {"skipped": 1, "passed": 1},
+        ),
+        ("pytest.xfail", 'pytest.xfail("a known defect")', {"xfailed": 1, "passed": 1}),
+    ]
+
+    @pytest.mark.parametrize(
+        ("give", "want"), [t[1:] for t in skips], ids=[t[0] for t in skips]
+    )
+    def test_leaves_the_seat_of_a_test_that_skips_unfailed(
+        self, pytester: pytest.Pytester, give: str, want: dict[str, int]
+    ) -> None:
+        """A cleanup reads failed after a skip or an expected failure."""
+        pytester.makepyfile(
+            f"""
+            import unittest
+
+            import pytest
+
+            read = []
+
+            def test_skips(seat):
+                seat.cleanup(lambda: read.append(seat.failed))
+                {give}
+
+            def test_read():
+                assert read == [False]
+            """
+        )
+        pytester.runpytest().assert_outcomes(**want)
 
     def test_fails_a_test_whose_cleanup_raises(self, pytester: pytest.Pytester) -> None:
         """The error of a cleanup is a failure of the test."""

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, cast
 import pytest
 
 from dokimi_assert import check
+from dokimi_assert._history.checkpoint import Checkpoint
 from dokimi_assert._history.option import (
     BUDGET,
     MEMO_LIMIT,
@@ -20,6 +21,7 @@ from dokimi_assert._history.option import (
     budget,
     configure,
     memo_limit,
+    resume,
     time_limit,
     workers,
 )
@@ -177,6 +179,33 @@ class TestWorkers:
             seat,
             refusal(seat, lambda: workers(0)),
             "history: workers(0) needs an int of 1 or more",
+            "the text of the refusal has the call",
+        )
+
+
+class TestResume:
+    """resume sets the checkpoint whose searches the check continues."""
+
+    def test_returns_an_option_that_sets_the_checkpoint_alone(
+        self, seat: Collector
+    ) -> None:
+        """The option sets a new checkpoint."""
+        checkpoint: Checkpoint[Any] = Checkpoint()
+        check.equal(
+            seat,
+            configure([resume(checkpoint)]),
+            Config(checkpoint=checkpoint),
+            "the option changes only the checkpoint",
+        )
+
+    def test_raises_type_error_for_a_value_that_is_not_a_checkpoint(
+        self, seat: Collector
+    ) -> None:
+        """The string cp is not a checkpoint."""
+        check.equal(
+            seat,
+            refusal(seat, lambda: resume(cast("Any", "cp")), TypeError),
+            "history: resume('cp') needs a Checkpoint",
             "the text of the refusal has the call",
         )
 

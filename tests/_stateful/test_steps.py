@@ -525,6 +525,23 @@ class TestSteps:
             "the second input receives the state 1",
         )
 
+    def test_continues_the_search_of_the_check_before_each_check(
+        self, seat: Collector
+    ) -> None:
+        """The machine takes four steps, and the spec steps each call once."""
+        stepped: list[int] = []
+
+        def counted(state: int, _: Operation) -> list[int]:
+            stepped.append(state)
+            return [state + 1]
+
+        replayed(
+            Plain([Log().action("a")], Counting(counted)),
+            [1, 0, 1, 0, 1, 0, 1, 0, 0],
+            swarm(False),
+        )
+        check.equal(seat, stepped, [0, 1, 2, 3], "each call steps once")
+
     def test_runs_the_invariant_after_setup_after_each_step_and_after_settle(
         self, seat: Collector
     ) -> None:

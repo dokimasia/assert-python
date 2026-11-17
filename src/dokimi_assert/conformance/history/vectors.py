@@ -7,26 +7,29 @@ A seam vector records a script through a History, or intervals through
 from_intervals. The runner compares the events of the history in their
 JSON form, or the entry that the seam refuses, with the vector. A
 linearizable vector has a script that the runner checks with
-is_linearizable against a named spec on a recorder. A serializable vector
-and a snapshot-isolation vector have a script that the runner checks with
-the check of their level. Each runner of a check compares the verdict and
-the detail of the call record with the vector.
+is_linearizable against a named spec on a recorder. A resume vector has a
+script whose prefixes the runner checks with one Checkpoint. A serializable
+vector and a snapshot-isolation vector have a script that the runner checks
+with the check of their level. Each runner of a check compares the verdict
+and the detail of the call record with the vector.
 """
 
 from __future__ import annotations
 
+import functools
 import json
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from dokimi_assert import history
 from dokimi_assert._history.event import event_json
 from dokimi_assert._matcher.fault import FaultError
-from dokimi_assert.conformance.history.specs import SPECS
+from dokimi_assert.conformance.history.specs import SPECS, NamedSpec
 from dokimi_assert.conformance.literal import decode, same_json
 from dokimi_assert.seat import Recorder
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Mapping, Sequence
 
     from dokimi_assert.conformance.files import Runner
 
@@ -264,6 +267,17 @@ def _record_of(check: Callable[[Recorder], None]) -> dict[str, Any]:
     return record
 
 
+def _linearizable_record(
+    recorded: history.History, spec: NamedSpec, options: Sequence[history.Option]
+) -> dict[str, Any]:
+    """Return the call record of a check of linearizability of recorded, parsed."""
+    return _record_of(
+        lambda seat: history.is_linearizable(
+            seat, recorded, spec, LINEARIZABLE_CONTRACT, *options
+        )
+    )
+
+
 def _compare_verdict(call: Mapping[str, Any], raw: Mapping[str, Any]) -> None:
     """Compare the verdict and the detail of a call record with a vector.
 
@@ -322,6 +336,19 @@ def _options_of(raw: Mapping[str, Any]) -> list[history.Option]:
     return options
 
 
+def _named(raw: Mapping[str, Any]) -> NamedSpec:
+    """Return the named spec of a vector.
+
+    Raises:
+        FaultError: The named spec does not exist.
+    """
+    spec = SPECS.get(cast("str", raw.get("spec")))
+    if spec is None:
+        at = "spec"
+        raise FaultError(at, f"{json.dumps(raw.get('spec'))} is not a named spec")
+    return spec
+
+
 #: The fewest steps of a passing linearizable vector. The runner checks it
 #: under a budget of one step less, and a budget has one step at least.
 _LEAST_STEPS = 2
@@ -341,19 +368,12 @@ def _check_linearizable(raw: Mapping[str, Any], _: str) -> None:
             from the vector, or a check under a budget does not end as the
             steps of the vector need.
     """
-    spec = SPECS.get(cast("str", raw.get("spec")))
-    if spec is None:
-        at = "spec"
-        raise FaultError(at, f"{json.dumps(raw.get('spec'))} is not a named spec")
+    spec = _named(raw)
     recorded = _history_of(raw)
     options = _options_of(raw)
 
     def checked(*more: history.Option) -> dict[str, Any]:
-        return _record_of(
-            lambda seat: history.is_linearizable(
-                seat, recorded, spec, LINEARIZABLE_CONTRACT, *options, *more
-            )
-        )
+        return _linearizable_record(recorded, spec, [*options, *more])
 
     _compare_verdict(checked(), raw)
     if raw.get("expect") == "fail":
@@ -393,6 +413,173 @@ def _check_linearizable(raw: Mapping[str, Any], _: str) -> None:
         )
 
 
+@dataclass
+class _Calls:
+    """The number of calls of the next of a spec.
+
+    Attributes:
+        n: The number of calls.
+    """
+
+    n: int = 0
+
+
+def _counted(spec: NamedSpec, calls: _Calls) -> NamedSpec:
+    """Return spec with a next that adds 1 to calls for each call."""
+    step = spec.step
+
+    def counting(state: Any, op: history.Operation) -> list[Any]:
+        calls.n += 1
+        return step(state, op)
+
+    return replace(spec, step=counting)
+
+
+def _settings(
+    raw: object, read: int, events: int, at: str
+) -> tuple[int, list[history.Option]]:
+    """Return the events that one check of a resume vector reads, and its options.
+
+    read is the number of events that the check before it read, and events
+    the number of events of the history.
+
+    Raises:
+        FaultError: The check is not an object, it reads fewer events than
+            the check before it, no event or more events than the history
+            has, or a limit is not an int of 1 or more.
+    """
+    if not isinstance(raw, dict):
+        raise FaultError(at, "the check is not an object")
+    stated = cast("dict[str, Any]", raw)
+    least = max(read, 1)
+    n = stated.get("events")
+    if type(n) is not int or not least <= n <= events:
+        place = f"{at}.events"
+        reason = f"the check reads {json.dumps(n)} events, want {least} to {events}"
+        raise FaultError(place, reason)
+    try:
+        options = _options_of(stated)
+    except FaultError as error:
+        raise error.within(at) from None
+    return n, options
+
+
+def _compare_result(
+    call: Mapping[str, Any], calls: int, steps: Callable[[], int], raw: object
+) -> None:
+    """Compare the call record of one check of a resume vector with its result.
+
+    calls is the number of calls of next that the check made. steps returns
+    the calls of next of a check of every call. Each named spec takes one
+    step for each call of next, so a pass compares its steps with them.
+
+    Raises:
+        FaultError: The result is not an object, the verdict or a field of
+            the detail of a failure differs, the steps of a pass differ from
+            the calls of next of a check of every call, or the calls of next
+            differ.
+    """
+    if not isinstance(raw, dict):
+        at = ""
+        raise FaultError(at, "the result is not an object")
+    result = cast("dict[str, Any]", raw)
+    _compare_verdict(call, result)
+    if result.get("expect") == "pass":
+        stated = cast("dict[str, Any]", result.get("detail", {})).get("steps")
+        if type(stated) is not int:
+            at = "detail.steps"
+            raise FaultError(
+                at, f"the detail states the steps {json.dumps(stated)}, want a number"
+            )
+        every = steps()
+        if every != stated:
+            at = "detail.steps"
+            raise FaultError(
+                at, f"a check of every call takes {every} steps, want {stated}"
+            )
+    wanted = result.get("next-calls")
+    if type(wanted) is not int or wanted != calls:
+        at = "next-calls"
+        raise FaultError(
+            at, f"the check calls next {calls} times, want {json.dumps(wanted)}"
+        )
+
+
+def _check_resume(raw: Mapping[str, Any], _: str) -> None:
+    """Check the prefixes of the history of a resume vector with one checkpoint.
+
+    The runner records the history of the vector through one history, up to
+    the events of each check in turn. It checks each prefix with
+    is_linearizable against the named spec under the limits of the check,
+    and every check passes one Checkpoint. The runner counts the calls of
+    the next of the spec that each check makes. It compares the verdict, the
+    detail of a failing check and the calls of next with the result of the
+    check.
+
+    A passing check does not have a detail, so the runner compares the
+    steps of a pass with the calls of next of a check of the prefix without
+    the checkpoint.
+
+    Raises:
+        FaultError: The named spec does not exist, the history or the checks
+            are not lists, the vector does not have one result for each
+            check, a check or an entry of the history is not valid, or a
+            check differs from its result.
+    """
+    spec = _named(raw)
+    script = raw.get("history")
+    if not isinstance(script, list):
+        at = "history"
+        raise FaultError(at, "the script is not a list")
+    entries = cast("list[dict[str, Any]]", script)
+    checks = raw.get("checks")
+    if not isinstance(checks, list):
+        at = "checks"
+        raise FaultError(at, "the checks are not a list")
+    listed = cast("list[object]", checks)
+    stated = raw.get("results")
+    results = cast("list[object]", stated) if isinstance(stated, list) else []
+    if len(results) != len(listed):
+        at = "results"
+        raise FaultError(
+            at,
+            f"the vector states {len(results)} results, want one for each of "
+            f"{len(listed)} checks",
+        )
+    recorded = history.History()
+    calls: dict[object, history.Call] = {}
+    checkpoint: history.Checkpoint[Any] = history.Checkpoint()
+    read = 0
+    for i, check in enumerate(listed):
+        events, options = _settings(check, read, len(entries), f"checks[{i}]")
+        for j in range(read, events):
+            if _refuses(_call_of(entries[j], f"history[{j}]", recorded, calls)):
+                at = f"history[{j}]"
+                raise FaultError(at, "the seam refuses the entry")
+        read = events
+        counted = _Calls()
+        record = _linearizable_record(
+            recorded,
+            _counted(spec, counted),
+            [*options, history.resume(checkpoint)],
+        )
+        steps = functools.partial(_steps_of, recorded, spec, options)
+        try:
+            _compare_result(record, counted.n, steps, results[i])
+        except FaultError as error:
+            place = f"results[{i}]"
+            raise error.within(place) from None
+
+
+def _steps_of(
+    recorded: history.History, spec: NamedSpec, options: Sequence[history.Option]
+) -> int:
+    """Return the calls of next of a check of every call of recorded under options."""
+    fresh = _Calls()
+    _linearizable_record(recorded, _counted(spec, fresh), options)
+    return fresh.n
+
+
 def _check_isolation(check: Callable[[Recorder, history.History, str], None]) -> Runner:
     """Return the runner of the isolation vectors of a check."""
 
@@ -411,6 +598,7 @@ def _check_isolation(check: Callable[[Recorder, history.History, str], None]) ->
 RUNNERS: dict[str, Runner] = {
     "seam": _check_seam,
     "linearizable": _check_linearizable,
+    "resume": _check_resume,
     "serializable": _check_isolation(history.is_serializable),
     "snapshot-isolation": _check_isolation(history.has_snapshot_isolation),
 }

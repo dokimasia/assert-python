@@ -46,7 +46,7 @@ FILE_KINDS = [
 ]
 
 #: The kinds of the history vectors.
-HISTORY_KINDS = ["linearizable", "seam", "serializable", "snapshot-isolation"]
+HISTORY_KINDS = ["linearizable", "resume", "seam", "serializable", "snapshot-isolation"]
 
 #: The kinds of the property vectors.
 PROP_KINDS = [
@@ -130,7 +130,7 @@ class TestVectors:
 
     counts: ClassVar[list[tuple[str, list[str], int]]] = [
         ("returns the 57 files vectors of the definition", FILE_KINDS, 57),
-        ("returns the 112 history vectors of the definition", HISTORY_KINDS, 112),
+        ("returns the 119 history vectors of the definition", HISTORY_KINDS, 119),
         ("returns the 452 property vectors of the definition", PROP_KINDS, 452),
         ("returns the 36 machines vectors of the definition", STATEFUL_KINDS, 36),
     ]

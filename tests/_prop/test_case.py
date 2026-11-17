@@ -750,6 +750,75 @@ class TestCaseCleanup:
         )
 
 
+class TestCaseFailed:
+    """Case.failed reports whether the case has failed."""
+
+    def test_reports_the_failures_that_the_body_reached(self, seat: Collector) -> None:
+        """The body reads failed before and after a failure that records."""
+        c, _ = case_on()
+        read: list[bool] = []
+
+        def body(one: Case) -> None:
+            read.append(one.failed)
+            one.record("the count is wrong")
+            read.append(one.failed)
+
+        ending(c, body)
+        check.equal(seat, read, [False, True], "the record fails the case")
+
+    def test_leaves_the_case_of_a_noted_fault_unfailed(self, seat: Collector) -> None:
+        """A noted fault passes to the seat of the property."""
+        c, _ = case_on()
+        read: list[bool] = []
+
+        def body(one: Case) -> None:
+            one.report_fault(ValueError("the store skips a file"), False)
+            read.append(one.failed)
+
+        ending(c, body)
+        check.equal(seat, read, [False], "a noted fault does not fail the case")
+
+    tests: ClassVar[list[tuple[str, Callable[[Case], object], bool]]] = [
+        (
+            "reports true in a cleanup of a body that raised an error",
+            lambda _: int("seven"),
+            True,
+        ),
+        (
+            "reports true in a cleanup of a body whose call ended with a fault",
+            lambda one: one.report_fault(ValueError("the input is refused"), True),
+            True,
+        ),
+        (
+            "reports false in a cleanup of a case that skipped",
+            lambda one: one.skip("no docker"),
+            False,
+        ),
+        (
+            "reports false in a cleanup of a case that passed",
+            lambda _: None,
+            False,
+        ),
+    ]
+
+    @pytest.mark.parametrize(
+        ("give", "want"), [t[1:] for t in tests], ids=[t[0] for t in tests]
+    )
+    def test_reports_the_end_of_the_body_in_a_cleanup(
+        self, seat: Collector, give: Callable[[Case], object], want: bool
+    ) -> None:
+        """The cleanup reads failed after the body ended."""
+        c, _ = case_on()
+        read: list[bool] = []
+
+        def body(one: Case) -> None:
+            one.cleanup(lambda: read.append(one.failed))
+            give(one)
+
+        ending(c, body)
+        check.equal(seat, read, [want], "the cleanup reads how the body ended")
+
+
 class TestCaseHistory:
     """Case.history returns the history of the calls of the body."""
 

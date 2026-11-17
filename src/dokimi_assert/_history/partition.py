@@ -26,6 +26,7 @@ __all__ = [
     "Checked",
     "Partition",
     "Span",
+    "calls_from",
     "calls_of",
     "concurrency",
     "partitions_of",
@@ -83,21 +84,35 @@ class Partition:
     calls: tuple[Checked, ...]
 
 
-def calls_of(events: Sequence[Event], ids: Sequence[tuple[str, ...]]) -> list[Checked]:
-    """Return the calls of a history that did not fail.
+def calls_from(
+    events: Sequence[Event], ids: Sequence[tuple[str, ...]], start: int
+) -> tuple[list[Checked], list[Completion]]:
+    """Return the calls that events invoke, and the completions of earlier calls.
 
-    The calls are in event order. A call is known when it completed as ok.
+    events are the events of a history from the index start on. The calls
+    are in event order, without the calls that failed. A call is known when
+    it completed as ok. The completions complete the calls invoked before
+    start, in event order.
 
     Args:
-        events: The events of the history.
+        events: The events of a history from the index start on.
         ids: The identities of the keys of each event.
+        start: The index of the first event.
 
     Returns:
-        The calls.
+        The calls, and the completions of the calls invoked before start.
     """
-    completions = {e.call: e for e in events if isinstance(e, Completion)}
-    calls: list[Checked] = []
+    completions: dict[int, Completion] = {}
+    earlier: list[Completion] = []
     for event in events:
+        if not isinstance(event, Completion):
+            continue
+        if event.call < start:
+            earlier.append(event)
+        else:
+            completions[event.call] = event
+    calls: list[Checked] = []
+    for event, identities in zip(events, ids, strict=True):
         if not isinstance(event, Invocation):
             continue
         completion = completions.get(event.index)
@@ -108,7 +123,23 @@ def calls_of(events: Sequence[Event], ids: Sequence[tuple[str, ...]]) -> list[Ch
         operation = CallOperation(event.operation, event.args, known, output)
         index = None if completion is None else completion.index
         span = Span(event.index, index, event.process, operation)
-        calls.append(Checked(span, event.keys, ids[event.index]))
+        calls.append(Checked(span, event.keys, identities))
+    return calls, earlier
+
+
+def calls_of(events: Sequence[Event], ids: Sequence[tuple[str, ...]]) -> list[Checked]:
+    """Return the calls of the events of a history that did not fail.
+
+    The calls are in event order. A call is known when it completed as ok.
+
+    Args:
+        events: The events of the history.
+        ids: The identities of the keys of each event.
+
+    Returns:
+        The calls.
+    """
+    calls, _ = calls_from(events, ids, 0)
     return calls
 
 

@@ -39,6 +39,12 @@ SCRIPT = "history/a-client-continues-on-a-new-process-after-unknown"
 #: The id of a seam vector of intervals.
 INTERVALS = "history/from-intervals-puts-an-invocation-before-a-completion-at-one-time"
 
+#: The id of a resume vector of three passing checks over one partition.
+RESUME = "resume/sequential-calls-step-each-new-call-once"
+
+#: The id of a resume vector of two violated checks.
+VIOLATED = "resume/a-violated-check-leaves-no-search"
+
 #: The invocation of a read of the key x by client 0.
 READ = {
     "invoke": 0,
@@ -52,6 +58,25 @@ READ = {
 def vector(vector_id: str, **changes: Any) -> dict[str, Any]:
     """Return the vector of an id with changes to its members."""
     return {**VECTORS[vector_id], **changes}
+
+
+def with_check(vector_id: str, i: int, check: object) -> dict[str, Any]:
+    """Return the resume vector of an id with check in place of its check i."""
+    checks = list(VECTORS[vector_id]["checks"])
+    checks[i] = check
+    return vector(vector_id, checks=checks)
+
+
+def with_result(vector_id: str, i: int, **changes: Any) -> dict[str, Any]:
+    """Return the resume vector of an id with changes to the members of its result i."""
+    results = [dict(result) for result in VECTORS[vector_id]["results"]]
+    results[i] = {**results[i], **changes}
+    return vector(vector_id, results=results)
+
+
+def detail_of(vector_id: str, i: int, **changes: Any) -> dict[str, Any]:
+    """Return the detail of the result i of a resume vector with changes."""
+    return {**VECTORS[vector_id]["results"][i]["detail"], **changes}
 
 
 def fault_of(kind: str, raw: Mapping[str, Any]) -> tuple[str, str]:
@@ -78,6 +103,7 @@ class TestRunners:
         """Each kind is the name of a vector file of the family history."""
         assert sorted(RUNNERS) == [
             "linearizable",
+            "resume",
             "seam",
             "serializable",
             "snapshot-isolation",
@@ -270,6 +296,121 @@ class TestRunners:
     ) -> None:
         """The fault is at the member of the vector."""
         assert fault_of("linearizable", give) == want
+
+    resumes: ClassVar[list[tuple[str, dict[str, Any], tuple[str, str]]]] = [
+        (
+            "raises at the spec for a named spec that does not exist",
+            vector(RESUME, spec="widget"),
+            ("spec", '"widget" is not a named spec'),
+        ),
+        (
+            "raises for a history that is not a list",
+            vector(RESUME, history={}),
+            ("history", "the script is not a list"),
+        ),
+        (
+            "raises for checks that are not a list",
+            vector(RESUME, checks={}),
+            ("checks", "the checks are not a list"),
+        ),
+        (
+            "raises for fewer results than checks",
+            vector(RESUME, results=VECTORS[RESUME]["results"][:2]),
+            ("results", "the vector states 2 results, want one for each of 3 checks"),
+        ),
+        (
+            "raises for results that are not a list",
+            vector(RESUME, results={}),
+            ("results", "the vector states 0 results, want one for each of 3 checks"),
+        ),
+        (
+            "raises at a check that is not an object",
+            with_check(RESUME, 0, 1),
+            ("checks[0]", "the check is not an object"),
+        ),
+        (
+            "raises at a check that reads events past the history",
+            with_check(RESUME, 0, {"events": 7}),
+            ("checks[0].events", "the check reads 7 events, want 1 to 6"),
+        ),
+        (
+            "raises at a check that reads fewer events than the check before it",
+            with_check(RESUME, 1, {"events": 1}),
+            ("checks[1].events", "the check reads 1 events, want 2 to 6"),
+        ),
+        (
+            "raises at a check whose events are not a number",
+            with_check(RESUME, 0, {"events": "2"}),
+            ("checks[0].events", 'the check reads "2" events, want 1 to 6'),
+        ),
+        (
+            "raises at a limit of a check that is not an int of 1 or more",
+            with_check(RESUME, 0, {"events": 2, "budget": 0}),
+            ("checks[0].budget", "the budget is 0, not an int of 1 or more"),
+        ),
+        (
+            "raises at the refused entry of a history",
+            vector(
+                RESUME,
+                history=[READ, READ],
+                checks=[{"events": 2}],
+                results=VECTORS[RESUME]["results"][:1],
+            ),
+            ("history[1]", "the seam refuses the entry"),
+        ),
+        (
+            "raises at a result that is not an object",
+            vector(RESUME, results=[1, *VECTORS[RESUME]["results"][1:]]),
+            ("results[0]", "the result is not an object"),
+        ),
+        (
+            "raises at a result that expects neither a pass nor a failure",
+            with_result(RESUME, 0, expect="maybe"),
+            ("results[0].expect", 'the vector expects "maybe", neither pass nor fail'),
+        ),
+        (
+            "raises at a result of another verdict",
+            with_result(RESUME, 0, expect="fail"),
+            ("results[0].expect", "the check ends as pass, want fail"),
+        ),
+        (
+            "raises at a field of a failure of another value",
+            with_result(VIOLATED, 0, detail=detail_of(VIOLATED, 0, steps=9)),
+            ("results[0].detail.steps", "the field is 2, want 9"),
+        ),
+        (
+            "raises at a pass whose steps are not a number",
+            with_result(RESUME, 0, detail=detail_of(RESUME, 0, steps="1")),
+            (
+                "results[0].detail.steps",
+                'the detail states the steps "1", want a number',
+            ),
+        ),
+        (
+            "raises at a pass of other steps than a check of every call",
+            with_result(RESUME, 1, detail=detail_of(RESUME, 1, steps=3)),
+            ("results[1].detail.steps", "a check of every call takes 2 steps, want 3"),
+        ),
+        (
+            "raises at a check of other calls of next",
+            with_result(RESUME, 1, **{"next-calls": 2}),
+            ("results[1].next-calls", "the check calls next 1 times, want 2"),
+        ),
+        (
+            "raises at a result without the calls of next",
+            with_result(RESUME, 0, **{"next-calls": True}),
+            ("results[0].next-calls", "the check calls next 1 times, want true"),
+        ),
+    ]
+
+    @pytest.mark.parametrize(
+        ("give", "want"), [t[1:] for t in resumes], ids=[t[0] for t in resumes]
+    )
+    def test_raises_for_a_resume_vector_that_the_run_contradicts(
+        self, give: dict[str, Any], want: tuple[str, str]
+    ) -> None:
+        """The fault is at the member of the vector."""
+        assert fault_of("resume", give) == want
 
     def test_raises_for_an_isolation_vector_of_another_verdict(self) -> None:
         """The vector of a serializable history expects a failure."""

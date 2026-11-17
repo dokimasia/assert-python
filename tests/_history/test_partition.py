@@ -15,6 +15,7 @@ from dokimi_assert._history.history import History, recorded
 from dokimi_assert._history.partition import (
     Checked,
     Partition,
+    calls_from,
     calls_of,
     concurrency,
     partitions_of,
@@ -83,6 +84,42 @@ class TestCallsOf:
                 ('{"type":"string","value":"x"}', '{"type":"string","value":"y"}'),
             ],
             "the call has both keys and their identities",
+        )
+
+
+class TestCallsFrom:
+    """calls_from returns the calls from an index on, and the earlier completions."""
+
+    def test_returns_the_new_calls_and_the_completions_of_earlier_calls(
+        self, seat: Collector
+    ) -> None:
+        """The pending write of 1 completes after the index 1, and a read follows."""
+        history = History()
+        pending = history.invoke(0, "write", [1], "x")
+        history.invoke(1, "read", [], "y").ok(None)
+        pending.ok(None)
+        events, ids = recorded(history, 1)
+        added, earlier = calls_from(events, ids, 1)
+        check.equal(
+            seat,
+            [
+                [(c.span.call, c.span.completion, c.keys) for c in added],
+                [(e.call, e.kind) for e in earlier],
+            ],
+            [[(1, 2, ("y",))], [(0, "ok")]],
+            "the read is new and the write completes",
+        )
+
+    def test_leaves_out_a_new_call_that_failed(self, seat: Collector) -> None:
+        """The write fails after the index 0."""
+        history = History()
+        history.invoke(0, "write", [1], "x").fail("refused")
+        events, ids = recorded(history)
+        check.equal(
+            seat,
+            calls_from(events, ids, 0),
+            ([], []),
+            "a failed call is not a call of the check",
         )
 
 

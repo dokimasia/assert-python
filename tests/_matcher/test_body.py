@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import unittest
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -145,6 +146,34 @@ class TestRunOn:
         with Loop("x") as loop, pytest.raises(KeyError):
             run_on(Body(None, Recorder()), body, loop)
         assert order == ["released"]
+
+    def test_fails_the_seat_of_a_body_that_raises_before_its_cleanups(self) -> None:
+        """A cleanup reads failed after the body raised an error."""
+        read: list[bool] = []
+
+        def body(seat: Seat) -> None:
+            cast("Body", seat).cleanup(lambda: read.append(cast("Body", seat).failed))
+            msg = "defect"
+            raise KeyError(msg)
+
+        with Loop("x") as loop, pytest.raises(KeyError):
+            run_on(Body(None, Recorder()), body, loop)
+        assert read == [True]
+
+    def test_leaves_the_seat_of_a_body_that_skips_through_unittest_unfailed(
+        self,
+    ) -> None:
+        """A SkipTest of unittest is no error of the body."""
+        read: list[bool] = []
+
+        def body(seat: Seat) -> None:
+            cast("Body", seat).cleanup(lambda: read.append(cast("Body", seat).failed))
+            msg = "no docker"
+            raise unittest.SkipTest(msg)
+
+        with Loop("x") as loop, pytest.raises(unittest.SkipTest):
+            run_on(Body(None, Recorder()), body, loop)
+        assert read == [False]
 
 
 class TestBodyCleanup:

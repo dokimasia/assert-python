@@ -295,6 +295,7 @@ SUPPORT = (
         "Seat.record",
         "Collector",
         "Collector.cleanup",
+        "Collector.failed",
         "Collector.with_clock",
         "Standard",
         "Recorder",
@@ -310,6 +311,7 @@ SUPPORT = (
         "Recorder.run_cleanups",
         "clean_up",
         "cleanup",
+        "failed",
         "fault",
         "skip",
         "write_record",
@@ -630,12 +632,15 @@ BLOCKS = {
             _family(
                 history,
                 "Options of a check",
-                "Each bounds the search of is_linearizable.",
+                "Each bounds the search of is_linearizable, and resume continues "
+                "the searches that a Checkpoint keeps.",
                 f"{TYPE}Option",
                 "budget",
                 "memo_limit",
                 "time_limit",
                 "workers",
+                "resume",
+                "Checkpoint",
             ),
             _family(
                 history,

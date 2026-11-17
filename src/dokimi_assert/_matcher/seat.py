@@ -50,6 +50,9 @@ class Seat(Protocol):
     passing one included, as a dokimi_assert.call.Call. cleanup(fn)
     registers a function that runs when the test, the case or the body of
     the seat ends.
+
+    A seat can also have the read-only property failed, which is True once
+    the test, the case or the body of the seat has failed.
     """
 
     def helper(self) -> None:

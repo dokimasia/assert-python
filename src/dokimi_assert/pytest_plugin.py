@@ -9,7 +9,10 @@ its failures at the end of the test, so that a failing assertion does not
 stop the assertions after it. The plugin hands each test a Collector. When
 the test body ends, it runs the functions that the test registered through
 the seat's cleanup, and raises what the collector kept, so the failure
-belongs to the test and not to its teardown.
+belongs to the test and not to its teardown. A body that ended with an
+error fails the collector before the functions run, so a function reads
+the end of the test through failed. A skip and an expected failure do not
+fail it.
 
 With DOKIMI_ASSERT_RECORD=1, the seat appends the call record of every call
 to the user_properties of the test's item, one property per record, named
@@ -21,6 +24,7 @@ a test as a property element of the test's testcase element.
 
 from __future__ import annotations
 
+import unittest
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -118,13 +122,20 @@ def recorder() -> Generator[Recorder]:
     seat.run_cleanups()
 
 
+#: The exceptions with which a test body skips or fails as expected. They do
+#: not fail the seat of the test.
+_SKIPS = (pytest.skip.Exception, pytest.xfail.Exception, unittest.SkipTest)
+
+
 @pytest.hookimpl(wrapper=True)
 def pytest_runtest_call(item: pytest.Item) -> Generator[None, Any, Any]:
     """Run the cleanups of the test's seats, and raise what they collected.
 
     The hook raises in the call phase, so pytest reports a failing test and
     not a passing test with an error in its teardown. A test body that raised
-    keeps its own exception, which came first and explains the rest.
+    keeps its own exception, which came first and explains the rest. A body
+    that raised an error fails each seat of the test before its cleanups
+    run.
 
     Args:
         item: The running test.
@@ -136,11 +147,17 @@ def pytest_runtest_call(item: pytest.Item) -> Generator[None, Any, Any]:
     Returns:
         The result of the wrapped call.
     """
+    failed = False
     try:
         result = yield
+    except _SKIPS:
+        raise
+    except BaseException:
+        failed = True
+        raise
     finally:
         for collector in item.stash.get(SEATS, []):
-            clean_up(collector)
+            clean_up(collector, failed)
     for collector in item.stash.get(SEATS, []):
         collector.flush()
     return result

@@ -299,3 +299,16 @@ class TestRecorded:
             [2, [('{"type":"string","value":"x"}',), ()]],
             "the completion has an empty tuple of identities",
         )
+
+    def test_returns_the_events_from_an_index_on(self, seat: Collector) -> None:
+        """The history has a write of x and a read of y. The read starts at 2."""
+        history = History()
+        history.invoke(0, "write", [1], "x").ok(None)
+        history.invoke(0, "read", [], "y").ok(1)
+        events, ids = recorded(history, 2)
+        check.equal(
+            seat,
+            [[event.index for event in events], ids],
+            [[2, 3], [('{"type":"string","value":"y"}',), ()]],
+            "the events and the identities start at the index",
+        )

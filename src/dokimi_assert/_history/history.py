@@ -258,18 +258,22 @@ def _complete(state: _State, call: int, kind: _Ending, value: Any) -> None:
         state.ids.append(())
 
 
-def recorded(history: History) -> tuple[list[Event], list[tuple[str, ...]]]:
+def recorded(
+    history: History, start: int = 0
+) -> tuple[list[Event], list[tuple[str, ...]]]:
     """Return the events of a history and the identities of the keys of each event.
 
-    A check of a history reads both copies.
+    A check of a history reads both copies. A check that continues the
+    searches of a checkpoint reads the events since the last check alone.
 
     Args:
         history: The history.
+        start: The index of the first event to return.
 
     Returns:
-        A copy of the events, and a copy of the identities of the keys of
-        each event.
+        A copy of the events from the index start on, and a copy of the
+        identities of the keys of each of them.
     """
     state = _STATES[history]
     with state.lock:
-        return list(state.events), list(state.ids)
+        return state.events[start:], state.ids[start:]

@@ -19,7 +19,7 @@ class TestHistory:
     """The module history exports the checks and registers their sentences."""
 
     def test_exports_the_names_of_the_history_checks(self, seat: Collector) -> None:
-        """Each of the 28 names in __all__ is an attribute of the module."""
+        """Each of the 30 names in __all__ is an attribute of the module."""
         check.equal(
             seat,
             [
@@ -29,6 +29,7 @@ class TestHistory:
             [
                 [
                     "Call",
+                    "Checkpoint",
                     "Completion",
                     "Edge",
                     "Event",
@@ -53,13 +54,14 @@ class TestHistory:
                     "is_linearizable",
                     "is_serializable",
                     "memo_limit",
+                    "resume",
                     "spec_from",
                     "time_limit",
                     "workers",
                 ],
                 [],
             ],
-            "the module exports the 28 names",
+            "the module exports the 30 names",
         )
 
     def test_registers_the_sentence_of_each_check_for_the_records_of_its_assertions(

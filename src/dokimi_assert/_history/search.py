@@ -30,7 +30,6 @@ frontier, its states and the candidates that the spec rejected there.
 
 from __future__ import annotations
 
-import itertools
 import json
 import math
 import threading
@@ -64,6 +63,10 @@ Limit = Literal["steps", "memo", "time"]
 
 #: The number of steps between two readings of the clock.
 _CLOCK_STEPS = 1024
+
+#: The entries of the head and the tail of the list of entries of a search.
+_HEAD = 0
+_TAIL = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,7 +162,9 @@ class Search(Generic[_S]):
 
     The entries are a doubly linked list between a head and a tail, so the
     search takes the entries of a linearized call out of the scan and puts
-    them back in constant time.
+    them back in constant time. The head and the tail are the first two
+    entries, so a search that grows appends the entries of its new calls
+    without moving an entry.
     """
 
     def __init__(
@@ -177,7 +182,85 @@ class Search(Generic[_S]):
             config: The limits of the check.
             deadline: The deadline of the check.
         """
-        self._calls: Sequence[Checked] = calls
+        self._calls: list[Checked] = []
+        self._budget: int = config.budget
+        self._memo_limit: int = config.memo_limit
+        self._next: list[int] = [_TAIL, _TAIL]
+        self._prev: list[int] = [_HEAD, _HEAD]
+        self._position: list[int] = [-1, -1]
+        self._invokes: list[bool] = [False, False]
+        self._invocation: list[int] = []
+        self._completion: list[int | None] = []
+        self._optional: int = 0
+        self._open: int = 0
+        self._steps: int = 0
+        self._done: int = 0
+        self._started: bool = False
+        self._states: list[_S] = []
+        self._stack: list[tuple[int, list[_S]]] = []
+        self._memo: dict[
+            tuple[int, frozenset[Hashable]], list[tuple[int, list[_S]]]
+        ] = {}
+        self._configurations: int = 0
+        self._linearized: tuple[int, ...] = ()
+        self._frontier: list[_S] = []
+        self._candidates: list[int] = []
+        self._at_frontier: bool = True
+        self._calling: str = "initial"
+        self._stepped: int | None = None
+        self._use(spec, deadline)
+        self._add(calls)
+
+    @property
+    def calls(self) -> tuple[Checked, ...]:
+        """The calls of the search, in event order.
+
+        Returns:
+            The calls.
+        """
+        return tuple(self._calls)
+
+    def fits(self, calls: int, config: Config) -> bool:
+        """Report whether the search continues as a new search when it grows to calls.
+
+        A new search of the calls would take the steps of this search up to the
+        order that it found when config states its budget and its memo limit,
+        and when the memo contains no more configurations than the memo limit
+        lets a search of the calls store.
+
+        Args:
+            calls: The number of calls of the grown search.
+            config: The limits of the check.
+
+        Returns:
+            True when the grown search continues as a new search of its calls.
+        """
+        return (
+            config.budget == self._budget
+            and config.memo_limit == self._memo_limit
+            and self._configurations * calls <= config.memo_limit
+        )
+
+    def grow(
+        self, calls: Sequence[Checked], spec: Spec[_S], deadline: Deadline
+    ) -> None:
+        """Add calls that follow every event that a search that passed read.
+
+        The entries of the calls join the scan before the tail, in event
+        order. The search then steps through spec, and reads deadline before
+        its next step. A search of every call takes the same steps from the
+        order that this search found.
+
+        Args:
+            calls: The new calls of the partition in event order.
+            spec: The spec of the check that grows the search.
+            deadline: The deadline of the check that grows the search.
+        """
+        self._use(spec, deadline)
+        self._add(calls)
+
+    def _use(self, spec: Spec[_S], deadline: Deadline) -> None:
+        """Step through spec, and read deadline before the next step."""
         self._spec: Spec[_S] = spec
         stated_equal = getattr(spec, "equal", None)
         self._equal: Callable[[_S, _S], bool] = (
@@ -194,56 +277,55 @@ class Search(Generic[_S]):
         self._cost: Callable[[Any], int] = (
             spec.cost if isinstance(spec, SubjectSpec) else lambda _: 1  # type: ignore[redundant-expr, unreachable]
         )
-        self._budget: int = config.budget
-        self._memo_limit: int = config.memo_limit
         self._deadline: Deadline = deadline
-        self._clock_at: int = 0
+        self._clock_at: int = self._steps
+
+    def _add(self, calls: Sequence[Checked]) -> None:
+        """Lay out the entries of calls after the entries of the search, in event order.
+
+        An entry that the search took out of the scan while the tail followed
+        it then points at the first new entry. A backtrack puts it back before
+        the new entries, as a search of every call does.
+        """
+        start = len(self._calls)
         entries: list[tuple[int, int, bool]] = []
-        for position, c in enumerate(calls):
-            entries.append((c.span.call, position, True))
+        for offset, c in enumerate(calls):
+            entries.append((c.span.call, start + offset, True))
             completion = c.span.completion
             if c.span.operation.known and completion is not None:
-                entries.append((completion, position, False))
+                entries.append((completion, start + offset, False))
+            else:
+                self._optional |= 1 << (start + offset)
         entries.sort()
-        self._head: int = len(entries)
-        chain = [self._head, *range(len(entries)), self._head + 1]
-        self._next: list[int] = [0] * len(chain)
-        self._prev: list[int] = [0] * len(chain)
-        for before, after in itertools.pairwise(chain):
-            self._next[before] = after
-            self._prev[after] = before
-        self._position: list[int] = [position for _, position, _ in entries]
-        self._invokes: list[bool] = [invokes for _, _, invokes in entries]
-        self._invocation: list[int] = [0] * len(calls)
-        self._completion: list[int | None] = [None] * len(calls)
-        for entry, (_, position, invokes) in enumerate(entries):
+        self._calls.extend(calls)
+        self._invocation.extend([0] * len(calls))
+        self._completion.extend([None] * len(calls))
+        if not entries:
+            return
+        first = len(self._next)
+        for entry in range(_TAIL + 1, first):
+            if self._next[entry] == _TAIL:
+                self._next[entry] = first
+        last = self._prev[_TAIL]
+        self._next[last] = first
+        for offset, (_, position, invokes) in enumerate(entries):
+            entry = first + offset
+            self._prev.append(entry - 1 if offset else last)
+            self._next.append(entry + 1)
+            self._position.append(position)
+            self._invokes.append(invokes)
             if invokes:
                 self._invocation[position] = entry
             else:
                 self._completion[position] = entry
-        self._optional: int = sum(
-            1 << position
-            for position, completion in enumerate(self._completion)
-            if completion is None
-        )
-        self._open: int = sum(1 for c in calls if c.span.operation.known)
-        self._steps: int = 0
-        self._done: int = 0
-        self._states: list[_S] = []
-        self._stack: list[tuple[int, list[_S]]] = []
-        self._memo: dict[
-            tuple[int, frozenset[Hashable]], list[tuple[int, list[_S]]]
-        ] = {}
-        self._configurations: int = 0
-        self._linearized: tuple[int, ...] = ()
-        self._frontier: list[_S] = []
-        self._candidates: list[int] = []
-        self._at_frontier: bool = True
-        self._calling: str = "initial"
-        self._stepped: int | None = None
+                self._open += 1
+        self._next[-1] = _TAIL
+        self._prev[_TAIL] = len(self._next) - 1
 
     def run(self) -> Ending[_S]:
         """Search the partition and return its ending.
+
+        A search that grew continues from the order that it found.
 
         Returns:
             The ending.
@@ -252,8 +334,10 @@ class Search(Generic[_S]):
             SpecError: A function of the spec raises.
         """
         try:
-            self._states = [self._spec.initial()]
-            self._frontier = self._states
+            if not self._started:
+                self._states = [self._spec.initial()]
+                self._frontier = self._states
+                self._started = True
             if self._search():
                 return Ending("passed", self._steps, (), tuple(self._states), (), None)
             return self._ending("violated", None)
@@ -282,14 +366,14 @@ class Search(Generic[_S]):
         Returns:
             True when one order passes.
         """
-        entry = self._next[self._head]
+        entry = self._next[_HEAD]
         while self._open > 0:
             if not self._invokes[entry]:
                 if not self._stack:
                     return False
                 entry = self._backtrack()
             elif self._linearize(self._position[entry]):
-                entry = self._next[self._head]
+                entry = self._next[_HEAD]
             else:
                 entry = self._next[entry]
         return True
